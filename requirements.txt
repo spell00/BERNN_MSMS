@@ -1,0 +1,52 @@
+numpy
+jax
+numpyro
+Pillow==8.4.0
+scikit_learn
+pandas
+scikit-optimize
+pytest
+pytest-cov
+pylint
+pytest-pylint
+sklearn
+matplotlib
+seaborn
+tabulate
+scipy
+tqdm
+joblib~=1.0.0
+sunbird~=0.0.4
+ax-platform
+# combat
+shap
+pycombat
+PTable
+torch
+torchvision
+tensorboardX
+tensorboard
+tensorflow
+ax-platform
+psutil
+scikit-image
+nibabel
+mpmath
+patsy
+umap-learn
+shapely
+rpy2
+openpyxl
+xgboost
+# matplotlib
+torch-geometric
+neptune-client
+fastapi
+# R packages:
+# install.packages("harmony")
+# install.packages("sva")
+# BiocManager::install("zinbwave")
+# install.packages("factor")
+# install.packages("devtools")
+# devtools::install_github("immunogenomics/lisi")
+# install.packages("https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz", repos = NULL, type = "source")
