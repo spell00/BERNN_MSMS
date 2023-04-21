@@ -20,6 +20,18 @@ launch_train_ae_classifier_holdout_experiment.sh).
 It was designed to run on two GPUs of 24 GB each. If not enough GPU RAM available, modify the file to reduce the
 number of models trained simultaneously. The number of GPU can also be modified.
 
+## Custom experiments
+To run with custom data, you need to change the parameter `--dataset` to `custom` and change `--path` to the path 
+relative to this `README` file. Alternatively, you can set it to the absolute path where the data is. 
+
+Your dataset must be:
+- comma seperated (csv)
+- Rows are samples
+- Columns are features
+- first column must be the sample IDs
+- second column must be the labels
+- third column must be the batch IDs
+
 # Train scripts
 The main scripts for training models are located in src/dl/train. 
 

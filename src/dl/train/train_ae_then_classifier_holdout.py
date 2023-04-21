@@ -210,7 +210,7 @@ class TrainAE:
             )
             run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
             run["metadata"].track_files(
-                f"{self.path}/AllSamples_Oct2022/subjects_experiment_ATN_verified_diagnosis.csv"
+                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
             model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
@@ -254,8 +254,6 @@ class TrainAE:
             except:
                 mlflow.end_run()
                 mlflow.start_run()
-            # mlflow.log_artifact(f"{self.path}/AllSamples_Oct2022/DIANN/{self.args.csv_file}")
-            # mlflow.log_artifact(f"{self.path}/AllSamples_Oct2022/subjects_experiment_ATN_verified_diagnosis.csv")
             mlflow.log_params({
                 "inputs_type": args.csv_file.split(".csv")[0],
                 "best_unique": args.best_features_file.split(".tsv")[0],
@@ -1201,6 +1199,7 @@ if __name__ == "__main__":
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
+    parser.add_argument('--strategy', type=str, default='CU_')
     parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')

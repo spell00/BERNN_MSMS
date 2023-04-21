@@ -28,7 +28,7 @@ from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
 from src.ml.train.sklearn_train_nocv import Train2
-from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice
+from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice, get_data
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -227,9 +227,9 @@ class TrainAE:
                 api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI3M2JiZTg2Ny00MzI5LTRiZTItYjE2Mi1jNjIyNzc1OTllZjcifQ==",
                 # your credentials
             )
-            run["dataset"].track_files(f"{self.path}/AllSamples_Oct2022/DIANN/{self.args.csv_file}")
+            run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
             run["metadata"].track_files(
-                f"{self.path}/AllSamples_Oct2022/subjects_experiment_ATN_verified_diagnosis.csv"
+                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
             model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
@@ -272,8 +272,6 @@ class TrainAE:
             # except:
             #     mlflow.end_run()
             #     mlflow.start_run()
-            # mlflow.log_artifact(f"{self.path}/AllSamples_Oct2022/DIANN/{self.args.csv_file}")
-            # mlflow.log_artifact(f"{self.path}/AllSamples_Oct2022/subjects_experiment_ATN_verified_diagnosis.csv")
             mlflow.log_params({
                 "inputs_type": args.csv_file.split(".csv")[0],
                 "best_unique": args.best_features_file.split(".tsv")[0],
@@ -338,6 +336,8 @@ class TrainAE:
             elif self.args.dataset == 'mice':
                 # This seed split the data to have n_samples in train: 96, valid:52, test: 23
                 self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
+            elif self.args.dataset == 'custom':
+                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
             else:
                 exit('Wrong dataset name')
             # self.get_amide(self.path, seed=(1 + h) * 10)
@@ -441,7 +441,6 @@ class TrainAE:
 
                 early_stop_counter = 0
                 best_vals = values
-                new_combinations = True
                 if h > 1:  # or warmup_counter == 100:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                     print(f"\n\nNO WARMUP\n\n")
@@ -480,7 +479,7 @@ class TrainAE:
                                 else:
                                     domain_preds = ae.dann_discriminator(enc)
                                 if args.dloss not in ['revTriplet', 'inverseTriplet']:
-                                    dloss, domain = self.get_dloss(celoss, domain, domain_preds, 2)
+                                    dloss, domain = self.get_dloss(celoss, domain, domain_preds)
                                 elif args.dloss == 'revTriplet':
                                     pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                                     neg_batch_sample = neg_batch_sample.to(self.args.device).float()
@@ -844,7 +843,7 @@ class TrainAE:
             if self.log_plots:
                 if self.log_tb:
                     # TODO Add log_shap
-                    logger.add(loggers['logger_cm'], epoch, best_lists,
+                    loggers.add(loggers['logger_cm'], epoch, best_lists,
                                self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, n_meta, 'mlflow',

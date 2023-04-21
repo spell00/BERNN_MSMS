@@ -130,7 +130,7 @@ def get_harvard(path, args, seed=42):
 
         else:
             meta = pd.read_csv(
-                f"{path}/Alzheimer/subjects_experiment_ATN_verified_diagnosis.csv", sep=","
+                f"{path}/subjects_experiment_ATN_verified_diagnosis.csv", sep=","
             )
             meta_names = meta.loc[:, 'SampleID']
             meta_labels = meta.loc[:, 'ATN_diagnosis']
@@ -152,7 +152,7 @@ def get_harvard(path, args, seed=42):
             meta_Ns = np.array([1 if x.split(' ')[2] == 'N+' else 0 for i, x in enumerate(meta_atn)])
             meta_gender = np.array([1 if x == 'Female' else 0 for i, x in enumerate(meta_gender)])
             matrix = pd.read_csv(
-                f"{path}/Alzheimer/{args.csv_file}", sep=','
+                f"{path}/{args.csv_file}", sep=','
             )
             matrix.index = matrix['Unnamed: 0']
             matrix = matrix.iloc[:, 1:].fillna(0)
@@ -213,7 +213,7 @@ def get_harvard(path, args, seed=42):
             data['orders'][f"{group}_pool"] = np.array([x for x in range(len(data['batches'][f"{group}_pool"]))])
             data['cats'][f"{group}_pool"] = np.array(
                 [len(np.unique(data['labels'][group])) for _ in batches[pool_pos]])
-            contaminants = pd.read_csv('data/Alzheimer/contaminants.csv').values.squeeze()
+            contaminants = pd.read_csv(f'{path}/contaminants.csv').values.squeeze()
             features = data['inputs'][group].columns
             features_to_keep = [x for x in features if x not in contaminants]
             data['inputs'][group] = data['inputs'][group].loc[:, features_to_keep]
