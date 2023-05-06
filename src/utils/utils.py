@@ -13,7 +13,8 @@ def scale_data(scale, data, device='cpu'):
     if scale == 'binarize':
         for group in list(data['inputs'].keys()):
             data['inputs'][group] = data['inputs'][group]
-            data['inputs'][group][data['inputs'][group] > 0.] = 1
+            data['inputs'][group][data['inputs'][group] > 0.5] = 1
+            data['inputs'][group][data['inputs'][group] <= 0.5] = 0
 
     elif scale == 'robust_per_batch':
         scalers = {b: RobustScaler() for b in unique_batches}

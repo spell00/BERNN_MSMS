@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from src.utils.utils import get_unique_labels
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
-
+import random
 
 def get_harvard(path, args, seed=42):
     """
@@ -712,6 +712,161 @@ def get_mice(path, args, seed=42):
     unique_batches = np.unique(data['batches']['all'])
     for group in ['train', 'valid', 'test', 'all']:
         data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+
+    return data, unique_labels, unique_batches
+
+
+def get_bacteria(path, args, seed=42):
+    """
+
+    Args:
+        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
+                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
+                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+
+    Returns:
+        data
+    """
+    data = {}
+    unique_labels = np.array([])
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+        data[info] = {}
+        for group in ['all', 'train', 'test', 'valid']:
+            data[info][group] = np.array([])
+    for group in ['train', 'valid', 'test']:
+        if group == 'valid':
+            matrix = pd.read_csv(
+                f"{path}/valid_inputs_ms1.csv", sep=",", index_col=0
+            )
+            meta_names = matrix.loc[:, 'ID']
+            meta_labels = matrix.loc[:, 'labels']
+            meta_batch = matrix.loc[:, 'batches']
+            meta_order = matrix.loc[:, 'plate']
+            matrix = matrix.iloc[:, 4:]
+
+            def impute_zero(peak):
+                zero_mask = peak == 0
+                if zero_mask.any():
+                    new_x = peak.copy()
+                    impute_value = peak.loc[~zero_mask].min()
+                    new_x[zero_mask] = impute_value / 2
+                    return new_x
+                return peak
+            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
+            # if not args.zinb:
+            # matrix = matrix.apply(impute_zero, axis=0)
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            data['inputs'][group] = matrix
+            data['names'][group] = meta_names
+            data['labels'][group] = meta_labels.values  # .iloc[meta_pos].to_numpy()
+            data['batches'][group] = meta_batch.values
+            data['orders'][group] = meta_order.values
+            data['meta'][group] = data['inputs'][group].iloc[:, :2]
+
+            unique_labels1 = get_unique_labels(data['labels'][group])
+
+        elif group == 'test':
+            matrix = pd.read_csv(
+                f"{path}/test_inputs_ms1.csv", sep=",", index_col=0
+            )
+            meta_names = matrix.loc[:, 'ID']
+            meta_labels = matrix.loc[:, 'labels']
+            meta_batch = matrix.loc[:, 'batches']
+            meta_order = matrix.loc[:, 'plate']
+            matrix = matrix.iloc[:, 4:]
+
+            def impute_zero(peak):
+                zero_mask = peak == 0
+                if zero_mask.any():
+                    new_x = peak.copy()
+                    impute_value = peak.loc[~zero_mask].min()
+                    new_x[zero_mask] = impute_value / 2
+                    return new_x
+                return peak
+            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
+            # if not args.zinb:
+            # matrix = matrix.apply(impute_zero, axis=0)
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            data['inputs'][group] = matrix
+            data['names'][group] = meta_names
+            data['labels'][group] = meta_labels.values  # .iloc[meta_pos].to_numpy()
+            data['batches'][group] = meta_batch.values
+            data['orders'][group] = meta_order.values
+            data['meta'][group] = data['inputs'][group].iloc[:, :2]
+
+            unique_labels2 = get_unique_labels(data['labels'][group])
+
+        else:
+            matrix = pd.read_csv(
+                f"{path}/train_inputs_ms1.csv", sep=",", index_col=0
+            )
+            meta_names = matrix.loc[:, 'ID']
+            meta_labels = matrix.loc[:, 'labels']
+            meta_batch = matrix.loc[:, 'batches']
+            meta_order = matrix.loc[:, 'plate']
+
+            matrix = matrix.iloc[:, 4:]
+
+            def impute_zero(peak):
+                zero_mask = peak == 0
+                if zero_mask.any():
+                    new_x = peak.copy()
+                    impute_value = peak.loc[~zero_mask].min()
+                    new_x[zero_mask] = impute_value / 2
+                    return new_x
+                return peak
+            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
+            # if not args.zinb:
+            # matrix = matrix.apply(impute_zero, axis=0)
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            data['inputs'][group] = matrix
+            data['names'][group] = meta_names
+            data['labels'][group] = meta_labels.values  # .iloc[meta_pos].to_numpy()
+            data['batches'][group] = meta_batch.values
+            data['orders'][group] = meta_order.values
+            data['meta'][group] = data['inputs'][group].iloc[:, :2]
+
+            unique_labels3 = get_unique_labels(data['labels'][group])
+
+    for key in list(data.keys()):
+        if key in ['inputs', 'meta']:
+            data[key]['all'] = pd.concat((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+        else:
+            data[key]['all'] = np.concatenate((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+
+    unique_labels = np.unique(np.concatenate((unique_labels1, unique_labels2, unique_labels3)))
+    unique_batches = np.unique(data['batches']['all'])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['cats'][group] = np.array(
+            [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+
+    # If we also load blanks in the samples, it should help a lot
+    # I will put half the blanks from the valid and test sets in the train set.
+    # In production, we will only need to have blanks to process with the samples
+    for group in ['valid', 'test']:
+        blks_pos = np.argwhere(data['labels'][group] == 'blk').flatten().tolist()
+        blks_to_move = random.sample(blks_pos, int(len(blks_pos)/2))
+        blks_not_to_move = [x for x in blks_pos if x not in blks_to_move]
+        not_to_move = np.argwhere(data['labels'][group] != 'blk').flatten().tolist() + blks_not_to_move
+        data['batches']['train'], data['batches'][group] = np.concatenate((data['batches']['train'], data['batches'][group][blks_to_move])), data['batches'][group][not_to_move],
+        data['inputs']['train'], data['inputs'][group] = pd.concat((data['inputs']['train'], data['inputs'][group].iloc[blks_to_move])), data['inputs'][group].iloc[not_to_move]
+        data['meta']['train'], data['meta'][group] = pd.concat((data['meta']['train'], data['meta'][group].iloc[blks_to_move])), data['meta'][group].iloc[not_to_move]
+        data['cats']['train'], data['cats'][group] = np.concatenate((data['cats']['train'], data['cats'][group][blks_to_move])), data['cats'][group][not_to_move]
+        data['labels']['train'], data['labels'][group] = np.concatenate((data['labels']['train'], data['labels'][group][blks_to_move])), data['labels'][group][not_to_move]
+        data['orders']['train'], data['orders'][group] = np.concatenate((data['orders']['train'], data['orders'][group][blks_to_move])), data['orders'][group][not_to_move]
+        data['names']['train'], data['names'][group] = pd.concat((data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
 
     return data, unique_labels, unique_batches
 
