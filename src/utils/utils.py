@@ -13,8 +13,8 @@ def scale_data(scale, data, device='cpu'):
     if scale == 'binarize':
         for group in list(data['inputs'].keys()):
             data['inputs'][group] = data['inputs'][group]
-            data['inputs'][group][data['inputs'][group] > 0.5] = 1
-            data['inputs'][group][data['inputs'][group] <= 0.5] = 0
+            data['inputs'][group][data['inputs'][group] > 0] = 1
+            data['inputs'][group][data['inputs'][group] <= 0] = 0
 
     elif scale == 'robust_per_batch':
         scalers = {b: RobustScaler() for b in unique_batches}
@@ -196,7 +196,7 @@ def scale_data(scale, data, device='cpu'):
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
 
     elif scale == 'none':
-        return data
+        return data, 'none'
     # Values put on [0, 1] interval to facilitate autoencoder reconstruction (enable use of sigmoid as final activation)
     # scaler = MinMaxScaler()
     # scaler.fit(data['inputs']['all'])

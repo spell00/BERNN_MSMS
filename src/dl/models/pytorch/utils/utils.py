@@ -127,7 +127,10 @@ class LogConfusionMatrix:
             self.preds[group] += [np.concatenate(lists[group]['preds']).argmax(1)]
             self.classes[group] += [np.concatenate(lists[group]['classes'])]
             self.encs[group] += [np.concatenate(lists[group]['encoded_values'])]
-            self.recs[group] += [np.concatenate(lists[group]['rec_values'])]
+            try:
+                self.recs[group] += [np.concatenate(lists[group]['rec_values'])]
+            except:
+                pass
             self.cats[group] += [np.concatenate(lists[group]['cats'])]
             self.batches[group] += [np.concatenate(lists[group]['domains'])]
 

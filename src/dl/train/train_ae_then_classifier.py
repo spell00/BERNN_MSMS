@@ -173,6 +173,7 @@ class TrainAE:
 
         self.args.scaler = scale
         self.args.warmup = params['warmup']
+        self.args.n_features = params['n_features']
         # self.args.disc_b_warmup = params['disc_b_warmup']
 
         optimizer_type = 'adam'
@@ -186,7 +187,7 @@ class TrainAE:
 
         hparams_filepath = self.complete_log_path + '/hp'
         os.makedirs(hparams_filepath, exist_ok=True)
-        self.args.model_name = 'ae_then_classifier_holdout'
+        self.args.model_name = 'ae_then_classifier'
         if self.log_tb:
             loggers['tb_logging'] = TensorboardLoggingAE(hparams_filepath, params, variational=self.args.variational,
                                                          zinb=self.args.zinb,
@@ -232,7 +233,7 @@ class TrainAE:
             model["remove_zeros"] = run["remove_zeros"] = args.remove_zeros
             model["parameters"] = run["parameters"] = params
             model["csv_file"] = run["csv_file"] = args.csv_file
-            model["model_name"] = run["model_name"] = 'ae_then_classifier_holdout'
+            model["model_name"] = run["model_name"] = 'ae_then_classifier'
             model["n_meta"] = run["n_meta"] = args.n_meta
             model["n_emb"] = run["n_emb"] = args.embeddings_meta
             model["groupkfold"] = run["groupkfold"] = args.groupkfold
@@ -275,6 +276,7 @@ class TrainAE:
                 "n_meta": args.n_meta,
                 "n_emb": args.embeddings_meta,
                 "groupkfold": args.groupkfold,
+                "n_features": self.args.n_features,
                 "foldername": self.foldername,
                 "use_mapping": args.use_mapping,
                 "dataset_name": args.dataset,
@@ -693,7 +695,6 @@ class TrainAE:
                     shutil.rmtree(
                         f'logs/best_models/ae_then_classifier_holdout/{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}',
                         ignore_errors=True)
-                # os.makedirs(f'logs/best_models/ae_classifier_holdout/{self.args.dloss}_vae{self.args.variational}', exist_ok=True)
                 shutil.copytree(f'{self.complete_log_path}',
                                 f'logs/best_models/ae_then_classifier_holdout/{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}')
                 # print("File copied successfully.")
@@ -877,13 +878,19 @@ class TrainAE:
                                          names[group].reshape(-1, 1)), 1)).to_csv(
                 f'{self.complete_log_path}/{group}_predictions.csv')
             if self.log_neptune:
-                run[f"{group}_predictions"].track_files(f'{self.complete_log_path}/{group}_predictions.csv')
-                run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
-                                                            multi_class='ovr')
+                try:
+                    run[f"{group}_predictions"].track_files(f'{self.complete_log_path}/{group}_predictions.csv')
+                    run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
+                                                                multi_class='ovr')
+                except:
+                    pass
             if self.log_mlflow:
-                mlflow.log_metric(f'{group}_AUC',
+                try:
+                    mlflow.log_metric(f'{group}_AUC',
                                   metrics.roc_auc_score(y_true=cats[group], y_score=scores[group], multi_class='ovr'),
                                   step=step)
+                except:
+                    pass
 
     def loop(self, group, ae, celoss, loader, lists, traces, nu=1, mapping=True):
         """
@@ -912,7 +919,7 @@ class TrainAE:
             if group in ['train'] and nu != 0:
                 self.optimizer_c.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
@@ -1004,7 +1011,7 @@ class TrainAE:
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -1158,7 +1165,7 @@ if __name__ == "__main__":
     parser.add_argument('--random_recs', type=int, default=0)
     parser.add_argument('--predict_tests', type=int, default=0)
     # parser.add_argument('--balanced_rec_loader', type=int, default=0)
-    parser.add_argument('--early_stop', type=int, default=10)
+    parser.add_argument('--early_stop', type=int, default=20)
     parser.add_argument('--early_warmup_stop', type=int, default=0)
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
@@ -1208,7 +1215,7 @@ if __name__ == "__main__":
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
     train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
                     log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
-                    log_mlflow=False, groupkfold=args.groupkfold, pools=True)
+                    log_mlflow=True, groupkfold=args.groupkfold, pools=True)
 
     # train.train()
     # List of hyperparameters getting optimized
@@ -1218,11 +1225,12 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 250]},
+        {"name": "warmup", "type": "range", "bounds": [1, 50]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
          "values": ['binarize']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [32, 1024]},
+        {"name": "n_features", "type": "range", "bounds": [1, 100]},
         {"name": "layer1", "type": "range", "bounds": [512, 2048]},
     ]
 

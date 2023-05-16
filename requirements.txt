@@ -40,7 +40,7 @@ openpyxl
 xgboost
 # matplotlib
 torch-geometric
-neptune-client
+neptune
 fastapi
 # R packages:
 # install.packages("harmony")

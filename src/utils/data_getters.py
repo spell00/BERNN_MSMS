@@ -3,6 +3,10 @@ import pandas as pd
 from src.utils.utils import get_unique_labels
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
 import random
+import multiprocessing
+from src.dl.models.pytorch.utils.dataset import MSCSV
+from torchvision.datasets import CIFAR10, MNIST, SVHN
+from torchvision.transforms import ToTensor, Compose, Grayscale, Resize, ToPILImage
 
 def get_harvard(path, args, seed=42):
     """
@@ -161,6 +165,7 @@ def get_harvard(path, args, seed=42):
                 matrix = matrix.loc[mask1]
             if args.log1p:
                 matrix.iloc[:] = np.log1p(matrix.values)
+
             def impute_zero(peak):
                 zero_mask = peak == 0
                 if zero_mask.any():
@@ -228,7 +233,8 @@ def get_harvard(path, args, seed=42):
             _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'NPH').squeeze())
             # unique_labels = np.array(unique_labels + ['pool', 'NPH', 'MCI'])
             unique_labels = np.array(unique_labels + ['MCI-AD', 'MCI-other', 'NPH', 'DEM-other', 'pool'])
-            data['cats'][group] = np.array([np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) for i, x in
+            data['cats'][group] = np.array(
+                [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) for i, x in
                  enumerate(data['labels'][group])])
             data['cats'][f"{group}_pool"] = np.array(
                 [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
@@ -494,12 +500,12 @@ def get_prostate(path, args, seed=42):
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                valid_inds, train_inds = skf.split(train_nums, data['labels']['train'],
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
                                                    data['batches']['train']).__next__()
             else:
                 skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                valid_inds, train_inds = skf.split(train_nums, data['labels']['train']).__next__()
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
             data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[valid_inds]
             data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
@@ -614,7 +620,7 @@ def get_mice(path, args, seed=42):
             else:
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                valid_inds, train_inds = skf.split(train_nums, data['labels']['train']).__next__()
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
             data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[valid_inds]
             data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
@@ -682,6 +688,7 @@ def get_mice(path, args, seed=42):
                     new_x[zero_mask] = impute_value / 2
                     return new_x
                 return peak
+
             matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
             # if not args.zinb:
             #     matrix = matrix.apply(impute_zero, axis=0)
@@ -702,6 +709,157 @@ def get_mice(path, args, seed=42):
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+        else:
+            data[key]['all'] = np.concatenate((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+
+    unique_batches = np.unique(data['batches']['all'])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+
+    return data, unique_labels, unique_batches
+
+
+def get_cifar10(path, args, seed=42):
+    data = {}
+    unique_labels = np.array([])
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+        data[info] = {}
+        for group in ['all', 'train', 'test', 'valid']:
+            data[info][group] = np.array([])
+    for group in ['train', 'valid', 'test']:
+        if group == 'valid' and not args.use_valid:
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+            train_nums = np.arange(0, len(data['labels']['train']))
+            train_inds, valid_inds  = skf.split(train_nums, data['labels']['train']).__next__()
+            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'][train_inds], \
+                data['inputs']['train'][valid_inds]
+            data['meta']['train'], data['meta']['valid'] = data['meta']['train'][train_inds], \
+                data['meta']['train'][valid_inds]
+            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds]
+            data['names']['train'], data['names']['valid'] = data['names']['train'][train_inds], \
+                data['names']['train'][valid_inds]
+            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds]
+            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds]
+            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds]
+
+        elif group == 'test' and not args.use_test:
+            test_dataset = CIFAR10(root='data/', train=False, transform=ToTensor())
+            test_dataset.data = test_dataset.data[:, :, :, 0]
+            data['names']['test'] = np.array(test_dataset.targets)
+            data['labels']['test'] = np.array(test_dataset.targets)
+            data['batches']['test'] = np.array(np.random.randint(0, 2, len(data['labels']['test'])))
+            data['orders']['test'] = data['batches']['test']
+            data['inputs']['test'] = test_dataset.data
+            data['meta']['test'] = test_dataset.data
+
+            unique_labels = get_unique_labels(data['labels'][group])
+            data['cats'][group] = np.array(data['labels'][group])
+
+        else:
+            train_dataset = CIFAR10(root='data/', train=True, transform=ToTensor())
+            train_dataset.data = train_dataset.data[:, :, :, 0]
+            data['names']['train'] = np.array(train_dataset.targets)
+            data['labels']['train'] = np.array(train_dataset.targets)
+            data['batches']['train'] = np.array(np.random.randint(0, 2, len(data['labels']['train'])))
+            data['orders']['train'] = data['batches']['train']
+            data['inputs']['train'] = train_dataset.data
+            data['meta']['train'] = train_dataset.data
+
+            unique_labels = get_unique_labels(data['labels'][group])
+            data['cats'][group] = np.array(data['labels'][group])
+
+    for key in list(data.keys()):
+        if key in ['inputs', 'meta']:
+            data[key]['all'] = np.concatenate((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+        else:
+            data[key]['all'] = np.concatenate((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+
+    unique_batches = np.unique(data['batches']['all'])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+
+    return data, unique_labels, unique_batches
+
+
+def get_mnist(path, args, seed=42):
+    data = {}
+    unique_labels = np.array([])
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+        data[info] = {}
+        for group in ['all', 'train', 'test', 'valid']:
+            data[info][group] = np.array([])
+    for group in ['train', 'test', 'valid']:
+        if group == 'valid' and not args.use_valid:
+            skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+            train_nums = np.arange(0, len(data['labels']['train']))
+            train_inds, valid_inds  = skf.split(train_nums, data['labels']['train']).__next__()
+            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'][train_inds], \
+                data['inputs']['train'][valid_inds]
+            data['meta']['train'], data['meta']['valid'] = data['meta']['train'][train_inds], \
+                data['meta']['train'][valid_inds]
+            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds]
+            data['names']['train'], data['names']['valid'] = data['names']['train'][train_inds], \
+                data['names']['train'][valid_inds]
+            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds]
+            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds]
+            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds]
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+        elif group == 'test' and not args.use_test:
+
+            test_dataset = MNIST(root='data/', train=True, download=False)
+            data['names']['test'] = np.array(test_dataset.targets)
+            data['labels']['test'] = np.array(test_dataset.targets)
+            data['batches']['test'] = np.array(np.random.randint(0, 2, len(data['labels']['test'])))
+            data['orders']['test'] = data['batches']['test']
+            data['inputs']['test'] = test_dataset.data
+            data['meta']['test'] = test_dataset.data
+
+            data['inputs']['test'] = np.array(Resize((32, 32))(data['inputs']['test']))
+            data['meta']['test'] = np.array(Resize((32, 32))(data['meta']['test']))
+            unique_labels = get_unique_labels(data['labels'][group])
+            data['cats'][group] = np.array(data['labels'][group])
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+        else:
+            transform = Compose([
+                Grayscale(),
+                ToTensor(),
+                # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].reshape(1, -1)), np.std(data['inputs']['train'].reshape(1, -1))),
+            ])
+            train_dataset = SVHN(root='data/', transform=transform, download=False)
+            train_dataset.data = np.array(train_dataset.data[:, 0, :, :])
+            # train_dataset.data = transform(train_dataset.data.unsqueeze(1))
+            data['names']['train'] = np.array(train_dataset.labels)
+            data['labels']['train'] = np.array(train_dataset.labels)
+            data['batches']['train'] = np.array(np.random.randint(0, 2, len(data['labels']['train'])))
+            data['orders']['train'] = data['batches']['train']
+            data['inputs']['train'] = train_dataset.data
+            data['meta']['train'] = train_dataset.data
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+            unique_labels = get_unique_labels(data['labels'][group])
+            data['cats'][group] = np.array(data['labels'][group])
+
+    for key in list(data.keys()):
+        if key in ['inputs', 'meta']:
+            data[key]['all'] = np.concatenate((
                 data[key]['train'], data[key]['valid'], data[key]['test']
             ), 0)
         else:
@@ -738,11 +896,11 @@ def get_bacteria(path, args, seed=42):
             matrix = pd.read_csv(
                 f"{path}/valid_inputs_ms1.csv", sep=",", index_col=0
             )
-            meta_names = matrix.loc[:, 'ID']
+            meta_names = matrix.loc[:, 'ID'].to_numpy()
             meta_labels = matrix.loc[:, 'labels']
             meta_batch = matrix.loc[:, 'batches']
             meta_order = matrix.loc[:, 'plate']
-            matrix = matrix.iloc[:, 4:]
+            matrix = matrix.iloc[:, 4:(4 + args.n_features)]
 
             def impute_zero(peak):
                 zero_mask = peak == 0
@@ -752,6 +910,7 @@ def get_bacteria(path, args, seed=42):
                     new_x[zero_mask] = impute_value / 2
                     return new_x
                 return peak
+
             # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
             # if not args.zinb:
             # matrix = matrix.apply(impute_zero, axis=0)
@@ -771,11 +930,11 @@ def get_bacteria(path, args, seed=42):
             matrix = pd.read_csv(
                 f"{path}/test_inputs_ms1.csv", sep=",", index_col=0
             )
-            meta_names = matrix.loc[:, 'ID']
+            meta_names = matrix.loc[:, 'ID'].to_numpy()
             meta_labels = matrix.loc[:, 'labels']
             meta_batch = matrix.loc[:, 'batches']
             meta_order = matrix.loc[:, 'plate']
-            matrix = matrix.iloc[:, 4:]
+            matrix = matrix.iloc[:, 4:(4 + args.n_features)]
 
             def impute_zero(peak):
                 zero_mask = peak == 0
@@ -785,6 +944,7 @@ def get_bacteria(path, args, seed=42):
                     new_x[zero_mask] = impute_value / 2
                     return new_x
                 return peak
+
             # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
             # if not args.zinb:
             # matrix = matrix.apply(impute_zero, axis=0)
@@ -804,12 +964,12 @@ def get_bacteria(path, args, seed=42):
             matrix = pd.read_csv(
                 f"{path}/train_inputs_ms1.csv", sep=",", index_col=0
             )
-            meta_names = matrix.loc[:, 'ID']
+            meta_names = matrix.loc[:, 'ID'].to_numpy()
             meta_labels = matrix.loc[:, 'labels']
             meta_batch = matrix.loc[:, 'batches']
             meta_order = matrix.loc[:, 'plate']
 
-            matrix = matrix.iloc[:, 4:]
+            matrix = matrix.iloc[:, 4:(4 + args.n_features)]
 
             def impute_zero(peak):
                 zero_mask = peak == 0
@@ -819,6 +979,7 @@ def get_bacteria(path, args, seed=42):
                     new_x[zero_mask] = impute_value / 2
                     return new_x
                 return peak
+
             # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
             # if not args.zinb:
             # matrix = matrix.apply(impute_zero, axis=0)
@@ -857,16 +1018,182 @@ def get_bacteria(path, args, seed=42):
     # In production, we will only need to have blanks to process with the samples
     for group in ['valid', 'test']:
         blks_pos = np.argwhere(data['labels'][group] == 'blk').flatten().tolist()
-        blks_to_move = random.sample(blks_pos, int(len(blks_pos)/2))
+        blks_to_move = random.sample(blks_pos, int(len(blks_pos) / 2))
         blks_not_to_move = [x for x in blks_pos if x not in blks_to_move]
         not_to_move = np.argwhere(data['labels'][group] != 'blk').flatten().tolist() + blks_not_to_move
-        data['batches']['train'], data['batches'][group] = np.concatenate((data['batches']['train'], data['batches'][group][blks_to_move])), data['batches'][group][not_to_move],
-        data['inputs']['train'], data['inputs'][group] = pd.concat((data['inputs']['train'], data['inputs'][group].iloc[blks_to_move])), data['inputs'][group].iloc[not_to_move]
-        data['meta']['train'], data['meta'][group] = pd.concat((data['meta']['train'], data['meta'][group].iloc[blks_to_move])), data['meta'][group].iloc[not_to_move]
-        data['cats']['train'], data['cats'][group] = np.concatenate((data['cats']['train'], data['cats'][group][blks_to_move])), data['cats'][group][not_to_move]
-        data['labels']['train'], data['labels'][group] = np.concatenate((data['labels']['train'], data['labels'][group][blks_to_move])), data['labels'][group][not_to_move]
-        data['orders']['train'], data['orders'][group] = np.concatenate((data['orders']['train'], data['orders'][group][blks_to_move])), data['orders'][group][not_to_move]
-        data['names']['train'], data['names'][group] = pd.concat((data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
+        data['batches']['train'], data['batches'][group] = np.concatenate(
+            (data['batches']['train'], data['batches'][group][blks_to_move])), data['batches'][group][not_to_move],
+        data['inputs']['train'], data['inputs'][group] = pd.concat(
+            (data['inputs']['train'], data['inputs'][group].iloc[blks_to_move])), data['inputs'][group].iloc[
+            not_to_move]
+        data['meta']['train'], data['meta'][group] = pd.concat(
+            (data['meta']['train'], data['meta'][group].iloc[blks_to_move])), data['meta'][group].iloc[not_to_move]
+        data['cats']['train'], data['cats'][group] = np.concatenate(
+            (data['cats']['train'], data['cats'][group][blks_to_move])), data['cats'][group][not_to_move]
+        data['labels']['train'], data['labels'][group] = np.concatenate(
+            (data['labels']['train'], data['labels'][group][blks_to_move])), data['labels'][group][not_to_move]
+        data['orders']['train'], data['orders'][group] = np.concatenate(
+            (data['orders']['train'], data['orders'][group][blks_to_move])), data['orders'][group][not_to_move]
+        data['names']['train'], data['names'][group] = np.concatenate(
+            (data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
+
+    return data, unique_labels, unique_batches
+
+
+def get_bacteria_images(path, args, seed=42):
+    """
+
+    Args:
+        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
+                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
+                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+
+    Returns:
+        data
+    """
+    data = {}
+    unique_labels = np.array([])
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+        data[info] = {}
+        for group in ['all', 'train', 'test', 'valid']:
+            data[info][group] = np.array([])
+    for group in ['train', 'valid', 'test']:
+        if group == 'valid':
+            if args.groupkfold:
+                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums = np.arange(0, len(data['labels']['train']))
+                # Remove samples from unwanted batches
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
+                                                   data['batches']['train']).__next__()
+            else:
+                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums = np.arange(0, len(data['labels']['train']))
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
+
+            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
+            # if not args.zinb:
+            # matrix = matrix.apply(impute_zero, axis=0)
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            data['inputs']['valid'], data['inputs']['train'] = data['inputs']['train'][valid_inds], data['inputs']['train'][train_inds]
+            data['names']['valid'], data['names']['train'] = data['names']['train'][valid_inds], data['names']['train'][train_inds]
+            data['labels']['valid'], data['labels']['train'] = data['labels']['train'][valid_inds], data['labels']['train'][train_inds]  # .iloc[meta_pos].to_numpy()
+            data['batches']['valid'], data['batches']['train'] = data['batches']['train'][valid_inds], data['batches']['train'][train_inds]
+            data['orders']['valid'], data['orders']['train'] = data['orders']['train'][valid_inds], data['orders']['train'][train_inds]
+            data['meta']['valid'], data['meta']['train'] = data['inputs'][group], data['inputs']['train']
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+            unique_labels1 = get_unique_labels(data['labels'][group])
+
+        elif group == 'test':
+            if args.groupkfold:
+                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums = np.arange(0, len(data['labels']['train']))
+                # Remove samples from unwanted batches
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
+                                                   data['batches']['train']).__next__()
+            else:
+                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums = np.arange(0, len(data['labels']['train']))
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
+
+            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
+            # if not args.zinb:
+            # matrix = matrix.apply(impute_zero, axis=0)
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
+            data['inputs']['test'], data['inputs']['train'] = data['inputs']['train'][valid_inds], data['inputs']['train'][train_inds]
+            data['names']['test'], data['names']['train'] = data['names']['train'][valid_inds], data['names']['train'][train_inds]
+            data['labels']['test'], data['labels']['train'] = data['labels']['train'][valid_inds], data['labels']['train'][train_inds]  # .iloc[meta_pos].to_numpy()
+            data['batches']['test'], data['batches']['train'] = data['batches']['train'][valid_inds], data['batches']['train'][train_inds]
+            data['orders']['test'], data['orders']['train'] = data['orders']['train'][valid_inds], data['orders']['train'][train_inds]
+            data['meta']['test'], data['meta']['train'] = data['inputs'][group], data['inputs']['train']
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+            unique_labels2 = get_unique_labels(data['labels'][group])
+
+        else:
+            process = MSCSV(path)
+            pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
+            data_images = pool.map(process.process, range(process.__len__()))
+            images, labels, batches, plates, names  = [x[0] for x in data_images], pd.Series(
+                [x[1] for x in data_images]), pd.Series(
+                [x[2] for x in data_images]), pd.Series([x[3] for x in data_images]), pd.Series([x[4] for x in data_images])
+            pool.close()
+            pool.join()
+            pool.terminate()
+            if args.log1p:
+                images = np.log1p(images)
+            del pool, data_images
+
+            if args.remove_zeros:
+                mask1 = (matrix == 0).mean(axis=0) < 0.1
+                matrix = matrix.loc[:, mask1]
+            data['inputs'][group] = np.stack(images)
+            data['names'][group] = names.values
+            data['labels'][group] = labels.values  # .iloc[meta_pos].to_numpy()
+            data['batches'][group] = batches.values
+            data['orders'][group] = plates.values
+            data['meta'][group] = data['inputs'][group]
+            data['sets'][group] = [group for _ in data['names'][group]]
+
+            pos = [i for i, name in enumerate(data['labels'][group].flatten()) if 'pool' not in data['labels'][group][i]]
+            data['names'][group] = data['names'][group][pos]
+            data['labels'][group] = data['labels'][group][pos]
+            data['batches'][group] = data['batches'][group][pos]
+            data['meta'][group] = data['meta'][group][pos]
+            data['orders'][group] = data['orders'][group][pos]
+            data['inputs'][group] = data['inputs'][group][pos]
+            data['sets'][group] = data['sets'][group][pos]
+            unique_labels3 = get_unique_labels(data['labels'][group])
+
+    # Testing using the smallest number of samples for training
+    # data['inputs']['test'], data['inputs']['train'] = data['inputs']['train'], data['inputs']['test']
+    # data['names']['test'], data['names']['train'] = data['names']['train'], data['names']['test']
+    # data['labels']['test'], data['labels']['train'] = data['labels']['train'], data['labels']['test']
+    # data['batches']['test'], data['batches']['train'] = data['batches']['train'], data['batches']['test']
+    # data['orders']['test'], data['orders']['train'] = data['orders']['train'], data['orders']['test']
+    # data['meta']['test'], data['meta']['train'] = data['inputs'][group], data['inputs']['test']
+
+    for key in list(data.keys()):
+        data[key]['all'] = np.concatenate((
+            data[key]['train'], data[key]['valid'], data[key]['test']
+        ), 0)
+
+    unique_labels = np.unique(np.concatenate((unique_labels1, unique_labels2, unique_labels3)))
+    unique_batches = np.unique(data['batches']['all'])
+    # must be split based on batches, but batches should be plates
+    for group in ['train', 'valid', 'test', 'all']:
+        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['cats'][group] = np.array(
+            [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+
+    # If we also load blanks in the samples, it should help a lot
+    # I will put half the blanks from the valid and test sets in the train set.
+    # In production, we will only need to have blanks to process with the samples
+    for group in ['valid', 'test']:
+        blks_pos = np.argwhere(data['labels'][group] == 'blk').flatten().tolist()
+        blks_to_move = random.sample(blks_pos, int(len(blks_pos) / 2))
+        blks_not_to_move = [x for x in blks_pos if x not in blks_to_move]
+        not_to_move = np.argwhere(data['labels'][group] != 'blk').flatten().tolist() + blks_not_to_move
+        data['batches']['train'], data['batches'][group] = np.concatenate(
+            (data['batches']['train'], data['batches'][group][blks_to_move])), data['batches'][group][not_to_move],
+        data['inputs']['train'], data['inputs'][group] = np.concatenate(
+            (data['inputs']['train'], data['inputs'][group][blks_to_move])), data['inputs'][group][not_to_move]
+        data['meta']['train'], data['meta'][group] = np.concatenate(
+            (data['meta']['train'], data['meta'][group][blks_to_move])), data['meta'][group][not_to_move]
+        data['cats']['train'], data['cats'][group] = np.concatenate(
+            (data['cats']['train'], data['cats'][group][blks_to_move])), data['cats'][group][not_to_move]
+        data['labels']['train'], data['labels'][group] = np.concatenate(
+            (data['labels']['train'], data['labels'][group][blks_to_move])), data['labels'][group][not_to_move]
+        data['orders']['train'], data['orders'][group] = np.concatenate(
+            (data['orders']['train'], data['orders'][group][blks_to_move])), data['orders'][group][not_to_move]
+        data['names']['train'], data['names'][group] = np.concatenate(
+            (data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
 
     return data, unique_labels, unique_batches
 
@@ -894,12 +1221,12 @@ def get_data(path, args, seed=42):
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                valid_inds, train_inds = skf.split(train_nums, data['labels']['train'],
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
                                                    data['batches']['train']).__next__()
             else:
                 skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                valid_inds, train_inds = skf.split(train_nums, data['labels']['train']).__next__()
+                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
             data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[valid_inds]
             data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
@@ -984,4 +1311,3 @@ def get_data(path, args, seed=42):
         data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
 
     return data, unique_labels, unique_batches
-

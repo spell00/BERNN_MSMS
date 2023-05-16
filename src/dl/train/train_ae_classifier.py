@@ -23,7 +23,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice, get_data, get_bacteria
+from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice, get_bacteria, get_cifar10
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -39,7 +39,7 @@ import neptune.new as neptune
 import mlflow
 import warnings
 from datetime import datetime
-
+# from torchvision import transforms
 # from fastapi import BackgroundTasks, FastAPI
 # from threading import Thread
 
@@ -70,7 +70,7 @@ class TrainAE:
         self.hparams_names = None
         self.best_acc = 0
         self.best_mcc = -1
-        self.best_closs = np.inf
+        self.best_closs_final = np.inf
         self.logged_inputs = False
         self.log_tb = log_tb
         self.log_neptune = log_neptune
@@ -109,7 +109,7 @@ class TrainAE:
             try:
                 self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
             except:
-                self.data['names'][group] = self.data['names'][group][inds_to_keep]
+                self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
 
             self.data['labels'][group] = self.data['labels'][group][inds_to_keep]
             self.data['cats'][group] = self.data['cats'][group][inds_to_keep]
@@ -165,9 +165,9 @@ class TrainAE:
         layer1 = params['layer1']
         layer2 = params['layer2']
         scale = params['scaler']
-        gamma = params['gamma']
-        beta = params['beta']
-        zeta = params['zeta']
+        self.gamma = params['gamma']
+        self.beta = params['beta']
+        self.zeta = params['zeta']
         thres = params['thres']
         wd = params['wd']
         nu = params['nu']
@@ -300,19 +300,19 @@ class TrainAE:
         epoch = 0
         best_closses = []
         best_mccs = []
-        best_loss = np.inf
-        best_closs = np.inf
-        best_dom_loss = np.inf
-        best_dom_acc = np.inf
-        best_acc = 0
-        best_mcc = -1
-        warmup_counter = 0
-        warmup_b_counter = 0
+        self.best_loss = np.inf
+        self.best_closs = np.inf
+        self.best_dom_loss = np.inf
+        self.best_dom_acc = np.inf
+        self.best_acc = 0
+        self.best_mcc = -1
+        self.warmup_counter = 0
+        self.warmup_b_counter = 0
         if self.args.warmup > 0:
             warmup = True
         else:
             warmup = False
-        warmup_disc_b = False
+        self.warmup_disc_b = False
         if self.args.dataset == 'alzheimer':
             self.data, self.unique_labels, self.unique_batches = get_harvard(self.path, args, seed=seed)
             self.pools = True
@@ -325,18 +325,14 @@ class TrainAE:
             self.pools = False
 
         elif self.args.dataset == 'prostate':
-            # This seed split the data to have n_samples in train: 96, valid:52, test: 23
             self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
 
         elif self.args.dataset == 'mice':
-            # This seed split the data to have n_samples in train: 96, valid:52, test: 23
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
-        elif self.args.dataset == 'custom':
-            self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
         else:
             exit('Wrong dataset name')
         # self.get_amide(self.path, seed=(1 + h) * 10)
-        self.columns = self.data['inputs']['all'].columns
+        self.columns = None
         self.make_samples_weights()
         # event_acc is used to verify if the hparams have already been tested. If they were,
         # the best classification loss is retrieved and we go to the next trial
@@ -354,7 +350,6 @@ class TrainAE:
             # Transform the data with the chosen scaler
             data = copy.deepcopy(self.data)
             data, self.scaler = scale_data(scale, data, self.args.device)
-
             # feature_selection = get_feature_selection_method('mutual_info_classif')
             # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
             for g in list(data['inputs'].keys()):
@@ -426,174 +421,8 @@ class TrainAE:
             early_stop_counter = 0
             best_vals = values
             for epoch in range(0, self.args.warmup):
-                lists, traces = get_empty_traces()
-                ae.train()
-
-                iterator = enumerate(loaders['all'])
-
-                # If option train_after_warmup=1, then this loop is only for preprocessing
-                if warmup or self.args.train_after_warmup:
-                    for i, all_batch in iterator:
-                        if warmup or self.args.train_after_warmup:
-                            optimizer_ae.zero_grad()
-                        inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                            neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
-                        inputs = inputs.to(self.args.device).float()
-                        meta_inputs = meta_inputs.to(self.args.device).float()
-                        to_rec = to_rec.to(self.args.device).float()
-                        if self.args.n_meta > 0:
-                            inputs = torch.cat((inputs, meta_inputs), 1)
-                            to_rec = torch.cat((to_rec, meta_inputs), 1)
-
-                        enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True)
-                        rec = rec['mean']
-                        zinb_loss = zinb_loss.to(self.args.device)
-                        reverse = ReverseLayerF.apply(enc, 1)
-                        if args.dloss == 'DANN':
-                            domain_preds = ae.dann_discriminator(reverse)
-                        else:
-                            domain_preds = ae.dann_discriminator(enc)
-                        if args.dloss not in ['revTriplet', 'inverseTriplet']:
-                            dloss, domain = self.get_dloss(celoss, domain, domain_preds)
-                        elif args.dloss == 'revTriplet':
-                            pos_batch_sample = pos_batch_sample.to(self.args.device).float()
-                            neg_batch_sample = neg_batch_sample.to(self.args.device).float()
-                            meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                            meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                            if self.args.n_meta > 0:
-                                pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                                neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                            pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
-                            neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
-                            dloss = triplet_loss(reverse,
-                                                 ReverseLayerF.apply(pos_enc, 1),
-                                                 ReverseLayerF.apply(neg_enc, 1)
-                                                 )
-                        elif args.dloss == 'inverseTriplet':
-                            pos_batch_sample = neg_batch_sample.to(self.args.device).float()
-                            neg_batch_sample = pos_batch_sample.to(self.args.device).float()
-                            meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                            meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                            if self.args.n_meta > 0:
-                                pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                                neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                            pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
-                            neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
-                            dloss = triplet_loss(enc, pos_enc, neg_enc)
-                            # domain = domain.argmax(1)
-
-                        if torch.isnan(enc[0][0]):
-                            if self.log_mlflow:
-                                mlflow.log_param('finished', 0)
-                                mlflow.end_run()
-                            return best_loss
-                        # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
-                        if isinstance(rec, list):
-                            rec = rec[-1]
-                        if isinstance(to_rec, list):
-                            to_rec = to_rec[-1]
-                        if scale == 'binarize':
-                            rec = torch.sigmoid(rec)
-                        rec_loss = mseloss(rec, to_rec)
-                        # else:
-                        #     rec_loss = zinb_loss
-                        traces['rec_loss'] += [rec_loss.item()]
-                        traces['dom_loss'] += [dloss.item()]
-                        traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                                       zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                                           domain.detach().cpu().numpy())])]
-                        # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
-                        lists['all']['domains'] += [np.array(
-                            [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-                        lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-                        # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-                        lists['all']['classes'] += [labels.detach().cpu().numpy()]
-                        lists['all']['encoded_values'] += [
-                            enc.detach().cpu().numpy()]
-                        lists['all']['rec_values'] += [
-                            rec.detach().cpu().numpy()]
-                        lists['all']['names'] += [names]
-                        lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-                        lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
-                        lists['all']['atn'] += [str(x) for x in
-                                                meta_inputs.detach().cpu().numpy()[:, -5:-2]]
-                        lists['all']['inputs'] += [data['inputs']['all'].to_numpy()]
-                        try:
-                            lists['all']['labels'] += [np.array(
-                                [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
-                        except:
-                            pass
-                        if warmup or self.args.train_after_warmup and not warmup_disc_b:
-                            (rec_loss + gamma * dloss + beta * kld.mean() + zeta * zinb_loss).backward()
-                            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
-                            optimizer_ae.step()
-
-                else:
-                    ae = self.freeze_clayers(ae)
-
-                if np.mean(traces['rec_loss']) < best_loss:
-                    # "Every counters go to 0 when a better reconstruction loss is reached"
-                    print(
-                        f"Best Loss Epoch {epoch}, Losses: {np.mean(traces['rec_loss'])}, "
-                        f"Domain Losses: {np.mean(traces['dom_loss'])}, "
-                        f"Domain Accuracy: {np.mean(traces['dom_acc'])}")
-                    warmup_counter = 0
-                    early_stop_counter = 0
-                    best_loss = np.mean(traces['rec_loss'])
-                    dom_loss = np.mean(traces['dom_loss'])
-                    dom_acc = np.mean(traces['dom_acc'])
-                    if warmup:
-                        torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
-
-                if (
-                        self.args.early_warmup_stop != 0 and warmup_counter == self.args.early_warmup_stop) and warmup:  # or warmup_counter == 100:
-                    # When the warnup counter gets to
-                    values = log_traces(traces, values)
-                    if self.args.early_warmup_stop != 0:
-                        try:
-                            ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                        except:
-                            pass
-                    print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
-                    warmup = False
-                    warmup_disc_b = True
-
-                if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
-                    # When the warnup counter gets to
-                    if self.args.early_warmup_stop != 0:
-                        try:
-                            ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                        except:
-                            pass
-                    print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
-                    values = log_traces(traces, values)
-                    warmup = False
-                    warmup_disc_b = True
-
-                if epoch < self.args.warmup and warmup:  # and np.mean(traces['rec_loss']) >= best_loss:
-                    values = log_traces(traces, values)
-                    warmup_counter += 1
-                    # best_values = get_best_values(traces, ae_only=True)
-                    # TODO change logging with tensorboard and neptune. The previous
-                    if self.log_tb:
-                        loggers['tb_logging'].logging(values, metrics)
-                    if self.log_neptune:
-                        log_neptune(run, values)
-                    if self.log_mlflow:
-                        add_to_mlflow(values, epoch)
-                    continue
-                ae.train()
-
-                # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
-                # all layers except the classification layers are frozen
-
-                if self.args.bdisc:
-                    self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
-                if warmup_disc_b and warmup_b_counter < 0:
-                    warmup_b_counter += 1
-                    continue
-                else:
-                    warmup_disc_b = False
+                self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, self.best_loss, True, epoch,
+                    optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
             for epoch in range(0, self.args.n_epochs):
                 if early_stop_counter >= self.args.early_stop:
@@ -601,14 +430,20 @@ class TrainAE:
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
+                if self.args.train_after_warmup:
+                    self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, self.best_loss, False,
+                                     epoch, optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+
+                else:
+                    ae = self.freeze_clayers(ae)
                 closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                        loaders['train'], lists, traces, nu=nu)
+                                    loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
                         mlflow.log_param('finished', 0)
                         mlflow.end_run()
-                    return best_loss
+                    return self.best_loss
                 ae.eval()
 
                 # Below is the loop for all sets
@@ -630,24 +465,24 @@ class TrainAE:
                     add_to_neptune(values, run, epoch)
                 if self.log_mlflow:
                     add_to_mlflow(values, epoch)
-                if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
+                if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
                         values['valid']['mcc']) > self.args.n_agg:
                     print(f"Best Classification Mcc Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]}"
+                          f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
                           f"Mcc: {values['test']['mcc'][-1]}"
                           f"Classification train loss: {values['train']['closs'][-1]},"
                           f" valid loss: {values['valid']['closs'][-1]},"
                           f" test loss: {values['test']['closs'][-1]}")
-                    best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
+                    self.best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
                     torch.save(ae.state_dict(), f'{self.complete_log_path}/model.pth')
                     best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
                     best_vals = values.copy()
-                    best_vals['rec_loss'] = best_loss
-                    best_vals['dom_loss'] = best_dom_loss
-                    best_vals['dom_acc'] = best_dom_acc
+                    best_vals['rec_loss'] = self.best_loss
+                    best_vals['dom_loss'] = self.best_dom_loss
+                    best_vals['dom_acc'] = self.best_dom_acc
                     early_stop_counter = 0
 
-                if values['valid']['acc'][-1] > best_acc:
+                if values['valid']['acc'][-1] > self.best_acc:
                     print(f"Best Classification Acc Epoch {epoch}, "
                           f"Acc: {values['test']['acc'][-1]}"
                           f"Mcc: {values['test']['mcc'][-1]}"
@@ -655,17 +490,17 @@ class TrainAE:
                           f" valid loss: {values['valid']['closs'][-1]},"
                           f" test loss: {values['test']['closs'][-1]}")
 
-                    best_acc = values['valid']['acc'][-1]
+                    self.best_acc = values['valid']['acc'][-1]
                     early_stop_counter = 0
 
-                if values['valid']['closs'][-1] < best_closs:
+                if values['valid']['closs'][-1] < self.best_closs:
                     print(f"Best Classification Loss Epoch {epoch}, "
                           f"Acc: {values['test']['acc'][-1]} "
                           f"Mcc: {values['test']['mcc'][-1]} "
                           f"Classification train loss: {values['train']['closs'][-1]}, "
                           f"valid loss: {values['valid']['closs'][-1]}, "
                           f"test loss: {values['test']['closs'][-1]}")
-                    best_closs = values['valid']['closs'][-1]
+                    self.best_closs = values['valid']['closs'][-1]
                     early_stop_counter = 0
                 else:
                     # if epoch > self.warmup:
@@ -675,7 +510,7 @@ class TrainAE:
                     loaders = get_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, ae,
                                           ae.classifier, bs=self.args.bs)
 
-            best_mccs += [best_mcc]
+            best_mccs += [self.best_mcc]
 
             best_lists, traces = get_empty_traces()
             # Loading best model that was saved during training
@@ -693,8 +528,8 @@ class TrainAE:
                                                           loaders[group], best_lists, traces, nu=0, mapping=False)
             if self.log_neptune:
                 model["model"].upload(f'{self.complete_log_path}/model.pth')
-                model["validation/closs"].log(best_closs)
-            best_closses += [best_closs]
+                model["validation/closs"].log(self.best_closs)
+            best_closses += [self.best_closs]
             # daemon = Thread(target=self.log_rep, daemon=True, name='Monitor',
             #                 args=[best_lists, best_vals, best_values, traces, model, metrics, run, cm_logger, ae,
             #                       shap_ae, h,
@@ -739,14 +574,14 @@ class TrainAE:
             shutil.rmtree(f'{self.complete_log_path}', ignore_errors=True)
         print('Duration: {}'.format(datetime.now() - start_time))
         best_closs = np.mean(best_closses)
-        if best_closs < self.best_closs:
-            self.best_closs = best_closs
+        if best_closs < self.best_closs_final:
+            self.best_closs_final = best_closs
             print("Best closs!")
 
         # It should not be necessary. To remove once certain the "Too many files open" error is no longer a problem
         plt.close('all')
 
-        return best_mcc
+        return self.best_mcc
 
     def log_rep(self, best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
@@ -837,11 +672,11 @@ class TrainAE:
                              self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
 
-        columns = self.data['inputs']['all'].columns
-        if self.args.n_meta == 2:
-            columns += ['gender', 'age']
-
-        rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
+        # columns = self.data['inputs']['all'].columns
+        # if self.args.n_meta == 2:
+        #     columns += ['gender', 'age']
+        #
+        # rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
 
         # from skopt import gp_minimize
         # train = Train2("Reconstruction", sklearn.svm.LinearSVC, rec_data, self.hparams_names,
@@ -957,9 +792,12 @@ class TrainAE:
                 run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
                                                             multi_class='ovr')
             if self.log_mlflow:
-                mlflow.log_metric(f'{group}_AUC',
-                                  metrics.roc_auc_score(y_true=cats[group], y_score=scores[group], multi_class='ovr'),
+                try:
+                    mlflow.log_metric(f'{group}_AUC',
+                                  metrics.roc_auc_score(y_true=cats[group].argmax(1).astype('float32'), y_score=scores[group], multi_class='ovr'),
                                   step=step)
+                except:
+                    pass
 
     def loop(self, group, optimizer_ae, ae, celoss, loader, lists, traces, nu=1, mapping=True):
         """
@@ -988,7 +826,7 @@ class TrainAE:
             if group in ['train'] and nu != 0:
                 optimizer_ae.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
@@ -1078,7 +916,7 @@ class TrainAE:
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -1136,6 +974,7 @@ class TrainAE:
             mseloss = nn.L1Loss()
         if scale == "binarize":
             mseloss = nn.BCELoss()
+
         if dloss == 'revTriplet':
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
@@ -1244,6 +1083,167 @@ class TrainAE:
 
         return traces
 
+    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, best_loss, warmup, epoch,
+                    optimizer_b, values, loggers, loaders, run, mapping=True):
+        lists, traces = get_empty_traces()
+        ae.train()
+
+        iterator = enumerate(loader)
+
+        # If option train_after_warmup=1, then this loop is only for preprocessing
+        for i, all_batch in iterator:
+            optimizer_ae.zero_grad()
+            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
+            inputs = inputs.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            to_rec = to_rec.to(self.args.device).float()
+            if self.args.n_meta > 0:
+                inputs = torch.cat((inputs, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
+
+            enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
+            rec = rec['mean']
+            zinb_loss = zinb_loss.to(self.args.device)
+            reverse = ReverseLayerF.apply(enc, 1)
+            if args.dloss == 'DANN':
+                domain_preds = ae.dann_discriminator(reverse)
+            else:
+                domain_preds = ae.dann_discriminator(enc)
+            if args.dloss not in ['revTriplet', 'inverseTriplet']:
+                dloss, domain = self.get_dloss(celoss, domain, domain_preds)
+            elif args.dloss == 'revTriplet':
+                pos_batch_sample = pos_batch_sample.to(self.args.device).float()
+                neg_batch_sample = neg_batch_sample.to(self.args.device).float()
+                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
+                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
+                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
+                pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
+                neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
+                dloss = triplet_loss(reverse,
+                                     ReverseLayerF.apply(pos_enc, 1),
+                                     ReverseLayerF.apply(neg_enc, 1)
+                                     )
+            elif args.dloss == 'inverseTriplet':
+                pos_batch_sample = neg_batch_sample.to(self.args.device).float()
+                neg_batch_sample = pos_batch_sample.to(self.args.device).float()
+                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
+                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
+                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
+                pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
+                neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
+                dloss = triplet_loss(enc, pos_enc, neg_enc)
+                # domain = domain.argmax(1)
+
+            if torch.isnan(enc[0][0]):
+                if self.log_mlflow:
+                    mlflow.log_param('finished', 0)
+                    mlflow.end_run()
+                return None
+            # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
+            if isinstance(rec, list):
+                rec = rec[-1]
+            if isinstance(to_rec, list):
+                to_rec = to_rec[-1]
+            if self.args.scaler == 'binarize':
+                rec = torch.sigmoid(rec)
+            rec_loss = mseloss(rec, to_rec)
+            # else:
+            #     rec_loss = zinb_loss
+            traces['rec_loss'] += [rec_loss.item()]
+            traces['dom_loss'] += [dloss.item()]
+            traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
+                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
+                                               domain.detach().cpu().numpy())])]
+            # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
+            lists['all']['domains'] += [np.array(
+                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
+            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
+            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
+            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+            lists['all']['encoded_values'] += [
+                enc.detach().cpu().numpy()]
+            lists['all']['rec_values'] += [
+                rec.detach().cpu().numpy()]
+            lists['all']['names'] += [names]
+            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
+            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+            lists['all']['atn'] += [str(x) for x in
+                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+            lists['all']['inputs'] += [to_rec]
+            try:
+                lists['all']['labels'] += [np.array(
+                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+            except:
+                pass
+            (rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss).backward()
+            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
+            optimizer_ae.step()
+
+        if np.mean(traces['rec_loss']) < self.best_loss:
+            # "Every counters go to 0 when a better reconstruction loss is reached"
+            print(
+                f"Best Loss Epoch {epoch}, Losses: {np.mean(traces['rec_loss'])}, "
+                f"Domain Losses: {np.mean(traces['dom_loss'])}, "
+                f"Domain Accuracy: {np.mean(traces['dom_acc'])}")
+            self.best_loss = np.mean(traces['rec_loss'])
+            self.dom_loss = np.mean(traces['dom_loss'])
+            self.dom_acc = np.mean(traces['dom_acc'])
+            if warmup:
+                torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
+
+        if (
+                self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:  # or warmup_counter == 100:
+            # When the warnup counter gets to
+            values = log_traces(traces, values)
+            if self.args.early_warmup_stop != 0:
+                try:
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                except:
+                    pass
+            print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
+            warmup = False
+            self.warmup_disc_b = True
+
+        if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
+            # When the warnup counter gets to
+            if self.args.early_warmup_stop != 0:
+                try:
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                except:
+                    pass
+            print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
+            values = log_traces(traces, values)
+            warmup = False
+            self.warmup_disc_b = True
+
+        if epoch < self.args.warmup and warmup:  # and np.mean(traces['rec_loss']) >= best_loss:
+            values = log_traces(traces, values)
+            self.warmup_counter += 1
+            # best_values = get_best_values(traces, ae_only=True)
+            # TODO change logging with tensorboard and neptune. The previous
+            if self.log_tb:
+                loggers['tb_logging'].logging(values, metrics)
+            if self.log_neptune:
+                log_neptune(run, values)
+            if self.log_mlflow:
+                add_to_mlflow(values, epoch)
+        ae.train()
+
+        # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
+        # all layers except the classification layers are frozen
+
+        if self.args.bdisc:
+            self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
+        if self.warmup_disc_b and self.warmup_b_counter < 0:
+            self.warmup_b_counter += 1
+        else:
+            self.warmup_disc_b = False
+
 
 if __name__ == "__main__":
     import argparse
@@ -1251,7 +1251,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_recs', type=int, default=0)
     parser.add_argument('--predict_tests', type=int, default=0)
-    parser.add_argument('--early_stop', type=int, default=10)
+    parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
@@ -1281,10 +1281,10 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_classifier')
-    parser.add_argument('--bs', type=int, default=32, help='Batch size')
+    parser.add_argument('--bs', type=int, default=256, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
-    parser.add_argument('--log1p', type=int, default=0, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
 
     args = parser.parse_args()
     try:
@@ -1298,13 +1298,13 @@ if __name__ == "__main__":
 
     train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
                     log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
-                    log_mlflow=False, groupkfold=args.groupkfold)
+                    log_mlflow=True, groupkfold=args.groupkfold)
 
     # train.train()
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-2, 1e-1], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
@@ -1318,9 +1318,8 @@ if __name__ == "__main__":
         {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
          "values": ['binarize']},  # scaler whould be no for zinb
-        # {"name": "layer3", "type": "range", "bounds": [32, 512]},
-        {"name": "layer2", "type": "range", "bounds": [32, 1024]},
-        {"name": "layer1", "type": "range", "bounds": [512, 2048]},
+        {"name": "layer2", "type": "range", "bounds": [1, 32]},
+        {"name": "layer1", "type": "range", "bounds": [1, 64]},
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
