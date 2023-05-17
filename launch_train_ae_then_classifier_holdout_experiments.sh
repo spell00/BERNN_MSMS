@@ -7,7 +7,7 @@ n_repeats=5
 exp_id=alzheimer_ae_then_classifier_20
 for variational in 0 1
 do
-	for zinb in 0 1
+	for zinb in 0
 	do
 		for dloss in no revTriplet inverseTriplet DANN normae
 		do

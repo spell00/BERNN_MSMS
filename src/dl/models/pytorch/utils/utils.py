@@ -641,6 +641,7 @@ def get_best_values(values, ae_only, n_agg=10):
     Returns:
 
     """
+    best_values = {}
     if ae_only:
         best_values = {
             'rec_loss':  values['rec_loss'][-1],
@@ -655,13 +656,11 @@ def get_best_values(values, ae_only, n_agg=10):
 
     else:
         if len(values['dom_loss']) > 0:
-            best_values = {
-                'dom_loss': values['dom_loss'][-1],
-                'dom_acc': values['dom_acc'][-1],
-                'rec_loss': values['rec_loss'][-1],
-            }
-        else:
-            best_values = {}
+            best_values['dom_loss'] = values['dom_loss'][-1]
+        if len(values['dom_acc']) > 0:
+            best_values['dom_acc'] = values['dom_acc'][-1]
+        if len(values['rec_loss']) > 0:
+            best_values['rec_loss'] = values['rec_loss'][-1]
         for g in ['train', 'valid', 'test']:
             for k in ['acc', 'mcc', 'top3']:
                 if g == 'test':
@@ -740,8 +739,12 @@ def add_to_mlflow(values, epoch):
     if len(values['rec_loss']) > 0:
         if not np.isnan(values['rec_loss'][-1]):
             mlflow.log_metric("rec_loss", values['rec_loss'][-1], epoch)
+    if len(values['dom_loss']) > 0:
+        if not np.isnan(values['dom_loss'][-1]):
             mlflow.log_metric("dom_loss", values['dom_loss'][-1], epoch)
-            mlflow.log_metric("dom_acc",values['dom_acc'][-1], epoch)
+    if len(values['dom_acc']) > 0:
+        if not np.isnan(values['dom_acc'][-1]):
+            mlflow.log_metric("dom_acc", values['dom_acc'][-1], epoch)
     for group in list(values.keys())[4:]:
         try:
             if not np.isnan(values[group]['closs'][-1]):

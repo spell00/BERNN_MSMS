@@ -52,7 +52,7 @@ Open in browser:<br/>
 `http://127.0.0.1:5000/`
 
 On server:<br/>
-`mlflow ui`
+`mlflow server --host=0.0.0.0`
 
 Open in local browser:<br/>
 `http://<ip-adress>:5000/`

@@ -495,10 +495,10 @@ class TrainAE:
                                                          ReverseLayerF.apply(neg_enc, 1)
                                                          )
                                 elif args.dloss == 'inverseTriplet':
-                                    pos_batch_sample = neg_batch_sample.to(self.args.device).float()
-                                    neg_batch_sample = pos_batch_sample.to(self.args.device).float()
-                                    meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                                    meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
+                                    pos_batch_sample, neg_batch_sample = neg_batch_sample.to(
+                                        self.args.device).float(), pos_batch_sample.to(self.args.device).float()
+                                    meta_pos_batch_sample, meta_neg_batch_sample = meta_neg_batch_sample.to(
+                                        self.args.device).float(), meta_pos_batch_sample.to(self.args.device).float()
                                     if self.args.n_meta > 0:
                                         pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                                         neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)

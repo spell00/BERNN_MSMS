@@ -148,18 +148,6 @@ class TrainAE:
 
         self.pools = False
 
-        if self.args.dataset == 'bacteria':
-            self.data, self.unique_labels, self.unique_batches = get_bacteria_images(self.path, self.args, seed=42)
-            self.pools = False
-        elif self.args.dataset == 'cifar10':
-            self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=42)
-            self.pools = False
-        elif self.args.dataset == 'mnist':
-            self.data, self.unique_labels, self.unique_batches = get_mnist(self.path, args, seed=42)
-            self.pools = False
-        else:
-            exit('Wrong dataset name')
-
 
     def make_samples_weights(self):
         self.n_batches = len(set(self.data['batches']['all']))
@@ -199,6 +187,22 @@ class TrainAE:
 
         """
         start_time = datetime.now()
+
+        # GETS THE DATA
+        scale = params['scaler']  # scaler must be defined first. It is an hyperparameter
+        self.args.scaler = scale
+        if self.args.dataset == 'bacteria':
+            self.data, self.unique_labels, self.unique_batches = get_bacteria_images(self.path, self.args, seed=42)
+            self.pools = False
+        elif self.args.dataset == 'cifar10':
+            self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=42)
+            self.pools = False
+        elif self.args.dataset == 'mnist':
+            self.data, self.unique_labels, self.unique_batches = get_mnist(self.path, args, seed=42)
+            self.pools = False
+        else:
+            exit('Wrong dataset name')
+
         # Fixing the hyperparameters that are not optimized
         if args.dloss not in ['revTriplet', 'revDANN', 'DANN',
                               'inverseTriplet', 'normae'] or 'gamma' not in params:
@@ -226,7 +230,6 @@ class TrainAE:
         smooth = params['smoothing']
         layer1 = params['layer1']
         layer2 = params['layer2']
-        scale = params['scaler']
         self.gamma = params['gamma']
         self.beta = params['beta']
         self.zeta = params['zeta']
@@ -238,7 +241,6 @@ class TrainAE:
         dropout = params['dropout']
         margin = params['margin']
 
-        self.args.scaler = scale
         self.args.warmup = params['warmup']
         self.args.disc_b_warmup = params['disc_b_warmup']
 
@@ -246,7 +248,7 @@ class TrainAE:
         # if ncols > self.data['inputs']['all'].shape[1]:
         #     ncols = self.data['inputs']['all'].shape[1]
 
-        optimizer_type = 'adam'
+        optimizer_type = 'sgd'
         metrics = {'pool_metrics': {}}
         # self.log_path is where tensorboard logs are saved
         self.foldername = str(uuid.uuid4())
@@ -376,7 +378,7 @@ class TrainAE:
             warmup = False
         self.warmup_disc_b = False
         # self.get_amide(self.path, seed=(1 + h) * 10)
-        self.columns = None
+        self.columns = list(range(self.data['inputs']['test'].shape[1]))  # shap needs columns. unfortunately, TODO needs be improved to have meaningful columns
         self.make_samples_weights()
         # event_acc is used to verify if the hparams have already been tested. If they were,
         # the best classification loss is retrieved and we go to the next trial
@@ -393,12 +395,7 @@ class TrainAE:
 
             # Transform the data with the chosen scaler
             data = copy.deepcopy(self.data)
-            data, self.scaler = scale_data(scale, data, self.args.device)
-            # feature_selection = get_feature_selection_method('mutual_info_classif')
-            # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
-            # for g in list(data['inputs'].keys()):
-            #     data['inputs'][g] = data['inputs'][g].round(4)
-            # Gets all the pytorch dataloaders to train the models
+            # data, self.scaler = scale_data(scale, data, self.args.device)
             if self.pools:
                 loaders = get_images_loaders(data, self.args.random_recs, self.samples_weights,
                                       self.args.dloss, None, None, bs=self.args.bs)
@@ -406,39 +403,6 @@ class TrainAE:
                 loaders = get_images_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                               None, None, bs=self.args.bs)
 
-            # ae = AutoEncoder(data['inputs']['all'].shape[1],
-            #                  n_batches=self.n_batches,
-            #                  nb_classes=self.n_cats,
-            #                  mapper=self.args.use_mapping,
-            #                  layer1=layer1,
-            #                  layer2=layer2,
-            #                  n_layers=self.args.n_layers,
-            #                  n_meta=self.args.n_meta,
-            #                  n_emb=self.args.embeddings_meta,
-            #                  dropout=dropout,
-            #                  variational=self.args.variational, conditional=False,
-            #                  zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-            #                  use_gnn=0,  # TODO to remove
-            #                  device=self.args.device).to(self.args.device)
-            # ae.mapper.to(self.args.device)
-            # ae.dec.to(self.args.device)
-
-            # shap_ae = SHAPAutoEncoder(data['inputs']['all'].shape[1],
-            #                           n_batches=self.n_batches,
-            #                           nb_classes=self.n_cats,
-            #                           mapper=self.args.use_mapping,
-            #                           layer1=layer1,
-            #                           layer2=layer2,
-            #                           n_layers=self.args.n_layers,
-            #                           n_meta=self.args.n_meta,
-            #                           n_emb=self.args.embeddings_meta,
-            #                           dropout=dropout,
-            #                           variational=self.args.variational, conditional=False,
-            #                           zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-            #                           use_gnn=0,  # TODO remove this
-            #                           device=self.args.device).to(self.args.device)
-            # shap_ae.mapper.to(self.args.device)
-            # shap_ae.dec.to(self.args.device)
             cnn = Cifar10CnnModel(self.n_cats, self.n_batches).to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
             loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
@@ -574,7 +538,7 @@ class TrainAE:
             #                       epoch])
             # daemon.start()
             self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, cnn,
-                         cnn, 0, epoch)
+                         cnn, 1, epoch)
             del cnn# , shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
@@ -696,19 +660,20 @@ class TrainAE:
                     loggers.add(loggers['logger_cm'], epoch, best_lists,
                                self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
-                    log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 0, 'mlflow',
-                             self.complete_log_path,
-                             self.args.device)
+                    # log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 0, 'mlflow',
+                    #          self.complete_log_path,
+                    #          self.args.device)
                 if self.log_neptune:
-                    log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
-                             self.complete_log_path,
-                             self.args.device)
                     log_plots(run, best_lists, 'neptune', epoch)
+                    # log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
+                    #          self.complete_log_path,
+                    #          self.args.device)
                 if self.log_mlflow:
-                    log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
-                             self.complete_log_path,
-                             self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
+                    # log_shap is designed for 1d inputs, for MLP
+                    # log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
+                    #          self.complete_log_path,
+                    #          self.args.device)
 
         # columns = self.data['inputs']['all'].columns
         # if self.args.n_meta == 2:
@@ -884,10 +849,12 @@ class TrainAE:
                 try:
                     cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float().to('cuda')
                     # We train including all samples. In order to only train on train samples, the preds of the
-                    # samples not in the train set are set to the good class
+                    # samples not in the train set are set to pseudo classes
                     if group == 'train':
                         preds[[s != 'train' for s in set]] = 0
                         cats[[s != 'train' for s in set]] = 0
+                        # pseudo_cats = preds[[s != 'train' for s in set]].argmax(1).detach().cpu()
+                        # cats[[s != 'train' for s in set]] = to_categorical(pseudo_cats.long(), self.n_cats).float().to('cuda')
                     classif_loss = celoss(preds, cats)
                 except:
                     cats = torch.Tensor([self.n_cats + 1 for _ in labels])
@@ -919,8 +886,8 @@ class TrainAE:
                     if self.args.n_meta > 0:
                         pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                         neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                    pos_enc, _, _, _ = ae(pos_batch_sample.unsqueeze(1), pos_batch_sample, domain, sampling=True)
-                    neg_enc, _, _, _ = ae(neg_batch_sample.unsqueeze(1), neg_batch_sample, domain, sampling=True)
+                    pos_enc = ae(pos_batch_sample.unsqueeze(1))
+                    neg_enc = ae(neg_batch_sample.unsqueeze(1))
                     dloss = triplet_loss(reverse,
                                          ReverseLayerF.apply(pos_enc, 1),
                                          ReverseLayerF.apply(neg_enc, 1)
@@ -928,16 +895,14 @@ class TrainAE:
                 elif args.dloss == 'inverseTriplet':
                     # ae.train()
                     # with torch.enable_grad():
-                    pos_batch_sample = neg_batch_sample.to(self.args.device).float()
-                    neg_batch_sample = pos_batch_sample.to(self.args.device).float()
-                    meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                    meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
+                    pos_batch_sample, neg_batch_sample = pos_batch_sample.to(self.args.device).float(), neg_batch_sample.to(self.args.device).float()
+                    meta_pos_batch_sample, meta_neg_batch_sample = meta_pos_batch_sample.to(self.args.device).float(), meta_neg_batch_sample.to(self.args.device).float()
                     if self.args.n_meta > 0:
                         pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                         neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                     pos_enc = ae(pos_batch_sample.unsqueeze(1))
                     neg_enc = ae(neg_batch_sample.unsqueeze(1))
-                    dloss = triplet_loss(enc, pos_enc, neg_enc)
+                    dloss = triplet_loss(enc, neg_enc, pos_enc)
                     # domain = domain.argmax(1)
                     # ae.eval()
 
@@ -952,7 +917,12 @@ class TrainAE:
                 lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
                 # lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
                 # lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-                # lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
+
+                # optimizer_ae is None to get the final values of the best model. No need to keep orginal inputs
+                # Before that. TODO verify if encoded_values can also be included, or anything else
+
+                if optimizer_ae is None:
+                    lists[group]['inputs'] += [data.view(data.shape[0], -1).detach().cpu().numpy()]
                 lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
                 # lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
                 try:
@@ -975,6 +945,10 @@ class TrainAE:
                 ]
                 if group in ['train'] and nu != 0:
                     # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])
+                    traces['dom_loss'] += [dloss.item()]
+                    traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
+                                                   zip(domain_preds.detach().cpu().numpy().argmax(1),
+                                                       domain.detach().cpu().numpy())])]
                     w = 1
                     total_loss = w * classif_loss + self.gamma * dloss
                     # if self.args.train_after_warmup:
@@ -1342,7 +1316,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
-    parser.add_argument('--n_epochs', type=int, default=1000)
+    parser.add_argument('--n_epochs', type=int, default=10000)
     parser.add_argument('--n_trials', type=int, default=100)
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--rec_loss', type=str, default='mse')
@@ -1368,7 +1342,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_classifier')
-    parser.add_argument('--bs', type=int, default=256, help='Batch size')
+    parser.add_argument('--bs', type=int, default=8, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=0, help='log1p the data? Should be 0 with zinb')
@@ -1391,7 +1365,7 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-1], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-6, 1e-2], "log_scale": True},  # Best run: [1e-4, 1e-1]
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
@@ -1404,7 +1378,7 @@ if __name__ == "__main__":
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['none']},  # scaler whould be no for zinb
+         "values": ['minmax']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [1, 32]},
         {"name": "layer1", "type": "range", "bounds": [1, 64]},
     ]
@@ -1412,7 +1386,7 @@ if __name__ == "__main__":
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
     if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
-        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-4, 1e-1], "log_scale": True}]
+        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-8, 1e-4], "log_scale": True}]  # Best run: [1e-8, 1e2]
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]

@@ -615,8 +615,8 @@ def get_metrics(lists, values, model):
     # inputs = []
 
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    for group in ['all', 'train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all_pool']:
-        if 'pool' not in group:
+    for group in ['all', 'train', 'valid', 'test']:
+        if len(lists[group]['inputs']) > 0:
             try:
                 classes = np.array(np.concatenate(lists[group]['classes']), np.int)
             except:
@@ -627,10 +627,11 @@ def get_metrics(lists, values, model):
                     np.concatenate(lists[group]['encoded_values']),
                     np.concatenate(lists[group]['domains'])
                 )
-                knns['rec']['domains'].fit(
-                    np.concatenate(lists[group]['rec_values']),
-                    np.concatenate(lists[group]['domains'])
-                )
+                if len(lists[group]['rec_values']) > 0:
+                    knns['rec']['domains'].fit(
+                        np.concatenate(lists[group]['rec_values']),
+                        np.concatenate(lists[group]['domains'])
+                    )
                 knns['inputs']['domains'].fit(
                     np.concatenate(lists[group]['inputs']),
                     np.concatenate(lists[group]['domains'])
@@ -641,10 +642,11 @@ def get_metrics(lists, values, model):
                         np.concatenate(lists[group]['encoded_values']),
                         np.concatenate(lists[group]['classes'])
                     )
-                    knns['rec']['labels'].fit(
-                        np.concatenate(lists[group]['rec_values']),
-                        np.concatenate(lists[group]['classes'])
-                    )
+                    if len(lists[group]['rec_values']) > 0:
+                        knns['rec']['labels'].fit(
+                            np.concatenate(lists[group]['rec_values']),
+                            np.concatenate(lists[group]['classes'])
+                        )
                     knns['inputs']['labels'].fit(
                         np.concatenate(lists[group]['inputs']),
                         np.concatenate(lists[group]['classes'])
@@ -668,12 +670,13 @@ def get_metrics(lists, values, model):
             )
             values[group]['batch_entropy']['enc']['domains'] = [batch_entropy(lists[group]['domain_proba'])]
 
-            lists[group]['domain_proba'] = knns['rec']['domains'].predict_proba(
-                np.concatenate(lists[group]['rec_values']),
-            )
-            lists[group]['domain_preds'] = knns['rec']['domains'].predict(
-                np.concatenate(lists[group]['rec_values']),
-            )
+            if len(lists[group]['rec_values']) > 0:
+                lists[group]['domain_proba'] = knns['rec']['domains'].predict_proba(
+                    np.concatenate(lists[group]['rec_values']),
+                )
+                lists[group]['domain_preds'] = knns['rec']['domains'].predict(
+                    np.concatenate(lists[group]['rec_values']),
+                )
             values[group]['batch_entropy']['rec']['domains'] = [batch_entropy(lists[group]['domain_proba'])]
 
             # for metric, funct in zip(['lisi', 'silhouette', 'kbet'], [rLISI, silhouette_score, rKBET]):
@@ -1454,12 +1457,14 @@ def make_data(lists, values):
 
 def log_plots(logger, lists, mlops, epoch):
     try:
-        for name, values in zip(['encs', 'recs'], ['encoded_values', 'rec_values']):
+        for name, values in zip(['encs', 'inputs', 'recs'], ['encoded_values', 'inputs', 'rec_values']):
             unique_labels = get_unique_labels(np.concatenate(lists['all']['labels']))
             unique_batches = np.unique(np.concatenate(lists['all']['domains']))
             # unique_ages = np.array(['50s', '60s', '70s', '80+'])
             # unique_genders = np.unique(np.concatenate(lists['all']['gender']))
             # unique_atns = np.unique([str(x) for x in np.array(lists['all']['atn'])])
+            if len(lists['test'][values]) == 0:
+                continue
             uniques = {'batches': unique_batches, 'labels': unique_labels}
             try:
                 log_CCA({'model': CCA(n_components=2), 'name': f'CCA_{name}'},

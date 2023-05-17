@@ -119,9 +119,10 @@ class MSImages:
 
 
 class MSCSV:
-    def __init__(self, path, test=False, resize=True):
+    def __init__(self, path, scaler, test=False, resize=True):
         self.path = path
         self.resize = resize
+        self.scaler = scaler
         self.fnames = []
         if not test:
             self.fnames.extend(os.listdir(f"{path}"))
@@ -182,8 +183,12 @@ class MSCSV:
             mat_data /= mat_data.max().max()
 
         if self.resize:
-            mat_data = transforms.Resize((32, 32))(
+            try:
+                mat_data = transforms.Resize((32, 32))(
                 torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+            except:
+                mat_data = transforms.Resize((32, 32))(
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
 
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
 

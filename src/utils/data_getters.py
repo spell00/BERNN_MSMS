@@ -826,7 +826,7 @@ def get_mnist(path, args, seed=42):
             test_dataset = MNIST(root='data/', train=True, download=False)
             data['names']['test'] = np.array(test_dataset.targets)
             data['labels']['test'] = np.array(test_dataset.targets)
-            data['batches']['test'] = np.array(np.random.randint(0, 2, len(data['labels']['test'])))
+            data['batches']['test'] = np.array([1 for _ in data['labels']['test']])
             data['orders']['test'] = data['batches']['test']
             data['inputs']['test'] = test_dataset.data
             data['meta']['test'] = test_dataset.data
@@ -848,7 +848,7 @@ def get_mnist(path, args, seed=42):
             # train_dataset.data = transform(train_dataset.data.unsqueeze(1))
             data['names']['train'] = np.array(train_dataset.labels)
             data['labels']['train'] = np.array(train_dataset.labels)
-            data['batches']['train'] = np.array(np.random.randint(0, 2, len(data['labels']['train'])))
+            data['batches']['train'] = np.array([0 for _ in data['labels']['train']])
             data['orders']['train'] = data['batches']['train']
             data['inputs']['train'] = train_dataset.data
             data['meta']['train'] = train_dataset.data
@@ -1082,7 +1082,8 @@ def get_bacteria_images(path, args, seed=42):
             data['batches']['valid'], data['batches']['train'] = data['batches']['train'][valid_inds], data['batches']['train'][train_inds]
             data['orders']['valid'], data['orders']['train'] = data['orders']['train'][valid_inds], data['orders']['train'][train_inds]
             data['meta']['valid'], data['meta']['train'] = data['inputs'][group], data['inputs']['train']
-            data['sets'][group] = [group for _ in data['names'][group]]
+            data['sets']['valid'], data['sets']['train'] = data['sets']['train'][valid_inds], data['sets']['train'][train_inds]
+            data['sets']['valid'] = np.array(['valid' for _ in data['names']['valid']])
 
             unique_labels1 = get_unique_labels(data['labels'][group])
 
@@ -1111,12 +1112,13 @@ def get_bacteria_images(path, args, seed=42):
             data['batches']['test'], data['batches']['train'] = data['batches']['train'][valid_inds], data['batches']['train'][train_inds]
             data['orders']['test'], data['orders']['train'] = data['orders']['train'][valid_inds], data['orders']['train'][train_inds]
             data['meta']['test'], data['meta']['train'] = data['inputs'][group], data['inputs']['train']
-            data['sets'][group] = [group for _ in data['names'][group]]
+            data['sets']['test'], data['sets']['train'] = data['sets']['train'][valid_inds], data['sets']['train'][train_inds]
+            data['sets']['test'] = np.array(['test' for _ in data['names']['test']])
 
             unique_labels2 = get_unique_labels(data['labels'][group])
 
         else:
-            process = MSCSV(path)
+            process = MSCSV(path, args.scaler)
             pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
             data_images = pool.map(process.process, range(process.__len__()))
             images, labels, batches, plates, names  = [x[0] for x in data_images], pd.Series(
@@ -1138,7 +1140,7 @@ def get_bacteria_images(path, args, seed=42):
             data['batches'][group] = batches.values
             data['orders'][group] = plates.values
             data['meta'][group] = data['inputs'][group]
-            data['sets'][group] = [group for _ in data['names'][group]]
+            data['sets'][group] = np.array([group for _ in data['names'][group]])
 
             pos = [i for i, name in enumerate(data['labels'][group].flatten()) if 'pool' not in data['labels'][group][i]]
             data['names'][group] = data['names'][group][pos]
@@ -1194,6 +1196,8 @@ def get_bacteria_images(path, args, seed=42):
             (data['orders']['train'], data['orders'][group][blks_to_move])), data['orders'][group][not_to_move]
         data['names']['train'], data['names'][group] = np.concatenate(
             (data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
+        data['sets']['train'], data['sets'][group] = np.concatenate(
+            (data['sets']['train'], data['sets'][group][blks_to_move])), data['sets'][group][not_to_move]
 
     return data, unique_labels, unique_batches
 
