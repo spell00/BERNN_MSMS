@@ -248,7 +248,7 @@ class TrainAE:
         # if ncols > self.data['inputs']['all'].shape[1]:
         #     ncols = self.data['inputs']['all'].shape[1]
 
-        optimizer_type = 'sgd'
+        optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
         # self.log_path is where tensorboard logs are saved
         self.foldername = str(uuid.uuid4())
