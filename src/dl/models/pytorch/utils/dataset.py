@@ -119,9 +119,10 @@ class MSImages:
 
 
 class MSCSV:
-    def __init__(self, path, scaler, test=False, resize=True):
+    def __init__(self, path, scaler, new_size=32, test=False, resize=True):
         self.path = path
         self.resize = resize
+        self.new_size = new_size
         self.scaler = scaler
         self.fnames = []
         if not test:
@@ -184,12 +185,97 @@ class MSCSV:
 
         if self.resize:
             try:
-                mat_data = transforms.Resize((32, 32))(
+                mat_data = transforms.Resize((self.new_size, self.new_size))(
                 torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
             except:
-                mat_data = transforms.Resize((32, 32))(
+                mat_data = transforms.Resize((self.new_size, self.new_size))(
                 torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
 
+        return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
+
+    def __len__(self):
+        return len(self.fnames)
+
+
+class MS2CSV:
+    def __init__(self, path, scaler, new_size=32, test=False, resize=True):
+        self.path = path
+        self.resize = resize
+        self.new_size = new_size
+        self.scaler = scaler
+        self.fnames = []
+        if not test:
+            self.fnames.extend(os.listdir(f"{path}"))
+        else:
+            tmp = os.listdir(f"{path}")
+            np.random.shuffle(tmp)
+            self.fnames = tmp[:57]
+
+    def process(self, i):
+        fname = self.fnames[i]
+        b_list = ["kox", "sau", "blk", "pae", "sep"]
+        batch = fname.split('_')[0]
+        label = fname.split('_')[1]
+        plate = fname.split('_')[2]
+        print(f"Processing sample #{i}: {fname}")
+        mat_datas = []
+        for f in os.listdir(f"{self.path}/{fname}"):
+            mat_data = read_csv(f"{self.path}/{fname}/{f}")
+            if self.scaler == 'binarize':
+                mat_data[mat_data.values > 0] = 1
+            elif 'efd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif 'ewd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif 'kmd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+
+            elif 'cut' in self.scaler:
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = pd.DataFrame(
+                    np.stack([pd.cut(row, n_bins, labels=False, duplicates='drop', include_lowest=True) for row in
+                              mat_data.values.T]).T
+                )
+                mat_data /= mat_data.max()
+            elif 'discretizeq' in self.scaler:
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = pd.DataFrame(
+                    np.stack([pd.qcut(row, n_bins, labels=False, duplicates='drop') for row in mat_data.values.T]).T
+                )
+
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif self.scaler == 'l2':
+                mat_data = Normalizer().fit_transform(mat_data)
+            elif self.scaler == 'l1':
+                mat_data = Normalizer('l1').fit_transform(mat_data)
+            elif self.scaler == 'minmax':
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif self.scaler == 'max':
+                mat_data = Normalizer('max').fit_transform(mat_data)
+            elif self.scaler == 'maxmax':
+                mat_data /= mat_data.max().max()
+
+            if self.resize:
+                try:
+                    mat_data = transforms.Resize((self.new_size, self.new_size))(
+                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                except:
+                    mat_data = transforms.Resize((self.new_size, self.new_size))(
+                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+            mat_datas += [mat_data]
+        # try:
+        mat_data = np.stack(mat_datas, 0)
+        # except:
+        #     pass
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
 
     def __len__(self):
@@ -611,32 +697,41 @@ class MSDataset5(Dataset):
         else:
             to_rec = self.samples[idx]
             not_to_rec = np.array([0])
-        if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
+        if (self.triplet_dloss == 'revTriplet' or 'inverseTriplet' in self.triplet_dloss) and len(self.unique_batches) > 1:
             not_batch_label = None
             while not_batch_label == batch or not_batch_label is None:
                 not_batch_label = self.unique_batches[np.random.randint(0, len(self.unique_batches))]#.copy()
             pos_ind = np.random.randint(0, len(self.batches_inds[batch]))
             neg_ind = np.random.randint(0, len(self.batches_inds[not_batch_label]))
-            pos_batch_sample = self.samples[self.batches_inds[batch][pos_ind]]#.copy()
-            neg_batch_sample = self.samples[self.batches_inds[not_batch_label][neg_ind]]#.copy()
-            meta_pos_batch_sample = self.meta[self.batches_inds[batch][pos_ind]]#.copy()
-            meta_neg_batch_sample = self.meta[self.batches_inds[not_batch_label][neg_ind]]#.copy()
+            pos_batch_sample = self.samples[self.batches_inds[batch][pos_ind]].copy()
+            neg_batch_sample = self.samples[self.batches_inds[not_batch_label][neg_ind]].copy()
+            meta_pos_batch_sample = self.meta[self.batches_inds[batch][pos_ind]].copy()
+            meta_neg_batch_sample = self.meta[self.batches_inds[not_batch_label][neg_ind]].copy()
         else:
-            pos_batch_sample = self.samples[idx].copy()
-            neg_batch_sample = self.samples[idx].copy()
-            meta_pos_batch_sample = self.samples[idx].copy()
-            meta_neg_batch_sample = self.samples[idx].copy()
+            pos_batch_sample = np.array([0])
+            neg_batch_sample = np.array([0])
+            meta_pos_batch_sample = np.array([0])
+            meta_neg_batch_sample = np.array([0])
         x = self.samples[idx]
         if self.crop_size != -1:
             max_start_crop = x.shape[1] - self.crop_size
             ran = np.random.randint(0, max_start_crop)
             x = torch.Tensor(x)[:, ran:ran + self.crop_size]  # .to(device)
         if self.transform:
+            if len(x.shape) > 2:
+                r = np.random.randint(0, len(x))
+                x = x[r]
+                to_rec = to_rec[r]
             x = self.transform(x).squeeze()
             to_rec = self.transform(to_rec).squeeze()
             if len(not_to_rec.shape) > 1:
                 not_to_rec = self.transform(not_to_rec).squeeze()
+                if len(not_to_rec.shape) > 2:
+                    not_to_rec = not_to_rec[r]
             if len(pos_batch_sample.shape) > 1:
+                if len(neg_batch_sample.shape) > 2:
+                    neg_batch_sample = neg_batch_sample[r]
+                    pos_batch_sample = pos_batch_sample[r]
                 pos_batch_sample = self.transform(pos_batch_sample).squeeze()
                 neg_batch_sample = self.transform(neg_batch_sample).squeeze()
 
@@ -890,6 +985,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     """
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
+        # torchvision.transforms.Normalize(0.5, 0.5),
         # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].to_numpy().reshape(1, -1)), np.std(data['inputs']['train'].to_numpy().reshape(1, -1))),
     ])
 
@@ -1093,6 +1189,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
     """
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize(0.5, 0.5),
         # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].to_numpy().reshape(1, -1)), np.std(data['inputs']['train'].to_numpy().reshape(1, -1))),
     ])
 
@@ -1296,14 +1393,22 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
     """
     transform_train = transforms.Compose([
         transforms.ToTensor(),
+        transforms.Resize(32),
+        transforms.Grayscale(),
+        # transforms.ColorJitter(),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomApply(nn.ModuleList([transforms.RandomRotation(degrees=(90, 90))])),
+        # transforms.RandomApply(nn.ModuleList([transforms.RandomRotation(degrees=(180, 180))])),
+        # transforms.RandomApply(nn.ModuleList([transforms.RandomRotation(degrees=(270, 270))])),
         # transforms.RandomErasing(p=0.5, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
         # transforms.RandomApply(nn.ModuleList([
         #     transforms.RandomAffine(
-        #         degrees=0,
+        #         degrees=10,
         #         translate=(.1, .1),
         #         # scale=(0.9, 1.1),
         #         shear=(.01, .01),
-        #         # interpolation=transforms.InterpolationMode.BILINEAR
+        #         interpolation=transforms.InterpolationMode.BILINEAR
         #     )
         # ]), p=0.5),
         # transforms.RandomApply(
@@ -1318,12 +1423,14 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
         #             ratio=(0.8, 1.2)
         #         )
         #     ]), p=0.5),
-        torchvision.transforms.Normalize(0.5, 0.5),
+        # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize(0.5, 0.5),
+        transforms.Grayscale(),
+        transforms.Resize(32),
+        # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
     train_set = MSDataset5(data['inputs']['train'], data['meta']['train'], data['names']['train'],
@@ -1491,32 +1598,37 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
     """
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
-        # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].reshape(1, -1)), np.std(data['inputs']['train'].reshape(1, -1))),
+        # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
     train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'],
                            data['cats']['train'],
                            [x for x in data['batches']['train']],
+                           sets=data['sets']['all'],
                            transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
     valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
                            data['cats']['valid'],
                            [x for x in data['batches']['valid']],
+                           sets=data['sets']['valid'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
     valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
                             data['cats']['valid'],
                             [x for x in data['batches']['valid']],
+                            sets=data['sets']['valid'],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                             quantize=False, device=device)
     test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'],
                           data['cats']['test'],
                           [x for x in data['batches']['test']],
+                          sets=data['sets']['test'],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                           quantize=False, device=device)
     test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'],
                            data['cats']['test'],
                            [x for x in data['batches']['test']],
+                           sets=data['sets']['test'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
 
@@ -1594,10 +1706,12 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
                                 [x for x in data['batches']['valid']],
+                                sets=data['sets']['valid'],
                                 transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
                                 quantize=False, device=device)
         test_set2 = MSDataset3(data['inputs']['test'], test_names, np.concatenate(test_cats),
                                [x for x in data['batches']['test']],
+                               sets=data['sets']['test'],
                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
                                quantize=False, device=device)
         loaders['valid2'] = DataLoader(valid_set2,
@@ -1617,12 +1731,16 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
         all_names = np.concatenate(
             (data['names']['train'], np.stack(valid_names).reshape(-1), np.stack(test_names).reshape(-1)))
         all_set = MSDataset3(data['inputs']['all'], all_names, all_cats,
-                             [x for x in data['time']['all']], transform=transform, crop_size=-1,
+                             [x for x in data['time']['all']],
+                             sets=data['sets']['all'],
+                             transform=transform, crop_size=-1,
                              random_recs=random_recs, quantize=False, triplet_dloss=triplet_dloss, device=device)
 
     else:
         all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
-                             [x for x in data['batches']['all']], transform=transform, crop_size=-1,
+                             [x for x in data['batches']['all']],
+                             sets=data['sets']['all'],
+                             transform=transform, crop_size=-1,
                              random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
 
     loaders['all'] = DataLoader(all_set,

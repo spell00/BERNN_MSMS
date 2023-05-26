@@ -1412,13 +1412,14 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
 
 
 def make_data(lists, values):
+    n_mini_batches = int(1000/lists['train'][values][0].shape[0])
     try:
         data = {
-            'inputs': {group: np.concatenate(lists[group][values]) for group in list(lists.keys()) if
+            'inputs': {group: np.concatenate(lists[group][values][:n_mini_batches]) for group in list(lists.keys()) if
                        len(lists[group][values]) > 0},
-            'labels': {group: np.concatenate(lists[group]['labels']) for group in list(lists.keys()) if
+            'labels': {group: np.concatenate(lists[group]['labels'][:n_mini_batches]) for group in list(lists.keys()) if
                        len(lists[group][values]) > 0},
-            'batches': {group: np.concatenate(lists[group]['domains']) for group in list(lists.keys()) if
+            'batches': {group: np.concatenate(lists[group]['domains'][:n_mini_batches]) for group in list(lists.keys()) if
                         len(lists[group][values]) > 0},
             # 'age': {group: np.concatenate(lists[group]['age']) for group in list(lists.keys()) if
             #         len(lists[group][values]) > 0},
@@ -1430,9 +1431,9 @@ def make_data(lists, values):
         keys = list(data['inputs'].keys())
     except:
         data = {
-            'inputs': {group: np.concatenate(lists[group][values]) for group in ['all', 'all_pool']},
-            'labels': {group: np.concatenate(lists[group]['labels']) for group in ['all', 'all_pool']},
-            'batches': {group: np.concatenate(lists[group]['domains']) for group in ['all', 'all_pool']},
+            'inputs': {group: np.concatenate(lists[group][values][:n_mini_batches]) for group in ['all', 'all_pool']},
+            'labels': {group: np.concatenate(lists[group]['labels'][:n_mini_batches]) for group in ['all', 'all_pool']},
+            'batches': {group: np.concatenate(lists[group]['domains'][:n_mini_batches]) for group in ['all', 'all_pool']},
             # 'age': {group: np.concatenate(lists[group]['age']) for group in ['all', 'all_pool']},
             # 'gender': {group: np.concatenate(lists[group]['gender']) for group in ['all', 'all_pool']},
             # 'atn': {group: np.array(lists[group]['atn']) for group in ['all', 'all_pool']},
@@ -1458,8 +1459,15 @@ def make_data(lists, values):
 def log_plots(logger, lists, mlops, epoch):
     try:
         for name, values in zip(['encs', 'inputs', 'recs'], ['encoded_values', 'inputs', 'rec_values']):
-            unique_labels = get_unique_labels(np.concatenate(lists['all']['labels']))
-            unique_batches = np.unique(np.concatenate(lists['all']['domains']))
+            unique_labels = get_unique_labels(np.concatenate(lists['train']['labels']))
+            unique_batches = np.unique(
+                np.concatenate((
+                    np.unique(np.concatenate(lists['train']['domains'])),
+                    np.unique(np.concatenate(lists['valid']['domains'])),
+                    np.unique(np.concatenate(lists['test']['domains'])),
+
+                ))
+            )
             # unique_ages = np.array(['50s', '60s', '70s', '80+'])
             # unique_genders = np.unique(np.concatenate(lists['all']['gender']))
             # unique_atns = np.unique([str(x) for x in np.array(lists['all']['atn'])])

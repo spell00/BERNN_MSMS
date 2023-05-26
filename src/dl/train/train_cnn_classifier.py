@@ -24,7 +24,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_bacteria_images, get_cifar10, get_mnist
+from src.utils.data_getters import get_bacteria_images, get_cifar10, get_mnist, get_bacteria_images_ms2
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedacnn import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedacnn import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -40,6 +40,7 @@ import neptune
 import mlflow
 import warnings
 from datetime import datetime
+
 # from torchvision import transforms
 # from fastapi import BackgroundTasks, FastAPI
 # from threading import Thread
@@ -75,13 +76,120 @@ class Cifar10CnnModel(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(2, 2),  # output: 256 x 4 x 4
             nn.Flatten(),
+        )
+        self.classifier = nn.Sequential(
             nn.Linear(256 * 4 * 4, 1024),
             nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
+            nn.Linear(512, n_classes)
+        )
+
+        self.dann_discriminator = nn.Sequential(
+            nn.Linear(256 * 4 * 4, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, n_batches)
+        )
+        self.random_init()
+
+    def forward(self, xb):
+        x = self.network(xb)
+        return x
+
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+
+class MnistCnnModel(nn.Module):
+    def __init__(self, n_classes, n_batches=2):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=5, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(3, 2),  # output: 64 x 16 x 16
+
+            nn.Conv2d(64, 64, kernel_size=5, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(3, 2),  # output: 128 x 8 x 8
+
+            nn.Conv2d(64, 128, kernel_size=5, padding=1),
+            # nn.ReLU(),
+            # nn.MaxPool2d(2, 2),  # output: 128 x 8 x 8
+            nn.Flatten(),
         )
         self.classifier = nn.Sequential(
-            nn.Linear(512, n_classes)
+            nn.Linear(128 * 2 * 2, 3072),
+            nn.ReLU(),
+            nn.Linear(3072, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, n_classes)
+        )
+
+        self.dann_discriminator = nn.Sequential(
+            nn.Linear(128 * 2 * 2, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, n_batches)
+        )
+        self.random_init()
+
+    def forward(self, xb):
+        x = self.network(xb)
+        return x
+
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+
+class MS1CnnModel(nn.Module):
+    def __init__(self, n_classes, n_batches=2):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Dropout2d(),
+            nn.Conv2d(1, 4, kernel_size=3, padding=1),
+            nn.Dropout2d(),
+            nn.ReLU(),
+            nn.Conv2d(4, 8, kernel_size=3, stride=1, padding=1),
+            nn.Dropout2d(),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # output: 64 x 16 x 16
+
+            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.Dropout2d(),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.Dropout2d(),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # output: 128 x 8 x 8
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.Dropout2d(),
+            nn.ReLU(),
+            # nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            # nn.Dropout2d(),
+            # nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # output: 256 x 4 x 4
+            # nn.Flatten(),
+            # nn.Linear(64 * 1 * 1, 32),
+            # nn.Dropout2d(),
+            # nn.ReLU(),
+            # nn.Linear(32, 16),
+            # nn.Dropout2d(),
+            # nn.ReLU(),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(64, n_classes)
         )
 
         self.dann_discriminator = nn.Sequential(
@@ -89,8 +197,54 @@ class Cifar10CnnModel(nn.Module):
             # nn.ReLU(),
             # nn.Linear(1024, 512),
             # nn.ReLU(),
-            nn.Linear(512, n_batches)
+            nn.Linear(64, n_batches)
         )
+        self.random_init()
+
+    def forward(self, xb):
+        x = self.network(xb)
+        return x
+
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+
+class CNNModel(nn.Module):
+
+    def __init__(self, n_classes, n_batches=2):
+        super(CNNModel, self).__init__()
+        self.network = nn.Sequential()
+        self.network.add_module('f_conv1', nn.Conv2d(1, 64, kernel_size=5))
+        self.network.add_module('f_bn1', nn.BatchNorm2d(64))
+        self.network.add_module('f_pool1', nn.MaxPool2d(3))
+        self.network.add_module('f_relu1', nn.ReLU(True))
+        self.network.add_module('f_conv2', nn.Conv2d(64, 256, kernel_size=5))
+        self.network.add_module('f_bn2', nn.BatchNorm2d(256))
+        self.network.add_module('f_drop1', nn.Dropout2d())
+        self.network.add_module('f_pool2', nn.MaxPool2d(3))
+        self.network.add_module('f_relu2', nn.ReLU(True))
+
+        self.classifier = nn.Sequential()
+        self.classifier.add_module('c_fc1', nn.Linear(256, 32))
+        self.classifier.add_module('c_bn1', nn.BatchNorm1d(32))
+        self.classifier.add_module('c_relu1', nn.ReLU(True))
+        self.classifier.add_module('c_drop1', nn.Dropout2d())
+        # self.classifier.add_module('c_fc2', nn.Linear(100, 100))
+        # self.classifier.add_module('c_bn2', nn.BatchNorm1d(100))
+        # self.classifier.add_module('c_relu2', nn.ReLU(True))
+        self.classifier.add_module('c_fc3', nn.Linear(32, n_classes))
+        # self.classifier.add_module('c_softmax', nn.LogSoftmax())
+
+        self.dann_discriminator = nn.Sequential()
+        self.dann_discriminator.add_module('d_fc1', nn.Linear(256, 32))
+        self.dann_discriminator.add_module('d_bn1', nn.BatchNorm1d(32))
+        self.dann_discriminator.add_module('d_relu1', nn.ReLU(True))
+        self.dann_discriminator.add_module('d_fc2', nn.Linear(32, n_batches))
+        # self.dann_discriminator.add_module('d_softmax', nn.LogSoftmax())
         self.random_init()
 
     def forward(self, xb):
@@ -148,7 +302,6 @@ class TrainAE:
 
         self.pools = False
 
-
     def make_samples_weights(self):
         self.n_batches = len(set(self.data['batches']['all']))
         self.class_weights = {
@@ -192,7 +345,7 @@ class TrainAE:
         scale = params['scaler']  # scaler must be defined first. It is an hyperparameter
         self.args.scaler = scale
         if self.args.dataset == 'bacteria':
-            self.data, self.unique_labels, self.unique_batches = get_bacteria_images(self.path, self.args, seed=42)
+            self.data, self.unique_labels, self.unique_batches = get_bacteria_images_ms2(self.path, self.args, seed=42)
             self.pools = False
         elif self.args.dataset == 'cifar10':
             self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=42)
@@ -378,7 +531,8 @@ class TrainAE:
             warmup = False
         self.warmup_disc_b = False
         # self.get_amide(self.path, seed=(1 + h) * 10)
-        self.columns = list(range(self.data['inputs']['test'].shape[1]))  # shap needs columns. unfortunately, TODO needs be improved to have meaningful columns
+        self.columns = list(range(self.data['inputs']['test'].shape[
+                                      1]))  # shap needs columns. unfortunately, TODO needs be improved to have meaningful columns
         self.make_samples_weights()
         # event_acc is used to verify if the hparams have already been tested. If they were,
         # the best classification loss is retrieved and we go to the next trial
@@ -398,10 +552,10 @@ class TrainAE:
             # data, self.scaler = scale_data(scale, data, self.args.device)
             if self.pools:
                 loaders = get_images_loaders(data, self.args.random_recs, self.samples_weights,
-                                      self.args.dloss, None, None, bs=self.args.bs)
+                                             self.args.dloss, None, None, bs=self.args.bs)
             else:
                 loaders = get_images_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
-                                              None, None, bs=self.args.bs)
+                                                     None, None, bs=self.args.bs)
 
             cnn = Cifar10CnnModel(self.n_cats, self.n_batches).to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
@@ -411,7 +565,7 @@ class TrainAE:
             optimizer_ae = get_optimizer(cnn, lr, wd, optimizer_type)
 
             # Used only if bdisc==1
-            # optimizer_b = get_optimizer(cnn.dann_discriminator, 1e-2, 0, optimizer_type)
+            self.optimizer_b = get_optimizer(cnn.dann_discriminator, 1e-3, 0, optimizer_type)
 
             self.hparams_names = [x.name for x in linsvc_space]
             if self.log_inputs and not self.logged_inputs:
@@ -429,9 +583,6 @@ class TrainAE:
 
             early_stop_counter = 0
             best_vals = values
-            # for epoch in range(0, self.args.warmup):
-            #     self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, self.best_loss, True, epoch,
-            #         optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
             for epoch in range(0, self.args.n_epochs):
                 if early_stop_counter >= self.args.early_stop:
@@ -439,7 +590,8 @@ class TrainAE:
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
-                closs, lists, traces = self.loop('train', optimizer_ae, cnn, sceloss, triplet_loss, loaders['all'], lists, traces, nu=nu)
+                closs, lists, traces = self.loop('train', optimizer_ae, cnn, sceloss, triplet_loss, loaders['all'],
+                                                 lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -485,8 +637,8 @@ class TrainAE:
                     early_stop_counter = 0
 
                 if values['valid']['acc'][-1] > self.best_acc:
-                    print(f"Best Classification Acc Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]}"
+                    print(f"Best Classification Mcc Epoch {epoch}, "
+                          f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
                           f"Mcc: {values['test']['mcc'][-1]}"
                           f"Classification train loss: {values['train']['closs'][-1]},"
                           f" valid loss: {values['valid']['closs'][-1]},"
@@ -496,12 +648,12 @@ class TrainAE:
                     early_stop_counter = 0
 
                 if values['valid']['closs'][-1] < self.best_closs:
-                    print(f"Best Classification Loss Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]} "
-                          f"Mcc: {values['test']['mcc'][-1]} "
-                          f"Classification train loss: {values['train']['closs'][-1]}, "
-                          f"valid loss: {values['valid']['closs'][-1]}, "
-                          f"test loss: {values['test']['closs'][-1]}")
+                    print(f"Best Classification Mcc Epoch {epoch}, "
+                          f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
+                          f"Mcc: {values['test']['mcc'][-1]}"
+                          f"Classification train loss: {values['train']['closs'][-1]},"
+                          f" valid loss: {values['valid']['closs'][-1]},"
+                          f" test loss: {values['test']['closs'][-1]}")
                     self.best_closs = values['valid']['closs'][-1]
                     early_stop_counter = 0
                 else:
@@ -510,7 +662,7 @@ class TrainAE:
 
                 if self.args.predict_tests and (epoch % 10 == 0):
                     loaders = get_images_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, cnn,
-                                          cnn.classifier, bs=self.args.bs)
+                                                 cnn.classifier, bs=self.args.bs)
 
             best_mccs += [self.best_mcc]
 
@@ -524,8 +676,8 @@ class TrainAE:
             # shap_ae.eval()
             with torch.no_grad():
                 for group in list(data['inputs'].keys()):
-                    # if group in ['all', 'all_pool']:
-                    #     continue
+                    if group in ['all', 'all_pool']:
+                        continue
                     closs, best_lists, traces = self.loop(group, None, cnn, sceloss, triplet_loss,
                                                           loaders[group], best_lists, traces, nu=0, mapping=False)
             if self.log_neptune:
@@ -539,7 +691,7 @@ class TrainAE:
             # daemon.start()
             self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, cnn,
                          cnn, 1, epoch)
-            del cnn# , shap_ae
+            del cnn  # , shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
         # Too many runs have been made. This will make the notebook so much easier to work with
@@ -658,7 +810,7 @@ class TrainAE:
                 if self.log_tb:
                     # TODO Add log_shap
                     loggers.add(loggers['logger_cm'], epoch, best_lists,
-                               self.unique_labels, best_traces, 'tensorboard')
+                                self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     # log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 0, 'mlflow',
                     #          self.complete_log_path,
@@ -797,8 +949,9 @@ class TrainAE:
             if self.log_mlflow:
                 try:
                     mlflow.log_metric(f'{group}_AUC',
-                                  metrics.roc_auc_score(y_true=cats[group].argmax(1).astype('float32'), y_score=scores[group], multi_class='ovr'),
-                                  step=step)
+                                      metrics.roc_auc_score(y_true=cats[group].argmax(1).astype('float32'),
+                                                            y_score=scores[group], multi_class='ovr'),
+                                      step=step)
                 except:
                     pass
 
@@ -827,7 +980,10 @@ class TrainAE:
                     optimizer_ae.zero_grad()
                 data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
                     neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+                if len([s == 'train' for s in set]) == 0:
+                    continue
                 # data[torch.isnan(data)] = 0
+
                 data = data.to(self.args.device).float()
                 meta_inputs = meta_inputs.to(self.args.device).float()
                 to_rec = to_rec.to(self.args.device).float()
@@ -835,22 +991,28 @@ class TrainAE:
                 # If n_meta > 0, meta data added to inputs
                 if self.args.n_meta > 0:
                     data = torch.cat((data, meta_inputs), 1)
-                    to_rec = torch.cat((to_rec, meta_inputs), 1)
-                not_to_rec = not_to_rec.to(self.args.device).float()
-                # enc, rec, _, kld = ae(data.unsqueeze(1), to_rec, domain, sampling=sampling, mapping=mapping)
-                # rec = rec['mean']
+                enc = ae(data.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                # if i % 2 == 0 and group == 'train' and nu != 0:
+                #     # Trains the dann_discriminator alone so it can actually can get good
+                #     self.freeze_dlayers(ae)
+                #     domain_preds = ae.dann_discriminator(enc)
+                #     dom_cats = to_categorical(domain.long(), self.n_batches).to(self.args.device).float().to('cuda')
+                #     domain_loss = celoss(domain_preds, dom_cats)
+                #     domain_loss.backward()
+                #     # nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
+                #     self.optimizer_b.step()
+                #     self.unfreeze_layers(ae)
+                #     pbar.update(1)
+                #     continue
 
-                # If embedding_meta > 0, meta data added to embeddings
-                # if self.args.embeddings_meta:
-                #     preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-                # else:
-                enc = ae(data.unsqueeze(1))
                 preds = ae.classifier(enc)
                 try:
                     cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float().to('cuda')
                     # We train including all samples. In order to only train on train samples, the preds of the
                     # samples not in the train set are set to pseudo classes
                     if group == 'train':
+                        new_labels = labels.clone().detach().to(self.args.device)
+                        new_labels[[s != 'train' for s in set]] = preds[[s != 'train' for s in set]].argmax(1)
                         preds[[s != 'train' for s in set]] = 0
                         cats[[s != 'train' for s in set]] = 0
                         # pseudo_cats = preds[[s != 'train' for s in set]].argmax(1).detach().cpu()
@@ -873,10 +1035,11 @@ class TrainAE:
                     domain_preds = ae.dann_discriminator(enc)
                     # ae.eval()
 
-                if args.dloss not in ['revTriplet', 'inverseTriplet']:
+                if args.dloss not in ['revTriplet', 'inverseTriplet', 'inverseTripletSCA']:
                     # ae.train()
                     # with torch.enable_grad():
                     dloss, domain = self.get_dloss(celoss, domain, domain_preds)
+                    scaloss = torch.Tensor([0]).to(self.args.device)
                     # ae.eval()
                 elif args.dloss == 'revTriplet':
                     pos_batch_sample = pos_batch_sample.to(self.args.device).float()
@@ -886,25 +1049,59 @@ class TrainAE:
                     if self.args.n_meta > 0:
                         pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                         neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                    pos_enc = ae(pos_batch_sample.unsqueeze(1))
-                    neg_enc = ae(neg_batch_sample.unsqueeze(1))
+                    pos_enc = ae(pos_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    neg_enc = ae(neg_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
                     dloss = triplet_loss(reverse,
                                          ReverseLayerF.apply(pos_enc, 1),
                                          ReverseLayerF.apply(neg_enc, 1)
                                          )
+                    scaloss = torch.Tensor([0]).to(self.args.device)
                 elif args.dloss == 'inverseTriplet':
                     # ae.train()
                     # with torch.enable_grad():
-                    pos_batch_sample, neg_batch_sample = pos_batch_sample.to(self.args.device).float(), neg_batch_sample.to(self.args.device).float()
-                    meta_pos_batch_sample, meta_neg_batch_sample = meta_pos_batch_sample.to(self.args.device).float(), meta_neg_batch_sample.to(self.args.device).float()
+                    pos_batch_sample, neg_batch_sample = pos_batch_sample.to(
+                        self.args.device).float(), neg_batch_sample.to(self.args.device).float()
+                    meta_pos_batch_sample, meta_neg_batch_sample = meta_pos_batch_sample.to(
+                        self.args.device).float(), meta_neg_batch_sample.to(self.args.device).float()
                     if self.args.n_meta > 0:
                         pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                         neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                    pos_enc = ae(pos_batch_sample.unsqueeze(1))
-                    neg_enc = ae(neg_batch_sample.unsqueeze(1))
+                    pos_enc = ae(pos_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    neg_enc = ae(neg_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
                     dloss = triplet_loss(enc, neg_enc, pos_enc)
                     # domain = domain.argmax(1)
                     # ae.eval()
+                    scaloss = torch.Tensor([0]).to(self.args.device)
+                elif args.dloss == 'inverseTripletSCA' and group == 'train':
+                    pos_batch_sample, neg_batch_sample = pos_batch_sample.to(
+                        self.args.device).float(), neg_batch_sample.to(self.args.device).float()
+                    meta_pos_batch_sample, meta_neg_batch_sample = meta_pos_batch_sample.to(
+                        self.args.device).float(), meta_neg_batch_sample.to(self.args.device).float()
+                    if self.args.n_meta > 0:
+                        pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
+                        neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
+                    pos_enc = ae(pos_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    neg_enc = ae(neg_batch_sample.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    dloss = triplet_loss(enc, neg_enc, pos_enc)
+
+                    pos_encs = torch.Tensor(np.stack([loader.dataset.samples[
+                        loader.dataset.labels_inds[new_label.item()][
+                            np.random.randint(0, len(loader.dataset.labels_inds[new_label.item()]))]] for new_label in new_labels])).to(self.args.device)
+                    neg_encs = []
+                    for new_label in new_labels:
+                        new_label = new_label.item()
+                        not_label = None
+                        while not_label == new_label or not_label is None:
+                            not_label = loader.dataset.unique_labels[np.random.randint(0, len(loader.dataset.unique_labels))].copy()
+                        ind = np.random.randint(0, len(loader.dataset.labels_inds[not_label]))
+                        neg_encs += [loader.dataset.samples[loader.dataset.labels_inds[not_label][ind]]]
+                        # meta_not_to_rec = self.meta[self.labels_inds[not_label][not_label][ind].copy()]
+                        # meta_to_rec = self.meta[idx]
+                    neg_encs = torch.Tensor(np.stack(neg_encs)).to(self.args.device)
+                    pos_enc = ae(pos_encs.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    neg_enc = ae(neg_encs.unsqueeze(1)).squeeze(-1).squeeze(-1)
+                    scaloss = triplet_loss(enc, pos_enc, neg_enc)
+
 
                 lists[group]['set'] += [np.array(set)]
                 lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
@@ -936,8 +1133,9 @@ class TrainAE:
                 traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                                   zip(preds.detach().cpu().numpy().argmax(1),
                                                       labels.detach().cpu().numpy())])]
-                traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
-                                                   zip(preds.argsort(1), labels)])]
+                traces[group]['top3'] += [
+                    np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
+                             zip(preds.argsort(1), labels)])]
 
                 traces[group]['closs'] += [classif_loss.item()]
                 traces[group]['mcc'] += [np.round(
@@ -950,11 +1148,11 @@ class TrainAE:
                                                    zip(domain_preds.detach().cpu().numpy().argmax(1),
                                                        domain.detach().cpu().numpy())])]
                     w = 1
-                    total_loss = w * classif_loss + self.gamma * dloss
+                    total_loss = w * classif_loss + self.gamma * dloss + nu * scaloss
                     # if self.args.train_after_warmup:
                     #     total_loss += rec_loss
                     total_loss.backward()
-                    # nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
+                    nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                     optimizer_ae.step()
 
                 # elif optimizer_ae is not None and args.dloss in ['DANN', 'inverseTriplet', 'revTriplet', 'normae']:
@@ -1054,9 +1252,7 @@ class TrainAE:
 
         """
         if not self.args.train_after_warmup:
-            for param in ae.dec.parameters():
-                param.requires_grad = False
-            for param in ae.enc.parameters():
+            for param in ae.network.parameters():
                 param.requires_grad = False
             for param in ae.classifier.parameters():
                 param.requires_grad = False
@@ -1144,167 +1340,6 @@ class TrainAE:
 
         return traces
 
-    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, best_loss, warmup, epoch,
-                    optimizer_b, values, loggers, loaders, run, mapping=True):
-        lists, traces = get_empty_traces()
-        ae.train()
-
-        iterator = enumerate(loader)
-
-        # If option train_after_warmup=1, then this loop is only for preprocessing
-        for i, all_batch in iterator:
-            optimizer_ae.zero_grad()
-            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
-            inputs = inputs.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
-            to_rec = to_rec.to(self.args.device).float()
-            if self.args.n_meta > 0:
-                inputs = torch.cat((inputs, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
-
-            enc, rec, zinb_loss, kld = ae(inputs.unsqueeze(1), to_rec, domain, sampling=True, mapping=mapping)
-            rec = rec['mean']
-            zinb_loss = zinb_loss.to(self.args.device)
-            reverse = ReverseLayerF.apply(enc, 1)
-            if args.dloss == 'DANN':
-                domain_preds = ae.dann_discriminator(reverse)
-            else:
-                domain_preds = ae.dann_discriminator(enc)
-            if args.dloss not in ['revTriplet', 'inverseTriplet']:
-                dloss, domain = self.get_dloss(celoss, domain, domain_preds)
-            elif args.dloss == 'revTriplet':
-                pos_batch_sample = pos_batch_sample.to(self.args.device).float()
-                neg_batch_sample = neg_batch_sample.to(self.args.device).float()
-                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                pos_enc, _, _, _ = ae(pos_batch_sample.unsqueeze(1), pos_batch_sample, domain, sampling=True)
-                neg_enc, _, _, _ = ae(neg_batch_sample.unsqueeze(1), neg_batch_sample, domain, sampling=True)
-                dloss = triplet_loss(reverse,
-                                     ReverseLayerF.apply(pos_enc, 1),
-                                     ReverseLayerF.apply(neg_enc, 1)
-                                     )
-            elif args.dloss == 'inverseTriplet':
-                pos_batch_sample = neg_batch_sample.to(self.args.device).float()
-                neg_batch_sample = pos_batch_sample.to(self.args.device).float()
-                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                pos_enc, _, _, _ = ae(pos_batch_sample.unsqueeze(1), pos_batch_sample, domain, sampling=True)
-                neg_enc, _, _, _ = ae(neg_batch_sample.unsqueeze(1), neg_batch_sample, domain, sampling=True)
-                dloss = triplet_loss(enc, pos_enc, neg_enc)
-                # domain = domain.argmax(1)
-
-            if torch.isnan(enc[0][0]):
-                if self.log_mlflow:
-                    mlflow.log_param('finished', 0)
-                    mlflow.end_run()
-                return None
-            # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
-            if isinstance(rec, list):
-                rec = rec[-1]
-            if isinstance(to_rec, list):
-                to_rec = to_rec[-1]
-            if self.args.scaler == 'binarize':
-                rec = torch.sigmoid(rec)
-            rec_loss = mseloss(rec, to_rec)
-            # else:
-            #     rec_loss = zinb_loss
-            traces['rec_loss'] += [rec_loss.item()]
-            traces['dom_loss'] += [dloss.item()]
-            traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                               domain.detach().cpu().numpy())])]
-            # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
-            lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists['all']['classes'] += [labels.detach().cpu().numpy()]
-            lists['all']['encoded_values'] += [
-                enc.detach().cpu().numpy()]
-            lists['all']['rec_values'] += [
-                rec.detach().cpu().numpy()]
-            lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
-            lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
-            lists['all']['inputs'] += [to_rec]
-            try:
-                lists['all']['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
-            except:
-                pass
-            (rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss).backward()
-            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
-            optimizer_ae.step()
-
-        if np.mean(traces['rec_loss']) < self.best_loss:
-            # "Every counters go to 0 when a better reconstruction loss is reached"
-            print(
-                f"Best Loss Epoch {epoch}, Losses: {np.mean(traces['rec_loss'])}, "
-                f"Domain Losses: {np.mean(traces['dom_loss'])}, "
-                f"Domain Accuracy: {np.mean(traces['dom_acc'])}")
-            self.best_loss = np.mean(traces['rec_loss'])
-            self.dom_loss = np.mean(traces['dom_loss'])
-            self.dom_acc = np.mean(traces['dom_acc'])
-            if warmup:
-                torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
-
-        if (
-                self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:  # or warmup_counter == 100:
-            # When the warnup counter gets to
-            values = log_traces(traces, values)
-            if self.args.early_warmup_stop != 0:
-                try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                except:
-                    pass
-            print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
-            warmup = False
-            self.warmup_disc_b = True
-
-        if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
-            # When the warnup counter gets to
-            if self.args.early_warmup_stop != 0:
-                try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                except:
-                    pass
-            print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
-            values = log_traces(traces, values)
-            warmup = False
-            self.warmup_disc_b = True
-
-        if epoch < self.args.warmup and warmup:  # and np.mean(traces['rec_loss']) >= best_loss:
-            values = log_traces(traces, values)
-            self.warmup_counter += 1
-            # best_values = get_best_values(traces, ae_only=True)
-            # TODO change logging with tensorboard and neptune. The previous
-            if self.log_tb:
-                loggers['tb_logging'].logging(values, metrics)
-            if self.log_neptune:
-                log_neptune(run, values)
-            if self.log_mlflow:
-                add_to_mlflow(values, epoch)
-        ae.train()
-
-        # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
-        # all layers except the classification layers are frozen
-
-        if self.args.bdisc:
-            self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
-        if self.warmup_disc_b and self.warmup_b_counter < 0:
-            self.warmup_b_counter += 1
-        else:
-            self.warmup_disc_b = False
-
 
 if __name__ == "__main__":
     import argparse
@@ -1364,21 +1399,21 @@ if __name__ == "__main__":
     # train.train()
     # List of hyperparameters getting optimized
     parameters = [
-        {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-6, 1e-2], "log_scale": True},  # Best run: [1e-4, 1e-1]
+        {"name": "nu", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": False},
+        {"name": "lr", "type": "range", "bounds": [1e-6, 1e-4], "log_scale": True},  # Best run: [1e-4, 1e-1]
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
-        {"name": "margin", "type": "range", "bounds": [0., 10.]},
+        {"name": "smoothing", "type": "range", "bounds": [0., 0.5]},
+        {"name": "margin", "type": "range", "bounds": [0., .3]},
         {"name": "warmup", "type": "range", "bounds": [1, 2]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['minmax']},  # scaler whould be no for zinb
+         "values": ['binarize']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [1, 32]},
         {"name": "layer1", "type": "range", "bounds": [1, 64]},
     ]
@@ -1386,7 +1421,8 @@ if __name__ == "__main__":
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
     if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
-        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-8, 1e-4], "log_scale": True}]  # Best run: [1e-8, 1e2]
+        parameters += [
+            {"name": "gamma", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": True}]  # Best run: [1e-8, 1e2]
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]

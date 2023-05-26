@@ -588,10 +588,10 @@ class TrainAE:
                 # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
                 # all layers except the classification layers are frozen
 
-            ae.eval()
             for epoch in range(0, self.args.n_epochs):
                 lists, traces = get_empty_traces()
                 closs, _, _ = self.loop('train', ae, sceloss, loaders['train'], lists, traces, nu=nu)
+                ae.eval()
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -1080,7 +1080,7 @@ class TrainAE:
 
     def freeze_dlayers(self, ae):
         """
-        Freeze all layers except the classifier
+        Freeze all layers except the dann classifier
         Args:
             ae: AutoEncoder object. It inherits torch.nn.Module
 

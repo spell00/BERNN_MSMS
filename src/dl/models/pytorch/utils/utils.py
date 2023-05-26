@@ -120,22 +120,23 @@ class LogConfusionMatrix:
         self.batches = {'train': [], 'valid': [], 'test': []}
 
     def add(self, lists):
+        n_mini_batches = int(1000 / lists['train']['preds'][0].shape[0])
         for group in list(self.preds.keys()):
             # Calculate the confusion matrix.
             if len(lists[group]['preds']) == 0:
                 continue
-            self.preds[group] += [np.concatenate(lists[group]['preds']).argmax(1)]
-            self.classes[group] += [np.concatenate(lists[group]['classes'])]
-            self.encs[group] += [np.concatenate(lists[group]['encoded_values'])]
+            self.preds[group] += [np.concatenate(lists[group]['preds'][:n_mini_batches]).argmax(1)]
+            self.classes[group] += [np.concatenate(lists[group]['classes'][:n_mini_batches])]
+            self.encs[group] += [np.concatenate(lists[group]['encoded_values'][:n_mini_batches])]
             try:
-                self.recs[group] += [np.concatenate(lists[group]['rec_values'])]
+                self.recs[group] += [np.concatenate(lists[group]['rec_values'][:n_mini_batches])]
             except:
                 pass
-            self.cats[group] += [np.concatenate(lists[group]['cats'])]
-            self.batches[group] += [np.concatenate(lists[group]['domains'])]
+            self.cats[group] += [np.concatenate(lists[group]['cats'][:n_mini_batches])]
+            self.batches[group] += [np.concatenate(lists[group]['domains'][:n_mini_batches])]
 
     def plot(self, logger, epoch, unique_labels, mlops):
-        for group in list(self.preds.keys()):
+        for group in ['train', 'valid', 'test']:
             preds = np.concatenate(self.preds[group])
             classes = np.concatenate(self.classes[group])
             cm = sklearn.metrics.confusion_matrix(classes, preds)

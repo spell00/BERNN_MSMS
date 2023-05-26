@@ -109,7 +109,7 @@ class TrainAE:
             try:
                 self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
             except:
-                self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
+                self.data['names'][group] = self.data['names'][group][inds_to_keep]
 
             self.data['labels'][group] = self.data['labels'][group][inds_to_keep]
             self.data['cats'][group] = self.data['cats'][group][inds_to_keep]
@@ -1094,7 +1094,7 @@ class TrainAE:
         for i, all_batch in iterator:
             optimizer_ae.zero_grad()
             inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
+                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
             inputs = inputs.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -1281,7 +1281,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_classifier')
-    parser.add_argument('--bs', type=int, default=256, help='Batch size')
+    parser.add_argument('--bs', type=int, default=8, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')

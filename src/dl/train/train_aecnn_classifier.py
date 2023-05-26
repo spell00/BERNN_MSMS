@@ -311,7 +311,7 @@ class TrainAE:
             warmup = False
         self.warmup_disc_b = False
         if self.args.dataset == 'bacteria':
-            self.data, self.unique_labels, self.unique_batches = get_bacteria_images(self.path, self.args, seed=seed)
+            self.data, self.unique_labels, self.unique_batches = get_bacteria_images(self.path, self.args, seed=42)
             self.pools = False
         elif self.args.dataset == 'cifar10':
             self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=seed)
@@ -342,8 +342,8 @@ class TrainAE:
             data, self.scaler = scale_data(scale, data, self.args.device)
             # feature_selection = get_feature_selection_method('mutual_info_classif')
             # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
-            for g in list(data['inputs'].keys()):
-                data['inputs'][g] = data['inputs'][g].round(4)
+            # for g in list(data['inputs'].keys()):
+            #     data['inputs'][g] = data['inputs'][g].round(4)
             # Gets all the pytorch dataloaders to train the models
             if self.pools:
                 loaders = get_images_loaders(data, self.args.random_recs, self.samples_weights,
@@ -420,12 +420,13 @@ class TrainAE:
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
+                ae.train()
                 if self.args.train_after_warmup:
                     self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, self.best_loss, False,
                                      epoch, optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
-                else:
-                    ae = self.freeze_clayers(ae)
+                # else:
+                #     ae = self.freeze_aelayers(ae)
                 closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
                                     loaders['train'], lists, traces, nu=nu)
 
@@ -439,7 +440,7 @@ class TrainAE:
                 # Below is the loop for all sets
                 with torch.no_grad():
                     for group in list(data['inputs'].keys()):
-                        if group in ['all', 'all_pool']:
+                        if group in ['train', 'all', 'all_pool']:
                             continue
                         closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                          loaders[group], lists, traces, nu=0)
@@ -1015,7 +1016,7 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
-    def freeze_clayers(self, ae):
+    def freeze_aelayers(self, ae):
         """
         Freeze all layers except the classifier
         Args:
@@ -1086,7 +1087,7 @@ class TrainAE:
             for i, all_batch in iterator:
                 optimizer_ae.zero_grad()
                 inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                    neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
+                    neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = all_batch
                 inputs = inputs.to(self.args.device).float()
                 meta_inputs = meta_inputs.to(self.args.device).float()
                 to_rec = to_rec.to(self.args.device).float()
@@ -1241,7 +1242,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_recs', type=int, default=0)
     parser.add_argument('--predict_tests', type=int, default=0)
-    parser.add_argument('--early_stop', type=int, default=50)
+    parser.add_argument('--early_stop', type=int, default=200)
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
@@ -1271,7 +1272,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='prostate')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_classifier')
-    parser.add_argument('--bs', type=int, default=256, help='Batch size')
+    parser.add_argument('--bs', type=int, default=8, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
@@ -1294,20 +1295,20 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 2]},
+        {"name": "warmup", "type": "range", "bounds": [1, 100]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['none']},  # scaler whould be no for zinb
+         "values": ['binarize']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [1, 32]},
         {"name": "layer1", "type": "range", "bounds": [1, 64]},
     ]
@@ -1315,7 +1316,7 @@ if __name__ == "__main__":
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
     if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
-        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
+        parameters += [{"name": "gamma", "type": "range", "bounds": [1e1, 1e3], "log_scale": True}]
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]

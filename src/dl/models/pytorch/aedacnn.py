@@ -8,38 +8,6 @@ from src.dl.models.pytorch.utils.distributions import log_normal_standard, log_n
 from src.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
 
-def sample_gumbel(shape, eps=1e-20):
-    U = torch.rand(shape)
-    if args.cuda:
-        U = U.cuda()
-    return -torch.log(-torch.log(U + eps) + eps)
-
-
-def gumbel_softmax_sample(logits, temperature):
-    y = logits + sample_gumbel(logits.size())
-    return F.softmax(y / temperature, dim=-1)
-
-
-def gumbel_softmax(logits, temperature, hard=False):
-    """
-    ST-gumple-softmax
-    input: [*, n_class]
-    return: flatten --> [*, n_class] an one-hot vector
-    """
-    y = gumbel_softmax_sample(logits, temperature)
-
-    if not hard:
-        return y.view(-1, latent_dim * categorical_dim)
-
-    shape = y.size()
-    _, ind = y.max(dim=-1)
-    y_hard = torch.zeros_like(y).view(-1, shape[-1])
-    y_hard.scatter_(1, ind.view(-1, 1), 1)
-    y_hard = y_hard.view(*shape)
-    # Set gradients w.r.t. y_hard gradients w.r.t. y
-    y_hard = (y_hard - y).detach() + y
-    return y_hard.view(-1, latent_dim * categorical_dim)
-
 
 # https://github.com/DHUDBlab/scDSC/blob/1247a63aac17bdfb9cd833e3dbe175c4c92c26be/layers.py#L43
 class MeanAct(nn.Module):
@@ -229,26 +197,26 @@ class Encoder2(nn.Module):
     def __init__(self, in_shape, layer1, layer2, dropout):
         super(Encoder2, self).__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=(3, 3), padding=1),
-            nn.BatchNorm2d(8),
-            nn.Dropout(dropout),
-            nn.ReLU(),
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(8, 16, kernel_size=(3, 3), padding=1),
-            nn.BatchNorm2d(16),
-            nn.Dropout(dropout),
-            nn.ReLU(),
-        )
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=(3, 3), padding=1),
+            nn.Conv2d(1, 32, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(32),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=(3, 3), padding=0),
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=(3, 3), padding=1),
             nn.BatchNorm2d(64),
+            nn.Dropout(dropout),
+            nn.ReLU(),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=(3, 3), padding=1),
+            nn.BatchNorm2d(128),
+            nn.Dropout(dropout),
+            nn.ReLU(),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=(3, 3), padding=0),
+            nn.BatchNorm2d(256),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
@@ -286,23 +254,23 @@ class Decoder2(nn.Module):
     def __init__(self, in_shape, n_batches, layer1, layer2, dropout):
         super(Decoder2, self).__init__()
         self.deconv4 = nn.Sequential(
-            nn.ConvTranspose2d(8, 1, kernel_size=(3, 3), stride=(1, 1), padding=1),
+            nn.ConvTranspose2d(32, 1, kernel_size=(3, 3), stride=(1, 1), padding=1),
         )
         self.deconv3 = nn.Sequential(
-            nn.ConvTranspose2d(16, 8, kernel_size=(3, 3), stride=(1, 1), padding=1),
-            nn.BatchNorm2d(8),
+            nn.ConvTranspose2d(64, 32, kernel_size=(3, 3), stride=(1, 1), padding=1),
+            nn.BatchNorm2d(32),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
         self.deconv2 = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=1),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(128, 64, kernel_size=(3, 3), stride=(1, 1), padding=1),
+            nn.BatchNorm2d(64),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
         self.deconv1 = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2, padding=0),
-            nn.BatchNorm2d(32),
+            nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2, padding=0),
+            nn.BatchNorm2d(128),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
@@ -377,14 +345,14 @@ class SHAPAutoEncoder2(nn.Module):
             self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
             self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, 64, n_layers=2)
+        self.mapper = Classifier(n_batches + 1, 256, n_layers=2)
 
         if variational:
-            self.gaussian_sampling = GaussianSample(64, 64, device)
+            self.gaussian_sampling = GaussianSample(256, 256, device)
         else:
             self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(64, 64, n_batches)
-        self.classifier = Classifier(64 + n_emb, nb_classes, n_layers=n_layers)
+        self.dann_discriminator = Classifier2(256, 256, n_batches)
+        self.classifier = Classifier(256 + n_emb, nb_classes, n_layers=n_layers)
         self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
         self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
         self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
@@ -511,14 +479,14 @@ class AutoEncoder2(nn.Module):
             self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
             self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, 64, n_layers=2)
+        self.mapper = Classifier(n_batches + 1, 256, n_layers=2)
 
         if variational:
-            self.gaussian_sampling = GaussianSample(64, 64, device)
+            self.gaussian_sampling = GaussianSample(256, 256, device)
         else:
             self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(64, 64, n_batches)
-        self.classifier = Classifier(64 + n_emb, nb_classes, n_layers=n_layers)
+        self.dann_discriminator = Classifier2(256, 256, n_batches)
+        self.classifier = Classifier(256 + n_emb, nb_classes, n_layers=n_layers)
         self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), MeanAct())
         self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
         self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())

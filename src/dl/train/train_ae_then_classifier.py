@@ -150,7 +150,7 @@ class TrainAE:
             params['thres'] = 0
 
         # params['dropout'] = 0
-        params['smoothing'] = 0
+        # params['smoothing'] = 0
         # params['margin'] = 0
         # params['wd'] = 0
         print(params)
@@ -173,7 +173,8 @@ class TrainAE:
 
         self.args.scaler = scale
         self.args.warmup = params['warmup']
-        self.args.n_features = params['n_features']
+        # self.args.n_features = params['n_features']
+        self.args.n_features = -1
         # self.args.disc_b_warmup = params['disc_b_warmup']
 
         optimizer_type = 'adam'
@@ -420,7 +421,7 @@ class TrainAE:
                     if warmup or self.args.train_after_warmup:
                         optimizer_ae.zero_grad()
                     inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                        neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
+                        neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = all_batch
                     inputs = inputs.to(self.args.device).float()
                     meta_inputs = meta_inputs.to(self.args.device).float()
                     to_rec = to_rec.to(self.args.device).float()
@@ -614,7 +615,7 @@ class TrainAE:
             if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
                     values['valid']['mcc']) > self.args.n_agg:
                 print(f"Best Classification Mcc Epoch {epoch}, "
-                      f"Acc: {values['test']['acc'][-1]}"
+                      f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
                       f"Mcc: {values['test']['mcc'][-1]}"
                       f"Classification train loss: {values['train']['closs'][-1]},"
                       f" valid loss: {values['valid']['closs'][-1]},"
@@ -629,8 +630,8 @@ class TrainAE:
                 early_stop_counter = 0
 
             if values['valid']['acc'][-1] > best_acc:
-                print(f"Best Classification Acc Epoch {epoch}, "
-                      f"Acc: {values['test']['acc'][-1]}"
+                print(f"Best Classification Mcc Epoch {epoch}, "
+                      f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
                       f"Mcc: {values['test']['mcc'][-1]}"
                       f"Classification train loss: {values['train']['closs'][-1]},"
                       f" valid loss: {values['valid']['closs'][-1]},"
@@ -640,12 +641,12 @@ class TrainAE:
                 early_stop_counter = 0
 
             if values['valid']['closs'][-1] < best_closs:
-                print(f"Best Classification Loss Epoch {epoch}, "
-                      f"Acc: {values['test']['acc'][-1]} "
-                      f"Mcc: {values['test']['mcc'][-1]} "
-                      f"Classification train loss: {values['train']['closs'][-1]}, "
-                      f"valid loss: {values['valid']['closs'][-1]}, "
-                      f"test loss: {values['test']['closs'][-1]}")
+                print(f"Best Classification Mcc Epoch {epoch}, "
+                      f"Acc: test: {values['test']['acc'][-1]}, valid: {values['valid']['acc'][-1]}, train: {values['train']['acc'][-1]}"
+                      f"Mcc: {values['test']['mcc'][-1]}"
+                      f"Classification train loss: {values['train']['closs'][-1]},"
+                      f" valid loss: {values['valid']['closs'][-1]},"
+                      f" test loss: {values['test']['closs'][-1]}")
                 best_closs = values['valid']['closs'][-1]
                 early_stop_counter = 0
             else:
@@ -1165,7 +1166,7 @@ if __name__ == "__main__":
     parser.add_argument('--random_recs', type=int, default=0)
     parser.add_argument('--predict_tests', type=int, default=0)
     # parser.add_argument('--balanced_rec_loader', type=int, default=0)
-    parser.add_argument('--early_stop', type=int, default=20)
+    parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=0)
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
@@ -1199,7 +1200,7 @@ if __name__ == "__main__":
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
     parser.add_argument('--strategy', type=str, default='CU_')
-    parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
+    parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
 
@@ -1225,10 +1226,10 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 50]},
+        {"name": "warmup", "type": "range", "bounds": [50, 500]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
-         "values": ['binarize']},  # scaler whould be no for zinb
+         "values": ['minmax']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [32, 1024]},
         {"name": "n_features", "type": "range", "bounds": [1, 100]},
         {"name": "layer1", "type": "range", "bounds": [512, 2048]},
@@ -1237,7 +1238,7 @@ if __name__ == "__main__":
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
     if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
-        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
+        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-8, 1e-4], "log_scale": True}]
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]

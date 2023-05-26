@@ -213,6 +213,45 @@ def scale_data(scale, data, device='cpu'):
     return data, scaler
 
 
+def scale_data_images(scale, data, device='cpu'):
+    unique_batches = np.unique(data['batches']['all'])
+    scaler = None
+    if scale == 'binarize':
+        for group in list(data['inputs'].keys()):
+            data['inputs'][group] = data['inputs'][group]
+            data['inputs'][group][data['inputs'][group] > 0] = 1
+            data['inputs'][group][data['inputs'][group] <= 0] = 0
+
+    elif scale == 'standard':
+        # scaler = StandardScaler()
+        for data_type in ['inputs', 'meta']:
+            data[data_type]['all'] = data[data_type]['all'] - data[data_type]['all'].mean(axis=(1, 2), keepdims=True)
+            data[data_type]['all'] = data[data_type]['all'] / data[data_type]['all'].std(axis=(1, 2), keepdims=True)
+            for group in list(data[data_type].keys()):
+                if data[data_type][group].shape[0] > 0:
+                    data[data_type][group] = data[data_type][group] - data[data_type][group].mean(axis=(1, 2),
+                                                                                                  keepdims=True)
+                    data[data_type][group] = data[data_type][group] / data[data_type][group].std(axis=(1, 2),
+                                                                                                 keepdims=True)
+
+    elif scale == 'none':
+        return data, 'none'
+    # Values put on [0, 1] interval to facilitate autoencoder reconstruction (enable use of sigmoid as final activation)
+    # scaler = MinMaxScaler()
+    # scaler.fit(data['inputs']['all'])
+    # for group in list(data['inputs'].keys()):
+    #     if data['inputs'][group].shape[0] > 0:
+    #         columns = data['inputs'][group].columns
+    #         indices = data['inputs'][group].index
+    #         if data['inputs'][group].shape[0] > 0:
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #         else:
+    #             data['inputs'][group] = data['inputs'][group]
+    #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
+
+    return data, scaler
+
+
 def scale_data_per_batch(scale, data, device='cpu'):
     unique_batches = np.unique(data['batches']['all'])
     if scale == 'robust':

@@ -553,8 +553,8 @@ class TrainAE:
                                     nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
                                     optimizer_ae.step()
 
-                        else:
-                            ae = self.freeze_clayers(ae)
+                        # else:
+                        #     ae = self.freeze_clayers(ae)
 
                         if np.mean(traces['rec_loss']) < best_loss:
                             # "Every counters go to 0 when a better reconstruction loss is reached"
@@ -1189,7 +1189,7 @@ class TrainAE:
 
     def freeze_ae(self, ae):
         """
-        Freeze all layers except the classifier
+        Freeze all layers of ae
         Args:
             ae: AutoEncoder object. It inherits torch.nn.Module
 
