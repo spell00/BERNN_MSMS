@@ -4,7 +4,7 @@ n_emb=2
 dataset=alzheimer
 n_trials=20
 n_repeats=5
-exp_id=alzheimer_ae_classifier_20
+exp_id=alzheimer_ae_classifier_holdout_20
 for variational in 0 1
 do
 	for zinb in 0

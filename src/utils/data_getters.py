@@ -10,14 +10,12 @@ from torchvision.transforms import ToTensor, Compose, Grayscale, Resize, ToPILIm
 
 def get_harvard(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
     unique_labels = np.array([])
@@ -277,14 +275,12 @@ def get_harvard(path, args, seed=42):
 
 def get_amide(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
     unique_labels = np.array([])
@@ -479,14 +475,12 @@ def get_amide(path, args, seed=42):
 
 def get_prostate(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
     unique_labels = np.array([])
@@ -594,14 +588,12 @@ def get_prostate(path, args, seed=42):
 
 def get_mice(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
     unique_labels = np.array([])
@@ -878,14 +870,12 @@ def get_mnist(path, args, seed=42):
 
 def get_bacteria(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
     unique_labels = np.array([])
