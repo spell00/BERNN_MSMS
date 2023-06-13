@@ -1400,8 +1400,8 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-6, 1e-4], "log_scale": True},  # Best run: [1e-4, 1e-1]
-        {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},  # Best run: [1e-4, 1e-1]
+        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-1], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},

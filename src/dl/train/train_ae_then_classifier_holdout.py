@@ -55,12 +55,23 @@ class TrainAE:
 
         Args:
             args: contains multiple arguments passed in the command line
-            log_path: Path where the tensorboard logs are saved
-            path: Path to the data (in .csv format)
-            fix_thres: If 1 > fix_thres >= 0 then the threshold is fixed to that value.
+            log_path (str): Path where the tensorboard logs are saved
+            path (str): Path to the data (in .csv format)
+            fix_thres (float): If 1 > fix_thres >= 0 then the threshold is fixed to that value.
                        any other value means the threshold won't be fixed and will be
                        learned as an hyperparameter
-            load_tb: If True, loads previous runs already saved
+            load_tb (bool): If True, loads previous runs already saved
+            log_metrics (bool): Wether or not to keep the batch effect metrics
+            keep_models (bool): Wether or not to save the models trained
+                                (can take a lot of space if training a lot of models)
+            log_inputs (bool): Wether or not to log graphs or batch effect metrics
+                                of the scaled inputs
+            log_plots (bool): For each optimization iteration, on the first iteration, wether or
+                              not to plot PCA, UMAP, CCA and LDA of the encoded and reconstructed
+                              representations.
+            log_tb (bool): Wether or not to use tensorboard.
+            log_mlflow (bool): Wether or not to use mlflow.
+
         """
         self.hparams_names = None
         self.best_acc = 0

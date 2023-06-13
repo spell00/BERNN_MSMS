@@ -173,7 +173,7 @@ class TrainAE:
 
         self.args.scaler = scale
         self.args.warmup = params['warmup']
-        # self.args.n_features = params['n_features']
+        self.args.ncols = params['ncols']
         self.args.n_features = -1
         # self.args.disc_b_warmup = params['disc_b_warmup']
 
@@ -1222,17 +1222,22 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-1], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
+        # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [50, 500]},
+        {"name": "warmup", "type": "range", "bounds": [1, 100]},
+        {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
+
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
+        {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['minmax']},  # scaler whould be no for zinb
-        {"name": "layer2", "type": "range", "bounds": [32, 1024]},
-        {"name": "n_features", "type": "range", "bounds": [1, 100]},
-        {"name": "layer1", "type": "range", "bounds": [512, 2048]},
+         "values": ['robust', 'binarize', 'standard']},  # scaler whould be no for zinb
+        {"name": "layer2", "type": "range", "bounds": [2, 64]},
+        {"name": "layer1", "type": "range", "bounds": [2, 256]},
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()

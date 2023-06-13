@@ -296,17 +296,54 @@ def make_summary_plot(df, values, group, run, log_path, category='explainer', ml
 
     plt.close(f)
 
+def make_force_plot(df, values, features, group, run, log_path, category='explainer', mlops='mlflow'):
+    shap.force_plot(df, values, features=features, show=False)
+    f = plt.gcf()
+    if mlops == 'neptune':
+        run[f'shap/force_{category}/{group}_values'].upload(f)
+    if mlops == 'mlflow':
+        os.makedirs(f'{log_path}/shap/force_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/force_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/force_{category}/{group}_values.png')
+
+    plt.close(f)
+
+def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
+    shap.summary_plot(values, feature_names=df.columns, features=df, show=False)
+    f = plt.gcf()
+    if mlops == 'neptune':
+        run[f'shap/beeswarm_{category}/{group}_values'].upload(f)
+    if mlops == 'mlflow':
+        os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
+
+    plt.close(f)
+
 
 def make_decision_plot(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
     f = plt.gcf()
-    run[f'shap/decision_{category}/{group}_values'].upload(f)
     if mlops == 'neptune':
         run[f'shap/decision_{category}/{group}_values'].upload(f)
+        run[f'shap/decision_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/decision_{category}/{group}_values.png')
+    plt.close(f)
+
+
+def make_decision_deep(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
+    shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
+    f = plt.gcf()
+    if mlops == 'neptune':
+        run[f'shap/decision_{category}/{group}_values'].upload(f)
+        run[f'shap/decision_{category}/{group}_values'].upload(f)
+    if mlops == 'mlflow':
+        os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/decision_{category}/{group}_values.png')
     plt.close(f)
 
 
@@ -316,48 +353,61 @@ def make_multioutput_decision_plot(df, values, group, run, log_path, category='e
     if mlops == 'neptune':
         run[f'shap/multioutput_decision_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/multioutput_decision_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/multioutput_decision_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/multioutput_decision_{category}/{group}_values.png')
     plt.close(f)
 
 
 def make_group_difference_plot(values, mask, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.group_difference_plot(values.sum(1).to_numpy(), mask, show=False)
+    shap.group_difference_plot(values, mask, show=False)
     f = plt.gcf()
-    run[f'shap/gdiff_{category}/{group}'].upload(f)
     if mlops == 'neptune':
+        # run[f'shap/gdiff_{category}/{group}'].upload(f)
         run[f'shap/gdiff_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/gdiff_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/gdiff_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/gdiff_{category}/{group}_values.png')
     plt.close(f)
 
 
 def make_beeswarm_plot(values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.plots.beeswarm(values, max_display=20, show=False)
     f = plt.gcf()
-    run[f'shap/beeswarm_{category}/{group}'].upload(f)
     if mlops == 'neptune':
+        # run[f'shap/beeswarm_{category}/{group}'].upload(f)
         run[f'shap/beeswarm_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
     plt.close(f)
 
 
 def make_heatmap(values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.plots.heatmap(values, instance_order=values.values.sum(1).argsort(), max_display=20, show=False)
     f = plt.gcf()
-    run[f'shap/heatmap_{category}/{group}'].upload(f)
     if mlops == 'neptune':
+        # run[f'shap/heatmap_{category}/{group}'].upload(f)
         run[f'shap/heatmap_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/heatmap_{category}/{group}_values.png')
+    plt.close(f)
+
+def make_heatmap_deep(values, group, run, log_path, category='explainer', mlops='mlflow'):
+
+    shap.plots.heatmap(pd.DataFrame(values), instance_order=values.sum(1).argsort(), max_display=20, show=False)
+    f = plt.gcf()
+    if mlops == 'neptune':
+        # run[f'shap/heatmap_{category}/{group}'].upload(f)
+        run[f'shap/heatmap_{category}/{group}'].upload(f)
+    if mlops == 'mlflow':
+        os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/heatmap_{category}/{group}_values.png')
     plt.close(f)
 
 
@@ -369,22 +419,22 @@ def make_barplot(df, y, values, group, run, log_path, category='explainer', mlop
     if mlops == 'neptune':
         run[f'shap/bar_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/bar_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/bar_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/bar_{category}/{group}_values.png')
     plt.close(f)
 
 
 def make_bar_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.bar_plot(values, max_display=40, feature_names=df.columns, show=False)
     f = plt.gcf()
-    run[f'shap/barold_{category}/{group}'].upload(f)
     if mlops == 'neptune':
+        # run[f'shap/barold_{category}/{group}'].upload(f)
         run[f'shap/barold_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/barold_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/barold_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/barold_{category}/{group}_values.png')
     plt.close(f)
 
 
@@ -392,11 +442,11 @@ def make_dependence_plot(df, values, var, group, run, log_path, category='explai
     shap.dependence_plot(var, values[1], df, show=False)
     f = plt.gcf()
     if mlops == 'neptune':
-        run[f'shap/barold_{category}/{group}'].upload(f)
+        run[f'shap/dependence_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
+        os.makedirs(f'{log_path}/shap/dependence_{category}', exist_ok=True)
+        plt.savefig(f'{log_path}/shap/dependence_{category}/{group}_values.png')
+        mlflow.log_figure(f, f'{log_path}/shap/dependence_{category}/{group}_values.png')
     plt.close(f)
 
 
@@ -422,10 +472,10 @@ def log_explainer(model, x_df, labels, group, run, cats, log_path, device):
     make_heatmap(shap_values[:, :, 0], group, run, 'PermutExplainer')
 
     mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
-    # make_group_difference_plot(x_df, mask, group, run, 'PermutExplainer')
+    make_group_difference_plot(x_df.sum(1).to_numpy(), mask, group, run, 'PermutExplainer')
 
 
-def log_deep_explainer(model, x_df, labels, group, run, cats, log_path, mlops, device):
+def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log_path, mlops, device):
     unique_labels = np.unique(labels)
     # The explainer doesn't like tensors, hence the f function
     explainer = shap.DeepExplainer(model.to(device), torch.Tensor(x_df.values).to(device))
@@ -435,6 +485,9 @@ def log_deep_explainer(model, x_df, labels, group, run, cats, log_path, mlops, d
 
     # Summary plot
     make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
+    make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
+    make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
+    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):
@@ -447,7 +500,7 @@ def log_deep_explainer(model, x_df, labels, group, run, cats, log_path, mlops, d
     except:
         pass
 
-    mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
+    # mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
     # make_group_difference_plot(x_df, mask, group, run, 'DeepExplainer')
 
 
@@ -480,10 +533,10 @@ def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, l
     make_decision_plot(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'Kernel')
 
     mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
-    # make_group_difference_plot(x_df, mask, group, run, 'Kernel')
+    make_group_difference_plot(x_df.sum(1).to_numpy(), mask, group, run, 'Kernel')
 
 
-def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device):
+def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_deep_only=True):
     # explain all the predictions in the test set
     # explainer = shap.KernelExplainer(svc_linear.predict_proba, X_train[:100])
     os.makedirs(log_path, exist_ok=True)
@@ -504,20 +557,21 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device):
         # explainer = shap.DeepExplainer(ae, X_test)
         # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
         # explanation.values = explanation.values.detach().cpu().numpy()
-        log_deep_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
+        misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
+                                                              np.concatenate(best_lists[group]['cats']).argmax(1))]
+        log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
                            group, run, best_lists[group]['cats'], log_path, mlops, device
                            )
-        # TODO Problem with not enough memory...
-        # log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
-        #               group, run, best_lists[group]['cats'], log_path, device
-        #               )
-        # misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1), 
-        #                                                       np.concatenate(best_lists[group]['cats']).argmax(1))]
-        # log_kernel_explainer(ae, X_test_df, 
-        #                      misclassified,
-        #                      np.concatenate(best_lists[group]['labels']),
-        #                      group, run, best_lists[group]['cats'], log_path
-        #                      )
+        if not log_deep_only:
+            # TODO Problem with not enough memory...
+            log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
+                          group, run, best_lists[group]['cats'], log_path, device
+                          )
+            log_kernel_explainer(ae, X_test_df,
+                                 misclassified,
+                                 np.concatenate(best_lists[group]['labels']),
+                                 group, run, best_lists[group]['cats'], log_path
+                                 )
 
 
 def log_neptune(run, traces):

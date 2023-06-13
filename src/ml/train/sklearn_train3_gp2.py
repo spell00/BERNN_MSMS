@@ -19,6 +19,7 @@ import xgboost as xgb
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import f_classif
 from src.ml.import_data import get_harvard, get_prostate
+from src.utils.data_getters import get_amide, get_mice, get_bacteria1, get_cifar10
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -308,13 +309,14 @@ if __name__ == "__main__":
     parser.add_argument('--remove_zeros', type=int, default=1)
     parser.add_argument("--input_dir", type=str, help="Path to intensities csv file")
     parser.add_argument("--output_dir", type=str, default='results', help="Path to intensities csv file")
-    parser.add_argument('--path', type=str, default='./data/')
+    parser.add_argument('--path', type=str, default='./data/bacteria/')
     parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')
     parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')
     parser.add_argument('--cell_type', type=str, default="HepG2", help='')
     parser.add_argument('--csv_file', type=str, default="unique_genes.csv", help='')
-    parser.add_argument('--dataset', type=str, default="prostate", help='')
+    parser.add_argument('--dataset', type=str, default="bacteria", help='')
     parser.add_argument('--threshold', type=float, default=0, help='')
+    parser.add_argument('--ncols', type=int, default=1000, help='')
     args = parser.parse_args()
 
     args.destination = f"{args.output_dir}/{args.dataset}/corrected{args.correct_batches}/" \
@@ -346,6 +348,8 @@ if __name__ == "__main__":
     os.makedirs(f"{args.destination}/saved_models/sklearn/", exist_ok=True)
     if args.dataset == 'alzheimer':
         data, unique_labels, unique_batches = get_harvard(args)
+    elif args.dataset == 'bacteria':
+        data, unique_labels, unique_batches = get_bacteria1('data/bacteria', args)
     elif args.dataset == 'prostate':
         data, unique_labels, unique_batches = get_prostate(args, path='data')
     else:

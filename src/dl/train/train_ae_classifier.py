@@ -16,6 +16,7 @@ import copy
 import torch
 from torch import nn
 import os
+import sklearn
 
 from sklearn import metrics
 from tensorboardX import SummaryWriter
@@ -180,9 +181,9 @@ class TrainAE:
         self.args.warmup = params['warmup']
         self.args.disc_b_warmup = params['disc_b_warmup']
 
-        # ncols = params['ncols']
-        # if ncols > self.data['inputs']['all'].shape[1]:
-        #     ncols = self.data['inputs']['all'].shape[1]
+        self.args.ncols = params['ncols']
+        # if ncols > self.data['inputs']['train'].shape[1]:
+        #     self.args.ncols = self.data['inputs']['train'].shape[1]
 
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
@@ -254,6 +255,7 @@ class TrainAE:
             model["use_mapping"] = run["use_mapping"] = args.use_mapping
             model["dataset_name"] = run["dataset_name"] = args.dataset
             model["n_agg"] = run["n_agg"] = args.n_agg
+            model["path"] = run["path"] = args.path
         else:
             model = None
             run = None
@@ -313,6 +315,8 @@ class TrainAE:
         else:
             warmup = False
         self.warmup_disc_b = False
+        self.columns = None
+        self.log_deep_only = True
         if self.args.dataset == 'alzheimer':
             self.data, self.unique_labels, self.unique_batches = get_harvard(self.path, args, seed=seed)
             self.pools = True
@@ -323,6 +327,8 @@ class TrainAE:
         elif self.args.dataset == 'bacteria':
             self.data, self.unique_labels, self.unique_batches = get_bacteria(self.path, args, seed=seed)
             self.pools = False
+            self.columns = self.data['inputs']['train'].columns
+            self.log_deep_only = True
 
         elif self.args.dataset == 'prostate':
             self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
@@ -332,7 +338,6 @@ class TrainAE:
         else:
             exit('Wrong dataset name')
         # self.get_amide(self.path, seed=(1 + h) * 10)
-        self.columns = None
         self.make_samples_weights()
         # event_acc is used to verify if the hparams have already been tested. If they were,
         # the best classification loss is retrieved and we go to the next trial
@@ -418,6 +423,7 @@ class TrainAE:
 
             values, best_values, _, best_traces = get_empty_dicts()
 
+            # classif_order = [0, 1]
             early_stop_counter = 0
             best_vals = values
             for epoch in range(0, self.args.warmup):
@@ -453,7 +459,8 @@ class TrainAE:
                             continue
                         closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                          loaders[group], lists, traces, nu=0)
-
+                # cm = sklearn.metrics.confusion_matrix(np.concatenate(lists['valid']['classes']), np.concatenate(lists['valid']['preds']).argmax(1))
+                # classif_order = np.argsort([cm[i, i]/np.sum([np.sum(cm[i, :]), np.sum(cm[:, i])]) for i in range(len(cm))])[::-1]
                 traces = self.get_mccs(lists, traces)
                 values = log_traces(traces, values)
                 if self.log_tb:
@@ -474,12 +481,6 @@ class TrainAE:
                           f" valid loss: {values['valid']['closs'][-1]},"
                           f" test loss: {values['test']['closs'][-1]}")
                     self.best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
-                    torch.save(ae.state_dict(), f'{self.complete_log_path}/model.pth')
-                    best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
-                    best_vals = values.copy()
-                    best_vals['rec_loss'] = self.best_loss
-                    best_vals['dom_loss'] = self.best_dom_loss
-                    best_vals['dom_acc'] = self.best_dom_acc
                     early_stop_counter = 0
 
                 if values['valid']['acc'][-1] > self.best_acc:
@@ -501,6 +502,12 @@ class TrainAE:
                           f"valid loss: {values['valid']['closs'][-1]}, "
                           f"test loss: {values['test']['closs'][-1]}")
                     self.best_closs = values['valid']['closs'][-1]
+                    torch.save(ae.state_dict(), f'{self.complete_log_path}/model.pth')
+                    best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
+                    best_vals = values.copy()
+                    best_vals['rec_loss'] = self.best_loss
+                    best_vals['dom_loss'] = self.best_dom_loss
+                    best_vals['dom_acc'] = self.best_dom_acc
                     early_stop_counter = 0
                 else:
                     # if epoch > self.warmup:
@@ -536,7 +543,7 @@ class TrainAE:
             #                       epoch])
             # daemon.start()
             self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae,
-                         shap_ae, 0, epoch)
+                         shap_ae, 1, epoch)
             del ae, shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
@@ -660,17 +667,17 @@ class TrainAE:
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 0, 'mlflow',
                              self.complete_log_path,
-                             self.args.device)
+                             self.args.device, self.log_deep_only)
                 if self.log_neptune:
                     log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
                              self.complete_log_path,
-                             self.args.device)
+                             self.args.device, self.log_deep_only)
                     log_plots(run, best_lists, 'neptune', epoch)
                 if self.log_mlflow:
+                    log_plots(None, best_lists, 'mlflow', epoch)
                     log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
                              self.complete_log_path,
-                             self.args.device)
-                    log_plots(None, best_lists, 'mlflow', epoch)
+                             self.args.device, self.log_deep_only)
 
         # columns = self.data['inputs']['all'].columns
         # if self.args.n_meta == 2:
@@ -1284,7 +1291,8 @@ if __name__ == "__main__":
     parser.add_argument('--bs', type=int, default=8, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
-    parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--log1p', type=int, default=0, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--binary', type=int, default=0, help='blk vs bact^')
 
     args = parser.parse_args()
     try:
@@ -1304,22 +1312,22 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-2, 1e-1], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-1], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 250]},
+        {"name": "warmup", "type": "range", "bounds": [1, 100]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
-        {"name": "ncols", "type": "range", "bounds": [20, 10000]},
+        {"name": "ncols", "type": "range", "bounds": [20, 1000]},
         {"name": "scaler", "type": "choice",
-         "values": ['binarize']},  # scaler whould be no for zinb
-        {"name": "layer2", "type": "range", "bounds": [1, 32]},
-        {"name": "layer1", "type": "range", "bounds": [1, 64]},
+         "values": ['robust', 'standard']},  # scaler whould be no for zinb
+        {"name": "layer2", "type": "range", "bounds": [2, 32]},
+        {"name": "layer1", "type": "range", "bounds": [2, 64]},
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()

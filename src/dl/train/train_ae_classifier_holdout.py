@@ -340,7 +340,8 @@ class TrainAE:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
             else:
                 exit('Wrong dataset name')
-            # self.get_amide(self.path, seed=(1 + h) * 10)
+
+
             combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                np.unique(self.data['batches']['valid']),
                                                np.unique(self.data['batches']['test']))))
@@ -444,7 +445,6 @@ class TrainAE:
                 if h > 1:  # or warmup_counter == 100:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                     print(f"\n\nNO WARMUP\n\n")
-                # while new_combinations:
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
                         if early_stop_counter == self.args.early_stop:
