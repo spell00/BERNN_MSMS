@@ -86,8 +86,9 @@ def plot_confusion_matrix(cm, class_names, acc):
     """
     figure = plt.figure(figsize=(8, 8))
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title(f"Confusion matrix (Acc: {np.mean(acc)})")
+    plt.title(f"Confusion matrix (Acc: {np.round(np.mean(acc), 2)})")
     plt.colorbar()
+    plt.grid(b=None)
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)
@@ -101,9 +102,10 @@ def plot_confusion_matrix(cm, class_names, acc):
         color = "white" if cm[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
 
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
+
     return figure
 
 
@@ -143,7 +145,7 @@ class LogConfusionMatrix:
 
             acc = np.mean([0 if pred != c else 1 for pred, c in zip(preds, classes)])
 
-            figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes))], acc=acc)
+            figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc)
             if mlops == "tensorboard":
                 logger.add_figure(f"CM_{group}_all", figure, epoch)
             elif mlops == "neptune":
