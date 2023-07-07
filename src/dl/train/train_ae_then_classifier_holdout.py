@@ -1,3 +1,7 @@
+NEPTUNE_API_TOKEN = "YOUR-API-KEY"
+NEPTUNE_PROJECT_NAME = "YOUR-PROJECT-NAME"
+NEPTUNE_MODEL_NAME = "YOUR-MODEL-NAME"
+
 import matplotlib
 from src.utils.pool_metrics import log_pool_metrics
 
@@ -210,13 +214,14 @@ class TrainAE:
         if self.log_neptune:
             # Create a Neptune run object
             run = neptune.init_run(
-                project="your/project",
-                api_token="someverylongtoken",
-            )
+                project=NEPTUNE_PROJECT_NAME,
+                api_token=NEPTUNE_API_TOKEN,
+            )  # your credentials
             model = neptune.init_model_version(
-                model="MODELKEY",
-                project="your/project",
-                api_token="someverylongtoken",
+                model=NEPTUNE_MODEL_NAME,
+                project=NEPTUNE_PROJECT_NAME,
+                api_token=NEPTUNE_API_TOKEN,
+                # your credentials
             )
             run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
             run["metadata"].track_files(
