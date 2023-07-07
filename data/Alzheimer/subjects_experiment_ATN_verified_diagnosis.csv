@@ -1,496 +1,980 @@
-,SampleID,Record ID,Event Name,Gender,MMSE,Age at time of LP (yrs),SEA Primary Neurological Diagnosis,SEA Neurocognitive Category,SEA Neurological Category,SimpleDx,CSF ATN Status Binary,visit,ATN_diagnosis
-1,1101_1,v1101,1st LP (Arm 1: Collection Dates),Male,NA,58,Essential tremor,CU Other/NOS,Movement NOS,CU,A- T- N-,1,CU
-2,1111_1,v1111,1st LP (Arm 1: Collection Dates),Female,NA,56,Bell's palsy,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-3,1136_1,v1136,1st LP (Arm 1: Collection Dates),Male,NA,78,Parkinson's disease,CU Other Neurodegen,Neurodegenerative,CU,A- T- N-,1,CU
-4,1243_1,v1243,1st LP (Arm 1: Collection Dates),Male,NA,57,Neurological symptoms NOS,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-5,1264_1,v1264,1st LP (Arm 1: Collection Dates),Male,NA,70,"Peripheral neuropathy, small fiber",CU Other/NOS,Immune,CU,A- T- N-,1,CU
-6,1270_1,v1270,1st LP (Arm 1: Collection Dates),Female,NA,69,Parkinsonism,CU Other/NOS,Movement NOS,CU,A- T- N-,1,CU
-7,1289_1,v1289,1st LP (Arm 1: Collection Dates),Female,NA,81,"Peripheral neuropathy, small fiber",CU Other/NOS,Immune,CU,A- T- N-,1,CU
-8,1300_1,v1300,1st LP (Arm 1: Collection Dates),Male,NA,58,Idiopathic Intracranial Hypertension,CU Other/NOS,CSF,CU,A- T- N-,1,CU
-9,1313_1,v1313,1st LP (Arm 1: Collection Dates),Female,NA,72,Polyneuropathy,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-10,1318_1,v1318,1st LP (Arm 1: Collection Dates),Male,NA,57,Parkinson's disease,CU Other Neurodegen,Neurodegenerative,CU,A- T- N-,1,CU
-11,1331_1,v1331,1st LP (Arm 1: Collection Dates),Male,NA,66,Cranial neuropathies,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-12,1338_1,v1338,1st LP (Arm 1: Collection Dates),Female,NA,69,Gait disorder NOS,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-13,1347_1,v1347,1st LP (Arm 1: Collection Dates),Female,NA,63,Stiff Person Syndrome GAD65+,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-14,1371_1,v1371,1st LP (Arm 1: Collection Dates),Female,NA,61,Polyneuropathy,CU Other/NOS,Demyelinating,CU,A- T- N-,1,CU
-15,1425_1,v1425,1st LP (Arm 1: Collection Dates),Male,NA,60,Neurosarcoidosis,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-16,1437_1,v1437,1st LP (Arm 1: Collection Dates),Male,NA,66,Polyneuropathy,CU Other/NOS,Demyelinating,CU,A- T- N-,1,CU
-17,1450_1,v1450,1st LP (Arm 1: Collection Dates),Female,NA,59,Neurosarcoidosis,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-18,1454_1,v1454,1st LP (Arm 1: Collection Dates),Female,NA,70,Trigeminal neuralgia,CU Other/NOS,Vascular,CU,A- T- N-,1,CU
-19,1465_1,v1465,1st LP (Arm 1: Collection Dates),Female,NA,71,"Ependymoma, spinal cord",CU Other/NOS,Neoplasm,CU,A- T- N-,1,CU
-20,1478_1,v1478,1st LP (Arm 1: Collection Dates),Female,NA,73,Polyneuropathy,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-21,1533_1,v1533,1st LP (Arm 1: Collection Dates),Female,30 (3/26/18),58,Anxiety,CU Other/NOS,Psychiatric,CU,A- T- N-,1,CU
-22,1552_1,v1552,1st LP (Arm 1: Collection Dates),Female,NA,59,No CNS disease,CU Other/NOS,None,CU,A- T- N-,1,CU
-23,1553_1,v1553,1st LP (Arm 1: Collection Dates),Female,NA,56,"Cerebellar degeneration, autoimmune",CU Other/NOS,Immune,CU,A- T- N-,1,CU
-24,1559_1,v1559,1st LP (Arm 1: Collection Dates),Female,NA,58,Sleep disorder,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-25,1572_1,v1572,1st LP (Arm 1: Collection Dates),Female,NA,56,Dystonia,CU Other/NOS,Movement NOS,CU,A- T- N-,1,CU
-26,1573_1,v1573,1st LP (Arm 1: Collection Dates),Female,NA,73,Headache NOS,CU Other/NOS,Headache,CU,A- T- N-,1,CU
-27,1588_1,v1588,1st LP (Arm 1: Collection Dates),Male,NA,56,Multiple sclerosis,CU Other/NOS,Demyelinating,CU,A- T- N-,1,CU
-28,1608_1,v1608,1st LP (Arm 1: Collection Dates),Female,NA,78,Parkinson's disease,CU Other Neurodegen,Neurodegenerative,CU,A- T- N-,1,CU
-29,1621_1,v1621,1st LP (Arm 1: Collection Dates),Female,NA,55,Chronic neuropathic pain,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-30,1645_1,v1645,1st LP (Arm 1: Collection Dates),Female,NA,66,Functional Neurological Disorder,CU Other/NOS,Psychiatric,CU,A- T- N-,1,CU
-31,1658_1,v1658,1st LP (Arm 1: Collection Dates),Female,NA,59,Uveitis,CU Other/NOS,None,CU,A- T- N-,1,CU
-32,1660_1,v1660,1st LP (Arm 1: Collection Dates),Female,NA,59,Headache NOS,CU Other/NOS,Headache,CU,A- T- N-,1,CU
-33,1664_1,v1664,1st LP (Arm 1: Collection Dates),Male,NA,56,Polyneuropathy,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-34,1669_1,v1669,1st LP (Arm 1: Collection Dates),Female,NA,59,"Spastic paraparesis, NOS",CU Other/NOS,NOS,CU,A- T- N-,1,CU
-35,1679_1,v1679,1st LP (Arm 1: Collection Dates),Female,NA,85,Cranial neuropathies,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-36,1683_1,v1683,1st LP (Arm 1: Collection Dates),Female,NA,74,Parkinsonism,CU Other Neurodegen,Neurodegenerative,CU,A- T- N-,1,CU
-37,1692_1,v1692,1st LP (Arm 1: Collection Dates),Male,NA,70,"Peripheral neuropathy, small fiber",CU Other/NOS,NOS,CU,A- T- N-,1,CU
-38,1697_1,v1697,1st LP (Arm 1: Collection Dates),Male,NA,68,Parkinsonism,CU Other/NOS,Movement NOS,CU,A- T- N-,1,CU
-39,1705_1,v1705,1st LP (Arm 1: Collection Dates),Female,NA,69,Cranial neuropathies,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-40,1726_1,v1726,1st LP (Arm 1: Collection Dates),Male,NA,73,Parkinsonism,CU Other/NOS,Neurodegenerative,CU,A- T- N-,1,CU
-41,1727_1,v1727,1st LP (Arm 1: Collection Dates),Male,NA,56,Polyneuropathy,CU Other/NOS,Vascular,CU,A- T- N-,1,CU
-42,1748_1,v1748,1st LP (Arm 1: Collection Dates),Male,NA,78,Polyneuropathy,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-43,1760_1,v1760,1st LP (Arm 1: Collection Dates),Male,NA,68,Clinically isolated syndrome,CU Other/NOS,Demyelinating,CU,A- T- N-,1,CU
-44,1767_1,v1767,1st LP (Arm 1: Collection Dates),Male,NA,57,Cognitve complaints,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-45,1781_1,v1781,1st LP (Arm 1: Collection Dates),Female,NA,62,Motor Neuron Disease,CU Other Neurodegen,Neurodegenerative,CU,A- T- N-,1,CU
-46,1782_1,v1782,1st LP (Arm 1: Collection Dates),Female,NA,59,Anoxic/ischemic brain inuury,CU Other/NOS,Vascular,CU,A- T- N-,1,CU
-47,1793_1,v1793,1st LP (Arm 1: Collection Dates),Female,NA,63,Motor Neuron Disease,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-48,1794_1,v1794,1st LP (Arm 1: Collection Dates),Male,NA,57,Headache NOS,CU Other/NOS,Headache,CU,A- T- N-,1,CU
-49,1796_1,v1796,1st LP (Arm 1: Collection Dates),Female,NA,65,Fibromyalgia syndrome,CU Other/NOS,Psychiatric,CU,A- T- N-,1,CU
-50,1810_1,v1810,1st LP (Arm 1: Collection Dates),Female,NA,55,Uveitis,CU Other/NOS,Immune,CU,A- T- N-,1,CU
-51,1811_1,v1811,1st LP (Arm 1: Collection Dates),Male,NA,66,Gait disorder NOS,CU Other/NOS,NOS,CU,A- T- N-,1,CU
-52,1071_1,v1071,1st LP (Arm 1: Collection Dates),Male,29 (5/2016) 26 (6/2016),81,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A+ T+ N-,1,NPH
-53,1090_1,v1090,1st LP (Arm 1: Collection Dates),Female,28 (6/30/2016),70,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T- N-,1,NPH
-54,1125_1,v1125,1st LP (Arm 1: Collection Dates),Male,NA,63,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A+ T- N-,1,NPH
-55,1165_1,v1165,1st LP (Arm 1: Collection Dates),Male,NA,74,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-56,1173_1,v1173,1st LP (Arm 1: Collection Dates),Male,28 (9/21/2015),70,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-57,1187_1,v1187,1st LP (Arm 1: Collection Dates),Female,NA,82,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A+ T+ N+,1,NPH
-58,1198_1,v1198,1st LP (Arm 1: Collection Dates),Male,NA,69,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-59,1210_1,v1210,1st LP (Arm 1: Collection Dates),Female,NA,73,Normal Pressure Hydrocephalus,Dementia NPH,CSF,NPH,A- T- N-,1,NPH
-60,1213_1,v1213,1st LP (Arm 1: Collection Dates),Female,NA,75,Normal Pressure Hydrocephalus,Dementia NPH,CSF,NPH,A- T- N-,1,NPH
-61,1219_1,v1219,1st LP (Arm 1: Collection Dates),Male,NA,78,Normal Pressure Hydrocephalus,CU Other Neurodegen,CSF,CU,A+ T+ N+,1,NPH
-62,1257_1,v1257,1st LP (Arm 1: Collection Dates),Female,NA,66,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T- N-,1,NPH
-63,1271_1,v1271,1st LP (Arm 1: Collection Dates),Female,NA,72,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,NA,1,NPH
-64,1276_1,v1276,1st LP (Arm 1: Collection Dates),Female,25 (8/30/2016),80,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T- N-,1,NPH
-65,1287_1,v1287,1st LP (Arm 1: Collection Dates),Male,21 (3/16/2017),81,Normal Pressure Hydrocephalus,Dementia NPH,CSF,NPH,NA,1,NPH
-66,1292_1,v1292,1st LP (Arm 1: Collection Dates),Female,NA,77,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T- N-,1,NPH
-67,1301_1,v1301,1st LP (Arm 1: Collection Dates),Male,24 (4/18/2017),81,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T+ N+,1,NPH
-68,1307_1,v1307,1st LP (Arm 1: Collection Dates),Male,NA,77,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-69,1319_1,v1319,1st LP (Arm 1: Collection Dates),Male,NA,81,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T+ N+,1,NPH
-70,1320_1,v1320,1st LP (Arm 1: Collection Dates),Female,NA,72,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-71,1333_1,v1333,1st LP (Arm 1: Collection Dates),Male,NA,66,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-72,1351_1,v1351,1st LP (Arm 1: Collection Dates),Female,NA,80,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T- N-,1,NPH
-73,1352_1,v1352,1st LP (Arm 1: Collection Dates),Male,NA,66,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-74,1383_1,v1383,1st LP (Arm 1: Collection Dates),Male,NA,78,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-75,1398_1,v1398,1st LP (Arm 1: Collection Dates),Male,NA,78,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-76,1405_1,v1405,1st LP (Arm 1: Collection Dates),Male,NA,77,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-77,1409_1,v1409,1st LP (Arm 1: Collection Dates),Male,NA,77,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T- N-,1,NPH
-78,1428_1,v1428,1st LP (Arm 1: Collection Dates),Male,NA,81,Normal Pressure Hydrocephalus,Dementia NPH,CSF,NPH,A+ T+ N+,1,NPH
-79,1429_1,v1429,1st LP (Arm 1: Collection Dates),Female,NA,73,Normal Pressure Hydrocephalus,MCI Other Neurodegen,CSF,MCI-AD,A- T- N-,1,NPH
-80,1446_1,v1446,1st LP (Arm 1: Collection Dates),Male,NA,74,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N+,1,NPH
-81,1472_1,v1472,1st LP (Arm 1: Collection Dates),Male,NA,76,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-82,1484_1,v1484,1st LP (Arm 1: Collection Dates),Female,NA,60,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-83,1487_1,v1487,1st LP (Arm 1: Collection Dates),Male,NA,94,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-84,1493_1,v1493,1st LP (Arm 1: Collection Dates),Female,NA,58,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-85,1513_1,v1513,1st LP (Arm 1: Collection Dates),Female,"8 (2/9/18, pre-lp), 10 (2/9/18, post-lp)",83,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A+ T- N+,1,NPH
-86,1539_1,v1539,1st LP (Arm 1: Collection Dates),Male,NA,71,Normal Pressure Hydrocephalus,CU Other/NOS,CSF,CU,A- T- N-,1,NPH
-87,1560_1,v1560,1st LP (Arm 1: Collection Dates),Female,NA,69,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T- N-,1,NPH
-88,1574_1,v1574,1st LP (Arm 1: Collection Dates),Female,NA,91,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-89,1580_1,v1580,1st LP (Arm 1: Collection Dates),Male,NA,64,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T- N-,1,NPH
-90,1581_1,v1581,1st LP (Arm 1: Collection Dates),Female,NA,57,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-91,1585_1,v1585,1st LP (Arm 1: Collection Dates),Male,NA,70,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-92,1593_1,v1593,1st LP (Arm 1: Collection Dates),Male,NA,74,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N+,1,NPH
-93,1601_1,v1601,1st LP (Arm 1: Collection Dates),Male,30 (3/8/2018); 29 (4/30/2018),73,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-94,1603_1,v1603,1st LP (Arm 1: Collection Dates),Male,NA,81,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-95,1606_1,v1606,1st LP (Arm 1: Collection Dates),Male,NA,84,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-96,1642_1,v1642,1st LP (Arm 1: Collection Dates),Female,NA,74,Normal Pressure Hydrocephalus,CU NPH,CSF,MCI-AD,A- T- N-,1,NPH
-97,1650_1,v1650,1st LP (Arm 1: Collection Dates),Male,NA,81,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-98,1681_1,v1681,1st LP (Arm 1: Collection Dates),Female,NA,75,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-99,1690_1,v1690,1st LP (Arm 1: Collection Dates),Male,NA,69,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-100,1696_1,v1696,1st LP (Arm 1: Collection Dates),Male,NA,91,Normal Pressure Hydrocephalus,MCI AD Mixed,"CSF, Neurodegenerative",MCI-AD,A+ T+ N+,1,NPH
-101,1706_1,v1706,1st LP (Arm 1: Collection Dates),Female,NA,82,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T+ N-,1,NPH
-102,1710_1,v1710,1st LP (Arm 1: Collection Dates),Male,NA,76,Normal Pressure Hydrocephalus,MCI Other/NOS,CSF,MCI-other,A- T+ N+,1,NPH
-103,1715_1,v1715,1st LP (Arm 1: Collection Dates),Male,NA,83,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-104,1725_1,v1725,1st LP (Arm 1: Collection Dates),Male,NA,81,Normal Pressure Hydrocephalus,CU Other/NOS,CSF,CU,NA,1,NPH
-105,1762_1,v1762,1st LP (Arm 1: Collection Dates),Female,NA,66,Normal Pressure Hydrocephalus,MCI Other/NOS,"CSF, Neurodegenerative",MCI-other,A- T- N-,1,NPH
-106,1770_1,v1770,1st LP (Arm 1: Collection Dates),Male,NA,77,Normal Pressure Hydrocephalus,MCI Other/NOS,"CSF, Neurodegenerative",MCI-other,A- T- N-,1,NPH
-107,1807_1,v1807,1st LP (Arm 1: Collection Dates),Male,NA,65,Normal Pressure Hydrocephalus,MCI NPH,CSF,NPH,A- T- N-,1,NPH
-108,1808_1,v1808,1st LP (Arm 1: Collection Dates),Male,NA,78,Normal Pressure Hydrocephalus,Dementia Other/NOS,CSF,DEM-other,A- T- N-,1,NPH
-109,1068_1,v1068,1st LP (Arm 1: Collection Dates),Male,NA,71,MCI NOS,MCI Other/NOS,Neurodegenerative,MCI-other,A- T- N-,1,MCI-other
-110,1100_1,v1100,1st LP (Arm 1: Collection Dates),Female,NA,56,"FTD, primary progressibve aphasia, sv",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-111,1108_1,v1108,1st LP (Arm 1: Collection Dates),Male,NA,72,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T+ N+,1,MCI-other
-112,1117_1,v1117,1st LP (Arm 1: Collection Dates),Male,NA,73,Neurosyphilis,MCI Other/NOS,Immune,MCI-other,A- T- N-,1,MCI-other
-113,1120_1,v1120,1st LP (Arm 1: Collection Dates),Male,NA,76,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-114,1121_1,v1121,1st LP (Arm 1: Collection Dates),Male,17 (2/27/2017),58,FTD NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T+ N-,1,MCI-other
-115,1123_1,v1123,1st LP (Arm 1: Collection Dates),Female,NA,57,Anxiety,MCI Other/NOS,Psychiatric,MCI-other,A- T- N-,1,MCI-other
-116,1132_1,v1132,1st LP (Arm 1: Collection Dates),Male,NA,56,Neurosarcoidosis,MCI Other/NOS,Immune,MCI-other,A- T+ N+,1,MCI-other
-117,1202_1,v1202,1st LP (Arm 1: Collection Dates),Male,15 (3/2016),61,Alcohol abuse,MCI Other/NOS,Trauma,MCI-other,A- T- N-,1,MCI-other
-118,1208_1,v1208,1st LP (Arm 1: Collection Dates),Male,NA,79,Corticobasal syndrome,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-119,1228_1,v1228,1st LP (Arm 1: Collection Dates),Male,NA,60,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-120,1229_1,v1229,1st LP (Arm 1: Collection Dates),Female,NA,65,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N+,1,MCI-other
-121,1244_1,v1244,1st LP (Arm 1: Collection Dates),Male,NA,64,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-122,1250_1,v1250,1st LP (Arm 1: Collection Dates),Female,NA,72,Progressive supranuclear palsy,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-123,1256_1,v1256,1st LP (Arm 1: Collection Dates),Male,NA,79,Superficial siderosis,MCI Other/NOS,Vascular,MCI-other,A- T+ N+,1,MCI-other
-124,1284_1,v1284,1st LP (Arm 1: Collection Dates),Male,NA,65,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-125,1299_1,v1299,1st LP (Arm 1: Collection Dates),Female,NA,66,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N+,1,MCI-other
-126,1303_1,v1303,1st LP (Arm 1: Collection Dates),Male,NA,80,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T+ N+,1,MCI-other
-127,1305_1,v1305,1st LP (Arm 1: Collection Dates),Female,NA,66,Functional Neurological Disorder,MCI Other/NOS,Psychiatric,MCI-other,A- T- N-,1,MCI-other
-128,1315_1,v1315,1st LP (Arm 1: Collection Dates),Male,NA,66,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-129,1324_1,v1324,1st LP (Arm 1: Collection Dates),Male,NA,72,Gait disorder NOS,MCI Other/NOS,Immune,MCI-other,A- T- N-,1,MCI-other
-130,1329_1,v1329,1st LP (Arm 1: Collection Dates),Male,NA,68,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-131,1332_1,v1332,1st LP (Arm 1: Collection Dates),Female,NA,65,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-132,1354_1,v1354,1st LP (Arm 1: Collection Dates),Male,NA,79,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-133,1357_1,v1357,1st LP (Arm 1: Collection Dates),Male,29 (3/16/2017),60,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-134,1366_1,v1366,1st LP (Arm 1: Collection Dates),Male,NA,84,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-135,1408_1,v1408,1st LP (Arm 1: Collection Dates),Male,NA,77,MCI NOS,MCI Other/NOS,Neurodegenerative,MCI-other,A- T+ N-,1,MCI-other
-136,1423_1,v1423,1st LP (Arm 1: Collection Dates),Female,NA,75,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-137,1444_1,v1444,1st LP (Arm 1: Collection Dates),Male,NA,55,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-138,1447_1,v1447,1st LP (Arm 1: Collection Dates),Male,25 (9/12/2017),57,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T+ N+,1,MCI-other
-139,1449_1,v1449,1st LP (Arm 1: Collection Dates),Male,NA,71,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-140,1452_1,v1452,1st LP (Arm 1: Collection Dates),Female,NA,60,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-141,1459_1,v1459,1st LP (Arm 1: Collection Dates),Female,NA,73,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-142,1467_1,v1467,1st LP (Arm 1: Collection Dates),Male,NA,72,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-143,1477_1,v1477,1st LP (Arm 1: Collection Dates),Female,NA,67,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-144,1482_1,v1482,1st LP (Arm 1: Collection Dates),Male,NA,69,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-145,1485_1,v1485,1st LP (Arm 1: Collection Dates),Male,NA,72,Brachial plexopathy,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-146,1494_1,v1494,1st LP (Arm 1: Collection Dates),Male,NA,77,Multiple infarcts,MCI Other/NOS,Vascular,MCI-other,A- T- N+,1,MCI-other
-147,1502_1,v1502,1st LP (Arm 1: Collection Dates),Male,NA,77,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-148,1505_1,v1505,1st LP (Arm 1: Collection Dates),Male,NA,74,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-149,1507_1,v1507,1st LP (Arm 1: Collection Dates),Male,NA,75,Progressive supranuclear palsy,MCI Other/NOS,Neurodegenerative,MCI-other,A- T+ N+,1,MCI-other
-150,1511_1,v1511,1st LP (Arm 1: Collection Dates),Female,21 (1/24/2018),62,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N+,1,MCI-other
-151,1517_1,v1517,1st LP (Arm 1: Collection Dates),Female,NA,67,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-152,1531_1,v1531,1st LP (Arm 1: Collection Dates),Male,NA,58,Headache NOS,MCI Other/NOS,Immune,MCI-other,A- T- N-,1,MCI-other
-153,1542_1,v1542,1st LP (Arm 1: Collection Dates),Female,NA,58,"FTD, behavioral variant",MCI Other/NOS,Neurodegenerative,MCI-other,A- T- N-,1,MCI-other
-154,1545_1,v1545,1st LP (Arm 1: Collection Dates),Female,NA,55,Fibromyalgia syndrome,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-155,1554_1,v1554,1st LP (Arm 1: Collection Dates),Male,NA,78,MCI AD,MCI AD Mixed,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-156,1563_1,v1563,1st LP (Arm 1: Collection Dates),Male,NA,73,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-157,1568_1,v1568,1st LP (Arm 1: Collection Dates),Male,NA,77,Cognitive complaints,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-158,1571_1,v1571,1st LP (Arm 1: Collection Dates),Male,NA,74,"FTD, primary progressive aphasia, nfv",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-159,1582_1,v1582,1st LP (Arm 1: Collection Dates),Male,NA,76,Dementia with Lewy bodies,MCI Other/NOS,Neurodegenerative,MCI-other,A- T- N-,1,MCI-other
-160,1583_1,v1583,1st LP (Arm 1: Collection Dates),Female,NA,67,FTD NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-161,1595_1,v1595,1st LP (Arm 1: Collection Dates),Female,NA,61,MCI AD,MCI AD Mixed,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-162,1607_1,v1607,1st LP (Arm 1: Collection Dates),Male,NA,67,Gait disorder NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-163,1609_1,v1609,1st LP (Arm 1: Collection Dates),Male,NA,72,FTD NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-164,1610_1,v1610,1st LP (Arm 1: Collection Dates),Male,NA,63,Meningitis history,MCI Other/NOS,Immune,MCI-other,A- T- N-,1,MCI-other
-165,1620_1,v1620,1st LP (Arm 1: Collection Dates),Male,24 (8/20/2018);,59,Epilepsy,MCI Other/NOS,Trauma,MCI-other,A- T+ N+,1,MCI-other
-166,1633_1,v1633,1st LP (Arm 1: Collection Dates),Male,NA,79,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-167,1637_1,v1637,1st LP (Arm 1: Collection Dates),Female,NA,60,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-168,1638_1,v1638,1st LP (Arm 1: Collection Dates),Male,NA,75,MCI NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T+ N+,1,MCI-other
-169,1641_1,v1641,1st LP (Arm 1: Collection Dates),Female,NA,63,Bipolar,MCI Other/NOS,Psychiatric,MCI-other,A- T- N-,1,MCI-other
-170,1643_1,v1643,1st LP (Arm 1: Collection Dates),Female,NA,82,MCI VCID,MCI Other Neurodegen,Vascular,MCI-AD,A- T- N-,1,MCI-other
-171,1672_1,v1672,1st LP (Arm 1: Collection Dates),Male,NA,72,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-172,1689_1,v1689,1st LP (Arm 1: Collection Dates),Female,NA,59,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T+ N+,1,MCI-other
-173,1691_1,v1691,1st LP (Arm 1: Collection Dates),Female,NA,55,Cognitive complaints,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-174,1698_1,v1698,1st LP (Arm 1: Collection Dates),Male,NA,61,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-175,1714_1,v1714,1st LP (Arm 1: Collection Dates),Female,NA,72,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-176,1717_1,v1717,1st LP (Arm 1: Collection Dates),Male,NA,71,Tourette's syndrome,MCI Other/NOS,Movement NOS,MCI-other,A- T- N-,1,MCI-other
-177,1720_1,v1720,1st LP (Arm 1: Collection Dates),Female,NA,70,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-178,1733_1,v1733,1st LP (Arm 1: Collection Dates),Female,NA,63,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-179,1746_1,v1746,1st LP (Arm 1: Collection Dates),Male,NA,75,Essential tremor,MCI Other/NOS,Movement NOS,MCI-other,A- T- N-,1,MCI-other
-180,1747_1,v1747,1st LP (Arm 1: Collection Dates),Male,NA,67,Corticobasal syndrome,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A- T- N-,1,MCI-other
-181,1766_1,v1766,1st LP (Arm 1: Collection Dates),Male,NA,67,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-182,1776_1,v1776,1st LP (Arm 1: Collection Dates),Female,NA,70,Anxiety,MCI Other/NOS,Psychiatric,MCI-other,A- T- N-,1,MCI-other
-183,1789_1,v1789,1st LP (Arm 1: Collection Dates),Female,NA,60,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-184,1791_1,v1791,1st LP (Arm 1: Collection Dates),Male,NA,77,MCI NOS,MCI Other/NOS,Neurodegenerative,MCI-other,A- T- N-,1,MCI-other
-185,1816_1,v1816,1st LP (Arm 1: Collection Dates),Male,NA,76,MCI NOS,MCI Other/NOS,NOS,MCI-other,A- T- N-,1,MCI-other
-186,1823_1,v1823,1st LP (Arm 1: Collection Dates),Male,NA,63,Gait disorder NOS,MCI Other/NOS,Immune,MCI-other,A- T- N-,1,MCI-other
-187,1088_1,v1088,1st LP (Arm 1: Collection Dates),Male,NA,72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-188,1096_1,v1096,1st LP (Arm 1: Collection Dates),Female,9 (6/29/2017) 23 (12/21/2015),61,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-189,1104_1,v1104,1st LP (Arm 1: Collection Dates),Male,NA,63,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-190,1118_1,v1118,1st LP (Arm 1: Collection Dates),Male,NA,68,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-191,1129_1,v1129,1st LP (Arm 1: Collection Dates),Male,NA,81,"Polyneuropathy, Chronic Inflammatory Demyelinating",MCI Other/NOS,Immune,MCI-other,A+ T- N-,1,MCI-AD
-192,1135_1,v1135,1st LP (Arm 1: Collection Dates),Male,27 (5/2/2016),72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-193,1147_1,v1147,1st LP (Arm 1: Collection Dates),Female,NA,71,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-194,1160_1,v1160,1st LP (Arm 1: Collection Dates),Female,NA,64,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-195,1163_1,v1163,1st LP (Arm 1: Collection Dates),Male,NA,67,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-196,1166_1,v1166,1st LP (Arm 1: Collection Dates),Male,NA,68,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-197,1177_1,v1177,1st LP (Arm 1: Collection Dates),Female,24 (5/15/2017),78,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-198,1184_1,v1184,1st LP (Arm 1: Collection Dates),Female,NA,76,MCI NOS,MCI Other/NOS,NOS,MCI-other,A+ T- N-,1,MCI-AD
-199,1189_1,v1189,1st LP (Arm 1: Collection Dates),Female,NA,58,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-200,1201_1,v1201,1st LP (Arm 1: Collection Dates),Male,NA,73,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N-,1,MCI-AD
-201,1211_1,v1211,1st LP (Arm 1: Collection Dates),Female,NA,57,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-202,1217_1,v1217,1st LP (Arm 1: Collection Dates),Female,NA,72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-203,1218_1,v1218,1st LP (Arm 1: Collection Dates),Male,(09/2013): 28/30 (07/2014): 27/30,66,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-204,1227_1,v1227,1st LP (Arm 1: Collection Dates),Male,NA,72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-205,1230_1,v1230,1st LP (Arm 1: Collection Dates),Female,NA,76,MCI NOS,MCI AD,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-206,1232_1,v1232,1st LP (Arm 1: Collection Dates),Female,NA,78,"FTD, behavioral variant",MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T- N+,1,MCI-AD
-207,1237_1,v1237,1st LP (Arm 1: Collection Dates),Male,NA,66,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-208,1240_1,v1240,1st LP (Arm 1: Collection Dates),Female,27 (8/22/2016) 27 (12/12/2016),61,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-209,1247_1,v1247,1st LP (Arm 1: Collection Dates),Female,23 (4/13/2016),65,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-210,1275_1,v1275,1st LP (Arm 1: Collection Dates),Male,NA,70,Dementia with Lewy bodies,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-211,1293_1,v1293,1st LP (Arm 1: Collection Dates),Female,27 (9/20/2016),69,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-212,1297_1,v1297,1st LP (Arm 1: Collection Dates),Male,NA,77,Dementia with Lewy bodies,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-213,1304_1,v1304,1st LP (Arm 1: Collection Dates),Female,NA,66,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-214,1306_1,v1306,1st LP (Arm 1: Collection Dates),Female,NA,59,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-215,1314_1,v1314,1st LP (Arm 1: Collection Dates),Male,NA,73,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-216,1317_1,v1317,1st LP (Arm 1: Collection Dates),Female,NA,63,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-217,1335_1,v1335,1st LP (Arm 1: Collection Dates),Female,29.5 (11/4/2015) 27.5 (2/1/2017),71,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T- N+,1,MCI-AD
-218,1339_1,v1339,1st LP (Arm 1: Collection Dates),Female,NA,76,"Gait disorder, multifactorial",MCI Other/NOS,NOS,MCI-other,A+ T- N+,1,MCI-AD
-219,1340_1,v1340,1st LP (Arm 1: Collection Dates),Female,NA,60,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-220,1345_1,v1345,1st LP (Arm 1: Collection Dates),Male,NA,58,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-221,1362_1,v1362,1st LP (Arm 1: Collection Dates),Male,25 (7/7/2016),64,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-222,1379_1,v1379,1st LP (Arm 1: Collection Dates),Female,NA,71,MCI NOS,MCI Other/NOS,NOS,MCI-other,A+ T- N-,1,MCI-AD
-223,1386_1,v1386,1st LP (Arm 1: Collection Dates),Female,NA,77,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-224,1388_1,v1388,1st LP (Arm 1: Collection Dates),Female,29 (5/15/2017),66,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-225,1391_1,v1391,1st LP (Arm 1: Collection Dates),Female,29 (9/22/2017),70,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-226,1394_1,v1394,1st LP (Arm 1: Collection Dates),Male,NA,82,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-227,1400_1,v1400,1st LP (Arm 1: Collection Dates),Male,NA,84,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-228,1403_1,v1403,1st LP (Arm 1: Collection Dates),Male,NA,80,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-229,1404_1,v1404,1st LP (Arm 1: Collection Dates),Male,NA,74,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-230,1411_1,v1411,1st LP (Arm 1: Collection Dates),Male,NA,62,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-231,1420_1,v1420,1st LP (Arm 1: Collection Dates),Male,25 (8/28/2017),59,MCI NOS,MCI Other/NOS,Neurodegenerative,MCI-other,A+ T+ N+,1,MCI-AD
-232,1430_1,v1430,1st LP (Arm 1: Collection Dates),Female,NA,74,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-233,1435_1,v1435,1st LP (Arm 1: Collection Dates),Male,NA,68,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-234,1442_1,v1442,1st LP (Arm 1: Collection Dates),Male,NA,65,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-235,1445_1,v1445,1st LP (Arm 1: Collection Dates),Male,NA,72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-236,1453_1,v1453,1st LP (Arm 1: Collection Dates),Male,NA,67,MCI NOS,MCI Other/NOS,NOS,MCI-other,A+ T- N-,1,MCI-AD
-237,1458_1,v1458,1st LP (Arm 1: Collection Dates),Male,NA,82,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-238,1460_1,v1460,1st LP (Arm 1: Collection Dates),Male,NA,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-239,1471_1,v1471,1st LP (Arm 1: Collection Dates),Male,NA,73,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-240,1492_1,v1492,1st LP (Arm 1: Collection Dates),Female,NA,69,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-241,1500_1,v1500,1st LP (Arm 1: Collection Dates),Female,NA,71,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-242,1501_1,v1501,1st LP (Arm 1: Collection Dates),Female,27 (10/24/2017),72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-243,1514_1,v1514,1st LP (Arm 1: Collection Dates),Male,NA,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-244,1518_1,v1518,1st LP (Arm 1: Collection Dates),Male,NA,57,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-245,1521_1,v1521,1st LP (Arm 1: Collection Dates),Male,NA,67,Cogntive complaints,MCI Other/NOS,Immune,MCI-other,A+ T- N+,1,MCI-AD
-246,1522_1,v1522,1st LP (Arm 1: Collection Dates),Male,27 (2/5/2018),71,MCI NOS,MCI AD Mixed,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-247,1525_1,v1525,1st LP (Arm 1: Collection Dates),Male,NA,71,MCI NOS,MCI AD Mixed,Neoplasm,MCI-AD,A+ T+ N+,1,MCI-AD
-248,1528_1,v1528,1st LP (Arm 1: Collection Dates),Male,28 (12/1/2016); 29 (10/6/2015),86,MCI NOS,MCI Other/NOS,Neurodegenerative,MCI-other,A+ T+ N+,1,MCI-AD
-249,1529_1,v1529,1st LP (Arm 1: Collection Dates),Male,NA,83,MCI NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-250,1532_1,v1532,1st LP (Arm 1: Collection Dates),Female,NA,79,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-251,1537_1,v1537,1st LP (Arm 1: Collection Dates),Female,NA,76,Multiple system atrophy,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-252,1538_1,v1538,1st LP (Arm 1: Collection Dates),Female,22 (5/14/18),61,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-253,1540_1,v1540,1st LP (Arm 1: Collection Dates),Male,NA,71,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-254,1541_1,v1541,1st LP (Arm 1: Collection Dates),Female,NA,68,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-255,1549_1,v1549,1st LP (Arm 1: Collection Dates),Male,NA,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-256,1566_1,v1566,1st LP (Arm 1: Collection Dates),Male,21 (10/02/2017);,74,Corticobasal syndrome,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-257,1569_1,v1569,1st LP (Arm 1: Collection Dates),Male,NA,73,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-258,1570_1,v1570,1st LP (Arm 1: Collection Dates),Male,NA,79,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-259,1576_1,v1576,1st LP (Arm 1: Collection Dates),Female,NA,78,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-260,1597_1,v1597,1st LP (Arm 1: Collection Dates),Male,NA,65,MCI NOS,MCI Other Neurodegen,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-261,1624_1,v1624,1st LP (Arm 1: Collection Dates),Female,NA,78,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-262,1630_1,v1630,1st LP (Arm 1: Collection Dates),Female,27 (6/??/2018);,71,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-263,1631_1,v1631,1st LP (Arm 1: Collection Dates),Male,NA,58,MCI AD,MCI AD Mixed,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-264,1632_1,v1632,1st LP (Arm 1: Collection Dates),Female,NA,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-265,1640_1,v1640,1st LP (Arm 1: Collection Dates),Male,NA,66,MCI NOS,MCI Other/NOS,NOS,MCI-other,A+ T+ N+,1,MCI-AD
-266,1653_1,v1653,1st LP (Arm 1: Collection Dates),Female,26 (10/12/16);,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-267,1661_1,v1661,1st LP (Arm 1: Collection Dates),Female,NA,81,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-268,1680_1,v1680,1st LP (Arm 1: Collection Dates),Male,28 (12/3/18);,72,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-269,1682_1,v1682,1st LP (Arm 1: Collection Dates),Female,NA,59,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-270,1686_1,v1686,1st LP (Arm 1: Collection Dates),Female,NA,77,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-271,1700_1,v1700,1st LP (Arm 1: Collection Dates),Male,NA,56,MCI AD,MCI AD Mixed,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-272,1712_1,v1712,1st LP (Arm 1: Collection Dates),Female,NA,75,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-273,1713_1,v1713,1st LP (Arm 1: Collection Dates),Male,NA,85,MCI VCID,MCI AD Mixed,Neurodegenerative,MCI-AD,A+ T- N-,1,MCI-AD
-274,1734_1,v1734,1st LP (Arm 1: Collection Dates),Male,NA,77,MCI NOS,MCI Other/NOS,NOS,MCI-other,A+ T+ N-,1,MCI-AD
-275,1743_1,v1743,1st LP (Arm 1: Collection Dates),Male,NA,79,MCI AD,MCI Other/NOS,Neurodegenerative,MCI-other,A+ T+ N+,1,MCI-AD
-276,1749_1,v1749,1st LP (Arm 1: Collection Dates),Female,NA,76,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-277,1751_1,v1751,1st LP (Arm 1: Collection Dates),Female,NA,80,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-278,1765_1,v1765,1st LP (Arm 1: Collection Dates),Female,NA,67,Epilepsy,MCI Other/NOS,Immune,MCI-other,A+ T+ N+,1,MCI-AD
-279,1779_1,v1779,1st LP (Arm 1: Collection Dates),Male,NA,76,MCI AD,MCI AD,Neurodegenerative,MCI-AD,A+ T+ N+,1,MCI-AD
-280,1048_1,v1048,1st LP (Arm 1: Collection Dates),Male,23 (4/15/2015),60,"Stroke, s/p",Dementia Other/NOS,Vascular,DEM-other,A- T- N-,1,DEM-other
-281,1097_1,v1097,1st LP (Arm 1: Collection Dates),Male,NA,77,Dementia NOS,Dementia Other/NOS,NOS,DEM-other,A- T- N-,1,DEM-other
-282,1110_1,v1110,1st LP (Arm 1: Collection Dates),Female,NA,72,Dementia VCID,Dementia Other/NOS,Vascular,DEM-other,A- T- N-,1,DEM-other
-283,1261_1,v1261,1st LP (Arm 1: Collection Dates),Male,NA,77,Dementia AD mixed,Dementia AD Mixed,"CSF, Neurodegenerative",DEM-AD,A- T- N-,1,DEM-other
-284,1370_1,v1370,1st LP (Arm 1: Collection Dates),Male,NA,71,Progressive supranuclear palsy,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-285,1382_1,v1382,1st LP (Arm 1: Collection Dates),Male,NA,75,Dementia VCID,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-286,1385_1,v1385,1st LP (Arm 1: Collection Dates),Female,NA,80,Dementia VCID,Dementia Other/NOS,Vascular,DEM-other,A- T- N-,1,DEM-other
-287,1399_1,v1399,1st LP (Arm 1: Collection Dates),Female,NA,82,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-288,1546_1,v1546,1st LP (Arm 1: Collection Dates),Male,NA,58,FTD NOS,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T- N+,1,DEM-other
-289,1547_1,v1547,1st LP (Arm 1: Collection Dates),Male,NA,57,"Celiac diease, gluten sensitive neurologic dysfx",Dementia Other/NOS,Immune,DEM-other,A- T- N-,1,DEM-other
-290,1575_1,v1575,1st LP (Arm 1: Collection Dates),Female,NA,65,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A- T+ N+,1,DEM-other
-291,1586_1,v1586,1st LP (Arm 1: Collection Dates),Male,NA,76,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A- T+ N+,1,DEM-other
-292,1604_1,v1604,1st LP (Arm 1: Collection Dates),Male,9 (2/20/2018); 13 (8/18/2017); 14 (2/6/2017),70,Dementia NOS,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-293,1618_1,v1618,1st LP (Arm 1: Collection Dates),Male,NA,74,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-294,1619_1,v1619,1st LP (Arm 1: Collection Dates),Female,NA,89,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A- T- N+,1,DEM-other
-295,1625_1,v1625,1st LP (Arm 1: Collection Dates),Male,NA,63,Dementia NOS,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T+ N+,1,DEM-other
-296,1634_1,v1634,1st LP (Arm 1: Collection Dates),Male,NA,61,Dementia NOS,Dementia Other/NOS,NOS,DEM-other,A- T- N-,1,DEM-other
-297,1635_1,v1635,1st LP (Arm 1: Collection Dates),Male,NA,60,Fragile X Tremor Axia Syndrome (FXTAS) + s/p encephalitis with residual deficit,Dementia Other/NOS,Movement NOS,DEM-other,A- T- N-,1,DEM-other
-298,1652_1,v1652,1st LP (Arm 1: Collection Dates),Female,NA,77,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-299,1655_1,v1655,1st LP (Arm 1: Collection Dates),Female,NA,85,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A- T+ N+,1,DEM-other
-300,1741_1,v1741,1st LP (Arm 1: Collection Dates),Male,NA,81,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A- T+ N-,1,DEM-other
-301,1756_1,v1756,1st LP (Arm 1: Collection Dates),Female,NA,64,Dementia AD,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-302,1761_1,v1761,1st LP (Arm 1: Collection Dates),Male,NA,66,Autoimmune encephalopathy,Dementia Other/NOS,Immune,DEM-other,A- T- N-,1,DEM-other
-303,1788_1,v1788,1st LP (Arm 1: Collection Dates),Female,NA,58,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A- T- N-,1,DEM-other
-304,1109_1,v1109,1st LP (Arm 1: Collection Dates),Female,NA,69,Cerebral amyloid angiopathy,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-305,1154_1,v1154,1st LP (Arm 1: Collection Dates),Female,NA,70,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-306,1174_1,v1174,1st LP (Arm 1: Collection Dates),Female,NA,72,Dementia AD,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T- N-,1,DEM-AD
-307,1204_1,v1204,1st LP (Arm 1: Collection Dates),Male,NA,69,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T- N-,1,DEM-AD
-308,1205_1,v1205,1st LP (Arm 1: Collection Dates),Male,NA,84,Dementia AD mixed,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T+ N-,1,DEM-AD
-309,1231_1,v1231,1st LP (Arm 1: Collection Dates),Male,NA,68,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-310,1233_1,v1233,1st LP (Arm 1: Collection Dates),Male,NA,58,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A+ T+ N+,1,DEM-AD
-311,1249_1,v1249,1st LP (Arm 1: Collection Dates),Male,NA,85,"Stroke, s/p",Dementia Other/NOS,Vascular,DEM-other,A+ T+ N+,1,DEM-AD
-312,1267_1,v1267,1st LP (Arm 1: Collection Dates),Male,NA,82,Dementia NOS,Dementia Other/NOS,NOS,DEM-other,A+ T+ N+,1,DEM-AD
-313,1269_1,v1269,1st LP (Arm 1: Collection Dates),Male,NA,82,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A+ T+ N+,1,DEM-AD
-314,1277_1,v1277,1st LP (Arm 1: Collection Dates),Female,NA,76,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-315,1344_1,v1344,1st LP (Arm 1: Collection Dates),Female,NA,81,Dementia AD mixed,Dementia AD Mixed,"CSF, Neurodegenerative",DEM-AD,A+ T+ N-,1,DEM-AD
-316,1356_1,v1356,1st LP (Arm 1: Collection Dates),Female,NA,76,Progressive supranuclear palsy,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T- N+,1,DEM-AD
-317,1359_1,v1359,1st LP (Arm 1: Collection Dates),Male,NA,65,"FTD, behavioral variant",Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T- N-,1,DEM-AD
-318,1367_1,v1367,1st LP (Arm 1: Collection Dates),Male,NA,70,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-319,1369_1,v1369,1st LP (Arm 1: Collection Dates),Female,NA,64,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-320,1381_1,v1381,1st LP (Arm 1: Collection Dates),Female,NA,68,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-321,1390_1,v1390,1st LP (Arm 1: Collection Dates),Female,15 (7/5/2017),78,Dementia with Lewy bodies,Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T- N-,1,DEM-AD
-322,1395_1,v1395,1st LP (Arm 1: Collection Dates),Male,NA,82,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-323,1401_1,v1401,1st LP (Arm 1: Collection Dates),Female,NA,64,Dementia AD,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-324,1402_1,v1402,1st LP (Arm 1: Collection Dates),Male,NA,63,Dementia AD,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-325,1406_1,v1406,1st LP (Arm 1: Collection Dates),Female,NA,78,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N-,1,DEM-AD
-326,1412_1,v1412,1st LP (Arm 1: Collection Dates),Female,NA,73,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T- N-,1,DEM-AD
-327,1415_1,v1415,1st LP (Arm 1: Collection Dates),Male,NA,79,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-328,1441_1,v1441,1st LP (Arm 1: Collection Dates),Female,NA,64,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-329,1455_1,v1455,1st LP (Arm 1: Collection Dates),Male,NA,83,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-330,1468_1,v1468,1st LP (Arm 1: Collection Dates),Female,25 (1/29/2018),73,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-331,1480_1,v1480,1st LP (Arm 1: Collection Dates),Female,NA,59,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-332,1486_1,v1486,1st LP (Arm 1: Collection Dates),Male,NA,84,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-333,1490_1,v1490,1st LP (Arm 1: Collection Dates),Male,NA,79,"Dementia with Lewy bodies, AD mixed",Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-334,1495_1,v1495,1st LP (Arm 1: Collection Dates),Female,22.5 (11/16/2017); 25.5 (3/29/2018),73,Dementia NOS,Dementia Other/NOS,Neurodegenerative,DEM-other,A+ T+ N+,1,DEM-AD
-335,1496_1,v1496,1st LP (Arm 1: Collection Dates),Female,NA,79,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-336,1497_1,v1497,1st LP (Arm 1: Collection Dates),Male,NA,81,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-337,1499_1,v1499,1st LP (Arm 1: Collection Dates),Male,23 (10/11/2018),70,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-338,1503_1,v1503,1st LP (Arm 1: Collection Dates),Male,NA,80,Dementia AD,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-339,1504_1,v1504,1st LP (Arm 1: Collection Dates),Female,17 (11/22/2017),68,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-340,1520_1,v1520,1st LP (Arm 1: Collection Dates),Female,NA,56,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-341,1548_1,v1548,1st LP (Arm 1: Collection Dates),Male,NA,58,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-342,1567_1,v1567,1st LP (Arm 1: Collection Dates),Male,NA,88,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-343,1598_1,v1598,1st LP (Arm 1: Collection Dates),Female,NA,82,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T- N-,1,DEM-AD
-344,1614_1,v1614,1st LP (Arm 1: Collection Dates),Female,NA,69,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-345,1616_1,v1616,1st LP (Arm 1: Collection Dates),Male,25 (10/25/2018); 25 (5/23/2018);,74,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-346,1623_1,v1623,1st LP (Arm 1: Collection Dates),Male,NA,76,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-347,1629_1,v1629,1st LP (Arm 1: Collection Dates),Male,17 (5/7/2018);,69,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-348,1646_1,v1646,1st LP (Arm 1: Collection Dates),Male,25 (10/6/18);,62,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-349,1647_1,v1647,1st LP (Arm 1: Collection Dates),Male,24 (7/25/17); 18 (10/30/18);,66,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-350,1648_1,v1648,1st LP (Arm 1: Collection Dates),Female,NA,74,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-351,1654_1,v1654,1st LP (Arm 1: Collection Dates),Male,25 (10/12/2018);,74,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-352,1662_1,v1662,1st LP (Arm 1: Collection Dates),Male,NA,56,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-353,1671_1,v1671,1st LP (Arm 1: Collection Dates),Male,NA,89,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-354,1674_1,v1674,1st LP (Arm 1: Collection Dates),Female,NA,72,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-355,1676_1,v1676,1st LP (Arm 1: Collection Dates),Male,NA,56,"Dementia with Lewy bodies, AD mixed",Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-356,1678_1,v1678,1st LP (Arm 1: Collection Dates),Female,22 (12/5/17);,66,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-357,1694_1,v1694,1st LP (Arm 1: Collection Dates),Male,NA,57,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-358,1695_1,v1695,1st LP (Arm 1: Collection Dates),Male,NA,62,"Dementia with Lewy bodies, AD mixed",Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T+ N-,1,DEM-AD
-359,1722_1,v1722,1st LP (Arm 1: Collection Dates),Female,NA,76,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-360,1724_1,v1724,1st LP (Arm 1: Collection Dates),Male,NA,69,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-361,1731_1,v1731,1st LP (Arm 1: Collection Dates),Male,NA,70,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-362,1735_1,v1735,1st LP (Arm 1: Collection Dates),Male,NA,58,Dementia AD,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-363,1737_1,v1737,1st LP (Arm 1: Collection Dates),Male,NA,88,"Dementia with Lewy bodies, AD mixed",Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T- N-,1,DEM-AD
-364,1750_1,v1750,1st LP (Arm 1: Collection Dates),Female,NA,63,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-365,1755_1,v1755,1st LP (Arm 1: Collection Dates),Female,NA,74,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-366,1757_1,v1757,1st LP (Arm 1: Collection Dates),Female,NA,61,Dementia AD mixed,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-367,1772_1,v1772,1st LP (Arm 1: Collection Dates),Female,NA,80,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-368,1775_1,v1775,1st LP (Arm 1: Collection Dates),Female,NA,67,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-369,1785_1,v1785,1st LP (Arm 1: Collection Dates),Male,NA,73,"FTD, behavioral variant",Dementia Other Neurodegen,Neurodegenerative,DEM-other,A+ T+ N+,1,DEM-AD
-370,1786_1,v1786,1st LP (Arm 1: Collection Dates),Male,NA,56,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-371,1790_1,v1790,1st LP (Arm 1: Collection Dates),Female,NA,61,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-372,1797_1,v1797,1st LP (Arm 1: Collection Dates),Male,NA,70,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-373,1799_1,v1799,1st LP (Arm 1: Collection Dates),Male,NA,62,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-374,1817_1,v1817,1st LP (Arm 1: Collection Dates),Female,NA,93,Dementia NOS,Dementia AD Mixed,Neurodegenerative,DEM-AD,A+ T- N-,1,DEM-AD
-375,1820_1,v1820,1st LP (Arm 1: Collection Dates),Female,NA,61,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-376,1846_1,v1846,1st LP (Arm 1: Collection Dates),Female,NA,77,Dementia AD,Dementia AD,Neurodegenerative,DEM-AD,A+ T+ N+,1,DEM-AD
-377,1059_1,v1059,1st LP (Arm 1: Collection Dates),Female,NA,56,MCI AD,MCI AD,Neurodegenerative,MCI-AD,NA,1,MCI-AD
-378,1102_1,v1102,1st LP (Arm 1: Collection Dates),Male,18 (6/3/2017),67,MCI AD,MCI AD,Neurodegenerative,MCI-AD,NA,1,MCI-AD
-379,1162_1,v1162,1st LP (Arm 1: Collection Dates),Male,NA,60,"Polyneuropathy, Chronic Inflammatory Demyelinating",CU Other/NOS,Immune,CU,NA,1,CU
-380,1167_1,v1167,1st LP (Arm 1: Collection Dates),Female,NA,61,MCI AD,MCI AD,Neurodegenerative,MCI-AD,NA,1,MCI-AD
-381,1183_1,v1183,1st LP (Arm 1: Collection Dates),Female,NA,59,Idiopathic Intracranial Hypertension,CU Other/NOS,CSF,CU,NA,1,CU
-382,1199_1,v1199,1st LP (Arm 1: Collection Dates),Male,NA,70,"Polyneuropathy, Chronic Inflammatory Demyelinating",CU Other/NOS,Immune,CU,NA,1,CU
-383,1224_1,v1224,1st LP (Arm 1: Collection Dates),Male,NA,69,Normal Pressure Hydrocepahalus,MCI NPH,CSF,NPH,NA,1,NPH
-384,1322_1,v1322,1st LP (Arm 1: Collection Dates),Male,NA,65,MCI AD,MCI AD Mixed,Neurodegenerative,MCI-AD,NA,1,MCI-AD
-385,1622_1,v1622,1st LP (Arm 1: Collection Dates),Female,NA,69,Retinal artery occlusion,CU Other/NOS,Vascular,CU,NA,1,CU
-386,1069_1,v1069,1st LP (Arm 1: Collection Dates),Male,NA,60,Lyme history,CU Other/NOS,NOS,CU,A- T+ N+,1,CU
-387,1130_1,v1130,1st LP (Arm 1: Collection Dates),Male,NA,62,Spinocerebellar atrophy,CU Other/NOS,Neurodegenerative,CU,A- T- N+,1,CU
-388,1141_1,v1141,1st LP (Arm 1: Collection Dates),Male,NA,80,NOS/NA,CU Other/NOS,Neoplasm,CU,A+ T- N-,1,CU
-389,1169_1,v1169,1st LP (Arm 1: Collection Dates),Female,NA,55,"Spastic paraparesis, post viral",CU Other/NOS,Immune,CU,A- T+ N+,1,CU
-390,1234_1,v1234,1st LP (Arm 1: Collection Dates),Male,25 (4/26/2016),79,Parkinson's disease,CU Other Neurodegen,Neurodegenerative,CU,A- T+ N+,1,CU
-391,1239_1,v1239,1st LP (Arm 1: Collection Dates),Female,NA,57,Idiopathic Intracranial Hypertension,CU Other/NOS,CSF,CU,A+ T- N-,1,CU
-392,1274_1,v1274,1st LP (Arm 1: Collection Dates),Male,NA,58,Idiopathic Intracranial Hypertension,CU Other/NOS,CSF,CU,A- T+ N-,1,CU
-393,1281_1,v1281,1st LP (Arm 1: Collection Dates),Male,NA,55,Autoimmune encephalopathy,CU Other/NOS,Immune,CU,A- T+ N-,1,CU
-394,1295_1,v1295,1st LP (Arm 1: Collection Dates),Female,NA,69,Optic neuropathy,CU Other/NOS,Vascular,CU,A+ T- N-,1,CU
-395,1323_1,v1323,1st LP (Arm 1: Collection Dates),Female,NA,56,"Polyneuropathy, Chronic Inflammatory Demyelinating",CU Other/NOS,Immune,CU,A+ T+ N+,1,CU
-396,1334_1,v1334,1st LP (Arm 1: Collection Dates),Female,NA,57,Polyneuropathy,CU Other/NOS,Demyelinating,CU,A- T- N+,1,CU
-397,1397_1,v1397,1st LP (Arm 1: Collection Dates),Female,NA,64,"Polyneuropathy, Chronic Inflammatory Demyelinating",CU Other/NOS,Immune,CU,A- T- N+,1,CU
-398,1431_1,v1431,1st LP (Arm 1: Collection Dates),Male,NA,59,Blau Syndrome (NOD2/CARD15 mutation),CU Other/NOS,Immune,CU,A+ T+ N+,1,CU
-399,1440_1,v1440,1st LP (Arm 1: Collection Dates),Female,NA,63,"Headache, migraine",CU Other/NOS,Headache,CU,A+ T- N-,1,CU
-400,1451_1,v1451,1st LP (Arm 1: Collection Dates),Female,NA,75,Parkinson's disease,CU Other Neurodegen,Neurodegenerative,CU,A+ T- N-,1,CU
-401,1474_1,v1474,1st LP (Arm 1: Collection Dates),Female,NA,66,Nystagmus NOS,CU Other/NOS,Immune,CU,A- T+ N+,1,CU
-402,1476_1,v1476,1st LP (Arm 1: Collection Dates),Male,NA,55,Polyneuropathy,CU Other/NOS,NOS,CU,A+ T+ N+,1,CU
-403,1489_1,v1489,1st LP (Arm 1: Collection Dates),Male,NA,63,"Myelopathy, HTLV1",CU Other/NOS,Immune,CU,A- T+ N+,1,CU
-404,1509_1,v1509,1st LP (Arm 1: Collection Dates),Female,NA,63,"Stroke, s/p",CU Other/NOS,Vascular,CU,A- T- N+,1,CU
-405,1555_1,v1555,1st LP (Arm 1: Collection Dates),Male,NA,56,Superior sagittal sinus thrombosis,CU Other/NOS,Vascular,CU,A- T+ N+,1,CU
-406,1659_1,v1659,1st LP (Arm 1: Collection Dates),Male,NA,75,Headache NOS,CU Other/NOS,Headache,CU,A- T- N+,1,CU
-407,1764_1,v1764,1st LP (Arm 1: Collection Dates),Male,NA,61,Motor Neuron Disease,CU Other Neurodegen,Neurodegenerative,CU,A- T- N+,1,CU
-408,1780_1,v1780,1st LP (Arm 1: Collection Dates),Female,NA,65,Parkinsonism,CU Other Neurodegen,Neurodegenerative,CU,A+ T- N-,1,CU
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,,,,,,,
-,,,,,,,Essential tremor,,,,,,
-,,,,,,,Bell's palsy,,,,,,
-,,,,,,,Parkinson's disease,,,,,,
-,,,,,,,Neurological symptoms NOS,,,,,,
-,,,,,,,"Peripheral neuropathy, small fiber",,,,,,
-,,,,,,,Parkinsonism,,,,,,
-,,,,,,,Idiopathic Intracranial Hypertension,,,,,,
-,,,,,,,Polyneuropathy,,,,,,
-,,,,,,,Cranial neuropathies,,,,,,
-,,,,,,,Gait disorder NOS,,,,,,
-,,,,,,,Stiff Person Syndrome GAD65+,,,,,,
-,,,,,,,Neurosarcoidosis,,,,,,
-,,,,,,,Trigeminal neuralgia,,,,,,
-,,,,,,,"Ependymoma, spinal cord",,,,,,
-,,,,,,,Anxiety,,,,,,
-,,,,,,,No CNS disease,,,,,,
-,,,,,,,"Cerebellar degeneration, autoimmune",,,,,,
-,,,,,,,Sleep disorder,,,,,,
-,,,,,,,Dystonia,,,,,,
-,,,,,,,Headache NOS,,,,,,
-,,,,,,,Multiple sclerosis,,,,,,
-,,,,,,,Chronic neuropathic pain,,,,,,
-,,,,,,,Functional Neurological Disorder,,,,,,
-,,,,,,,Uveitis,,,,,,
-,,,,,,,"Spastic paraparesis, NOS",,,,,,
-,,,,,,,Clinically isolated syndrome,,,,,,
-,,,,,,,Cognitve complaints,,,,,,
-,,,,,,,Motor Neuron Disease,,,,,,
-,,,,,,,Anoxic/ischemic brain inuury,,,,,,
-,,,,,,,Fibromyalgia syndrome,,,,,,
-,,,,,,,Normal Pressure Hydrocephalus,,,,,,
-,,,,,,,MCI NOS,,,,,,
-,,,,,,,"FTD, primary progressibve aphasia, sv",,,,,,
-,,,,,,,"FTD, behavioral variant",,,,,,
-,,,,,,,Neurosyphilis,,,,,,
-,,,,,,,FTD NOS,,,,,,
-,,,,,,,Alcohol abuse,,,,,,
-,,,,,,,Corticobasal syndrome,,,,,,
-,,,,,,,"Gait disorder, multifactorial",,,,,,
-,,,,,,,Progressive supranuclear palsy,,,,,,
-,,,,,,,Superficial siderosis,,,,,,
-,,,,,,,MCI AD,,,,,,
-,,,,,,,Brachial plexopathy,,,,,,
-,,,,,,,Multiple infarcts,,,,,,
-,,,,,,,Cognitive complaints,,,,,,
-,,,,,,,"FTD, primary progressive aphasia, nfv",,,,,,
-,,,,,,,Dementia with Lewy bodies,,,,,,
-,,,,,,,Meningitis history,,,,,,
-,,,,,,,Epilepsy,,,,,,
-,,,,,,,Bipolar,,,,,,
-,,,,,,,MCI VCID,,,,,,
-,,,,,,,Tourette's syndrome,,,,,,
-,,,,,,,Essential tremor,,,,,,
-,,,,,,,"Polyneuropathy, Chronic Inflammatory Demyelinating",,,,,,
-,,,,,,,Cogntive complaints,,,,,,
-,,,,,,,Multiple system atrophy,,,,,,
-,,,,,,,"Stroke, s/p",,,,,,
-,,,,,,,Dementia NOS,,,,,,
-,,,,,,,Dementia VCID,,,,,,
-,,,,,,,Dementia AD mixed,,,,,,
-,,,,,,,"Celiac diease, gluten sensitive neurologic dysfx",,,,,,
-,,,,,,,Dementia AD,,,,,,
-,,,,,,,Fragile X Tremor Axia Syndrome (FXTAS) + s/p encephalitis with residual deficit,,,,,,
-,,,,,,,Autoimmune encephalopathy,,,,,,
-,,,,,,,Cerebral amyloid angiopathy,,,,,,
-,,,,,,,"Dementia with Lewy bodies, AD mixed",,,,,,
-,,,,,,,Normal Pressure Hydrocepahalus,,,,,,
-,,,,,,,Retinal artery occlusion,,,,,,
-,,,,,,,Lyme history,,,,,,
-,,,,,,,Spinocerebellar atrophy,,,,,,
-,,,,,,,NOS/NA,,,,,,
-,,,,,,,"Spastic paraparesis, post viral",,,,,,
-,,,,,,,Optic neuropathy,,,,,,
-,,,,,,,Blau Syndrome (NOD2/CARD15 mutation),,,,,,
-,,,,,,,"Headache, migraine",,,,,,
-,,,,,,,Nystagmus NOS,,,,,,
-,,,,,,,"Myelopathy, HTLV1",,,,,,
-,,,,,,,Superior sagittal sinus thrombosis,,,,,,
+sample_id,Batch,short_id,Gender,Age at time of LP (yrs),ATN_diagnosis
+Batch-00_1287-1_1r,0,1287-1_1r,Male,81,NPH
+Batch-00_1287-1_2,0,1287-1_2,Male,81,NPH
+Batch-03_1187-1_1,3,1187-1_1,Female,82,NPH
+Batch-03_1187-1_2,3,1187-1_2,Female,82,NPH
+Batch-03_1187-2_1,3,1187-2_1,Female,82,NPH
+Batch-03_1187-2_2,3,1187-2_2,Female,82,NPH
+Batch-03_1187-3_1,3,1187-3_1,Female,82,NPH
+Batch-03_1187-3_2,3,1187-3_2,Female,82,NPH
+Batch-03_1189-1_1,3,1189-1_1,Female,58,MCI-AD
+Batch-03_1189-1_2,3,1189-1_2,Female,58,MCI-AD
+Batch-03_1198-1_1,3,1198-1_1,Male,69,NPH
+Batch-03_1198-1_2,3,1198-1_2,Male,69,NPH
+Batch-03_1199-1_1,3,1199-1_1,Male,70,CU
+Batch-03_1199-1_2,3,1199-1_2,Male,70,CU
+Batch-03_1201-1_1,3,1201-1_1,Male,73,MCI-AD
+Batch-03_1201-1_2,3,1201-1_2,Male,73,MCI-AD
+Batch-03_1202-1_1,3,1202-1_1,Male,61,MCI-other
+Batch-03_1202-1_2,3,1202-1_2,Male,61,MCI-other
+Batch-03_1202-2_1,3,1202-2_1,Male,61,MCI-other
+Batch-03_1202-2_2,3,1202-2_2,Male,61,MCI-other
+Batch-03_1202-3_1,3,1202-3_1,Male,61,MCI-other
+Batch-03_1202-3_2,3,1202-3_2,Male,61,MCI-other
+Batch-03_1204-1_1,3,1204-1_1,Male,69,DEM-AD
+Batch-03_1204-1_2,3,1204-1_2,Male,69,DEM-AD
+Batch-03_1205-1_1,3,1205-1_1,Male,84,DEM-AD
+Batch-03_1205-1_2,3,1205-1_2,Male,84,DEM-AD
+Batch-03_1205-2_1,3,1205-2_1,Male,84,DEM-AD
+Batch-03_1205-2_2,3,1205-2_2,Male,84,DEM-AD
+Batch-03_1208-1_1,3,1208-1_1,Male,79,MCI-other
+Batch-03_1208-1_2,3,1208-1_2,Male,79,MCI-other
+Batch-03_1210-1_1,3,1210-1_1,Female,73,NPH
+Batch-03_1210-1_2,3,1210-1_2,Female,73,NPH
+Batch-03_1211-1_1,3,1211-1_1,Female,57,MCI-AD
+Batch-03_1211-1_2,3,1211-1_2,Female,57,MCI-AD
+Batch-03_1213-1_1,3,1213-1_1,Female,75,NPH
+Batch-03_1213-1_2,3,1213-1_2,Female,75,NPH
+Batch-03_1217-1_1,3,1217-1_1,Female,72,MCI-AD
+Batch-03_1217-1_2,3,1217-1_2,Female,72,MCI-AD
+Batch-03_1218-1_1,3,1218-1_1,Male,66,MCI-AD
+Batch-03_1218-1_2,3,1218-1_2,Male,66,MCI-AD
+Batch-03_1219-1_1,3,1219-1_1,Male,78,NPH
+Batch-03_1219-1_2,3,1219-1_2,Male,78,NPH
+Batch-03_1224-1_1,3,1224-1_1,Male,69,NPH
+Batch-03_1224-1_2,3,1224-1_2,Male,69,NPH
+Batch-03_1224-3_1,3,1224-3_1,Male,69,NPH
+Batch-03_1224-3_2,3,1224-3_2,Male,69,NPH
+Batch-03_Pool-5_1,3,Pool-5_1,NA,NA,NA
+Batch-03_Pool-5_2,3,Pool-5_2,NA,NA,NA
+Batch-03_Pool-6_1,3,Pool-6_1,NA,NA,NA
+Batch-03_Pool-6_2,3,Pool-6_2,NA,NA,NA
+Batch-04_1227-1_1,4,1227-1_1,Male,72,MCI-AD
+Batch-04_1227-1_2,4,1227-1_2,Male,72,MCI-AD
+Batch-04_1228-1_1,4,1228-1_1,Male,60,MCI-other
+Batch-04_1228-1_2,4,1228-1_2,Male,60,MCI-other
+Batch-04_1229-1_1,4,1229-1_1,Female,65,MCI-other
+Batch-04_1229-1_2,4,1229-1_2,Female,65,MCI-other
+Batch-04_1230-1_1,4,1230-1_1,Female,76,MCI-AD
+Batch-04_1230-1_2,4,1230-1_2,Female,76,MCI-AD
+Batch-04_1231-1_1,4,1231-1_1,Male,68,DEM-AD
+Batch-04_1231-1_2,4,1231-1_2,Male,68,DEM-AD
+Batch-04_1232-1_1,4,1232-1_1,Female,78,MCI-AD
+Batch-04_1232-1_2,4,1232-1_2,Female,78,MCI-AD
+Batch-04_1233-1_1,4,1233-1_1,Male,58,DEM-AD
+Batch-04_1233-1_2,4,1233-1_2,Male,58,DEM-AD
+Batch-04_1234-1_1,4,1234-1_1,Male,79,CU
+Batch-04_1234-1_2,4,1234-1_2,Male,79,CU
+Batch-04_1237-1_1,4,1237-1_1,Male,66,MCI-AD
+Batch-04_1237-1_2,4,1237-1_2,Male,66,MCI-AD
+Batch-04_1239-1_1,4,1239-1_1,Female,57,CU
+Batch-04_1239-1_2,4,1239-1_2,Female,57,CU
+Batch-04_1240-1_1,4,1240-1_1,Female,61,MCI-AD
+Batch-04_1240-1_2,4,1240-1_2,Female,61,MCI-AD
+Batch-04_1243-1_1,4,1243-1_1,Male,57,CU
+Batch-04_1243-1_2,4,1243-1_2,Male,57,CU
+Batch-04_1244-1_1,4,1244-1_1,Male,64,MCI-other
+Batch-04_1244-1_2,4,1244-1_2,Male,64,MCI-other
+Batch-04_1247-1_1,4,1247-1_1,Female,65,MCI-AD
+Batch-04_1247-1_2,4,1247-1_2,Female,65,MCI-AD
+Batch-04_1249-1_1,4,1249-1_1,Male,85,DEM-AD
+Batch-04_1249-1_2,4,1249-1_2,Male,85,DEM-AD
+Batch-04_1250-1_1,4,1250-1_1,Female,72,MCI-other
+Batch-04_1250-1_2,4,1250-1_2,Female,72,MCI-other
+Batch-04_1256-1_1,4,1256-1_1,Male,79,MCI-other
+Batch-04_1256-1_2,4,1256-1_2,Male,79,MCI-other
+Batch-04_1257-1_1,4,1257-1_1,Female,66,NPH
+Batch-04_1257-1_2,4,1257-1_2,Female,66,NPH
+Batch-04_1261-1_1,4,1261-1_1,Male,77,DEM-other
+Batch-04_1261-1_2,4,1261-1_2,Male,77,DEM-other
+Batch-04_1261-2_1,4,1261-2_1,Male,77,DEM-other
+Batch-04_1261-2_2,4,1261-2_2,Male,77,DEM-other
+Batch-04_1264-1_1,4,1264-1_1,Male,70,CU
+Batch-04_1264-1_2,4,1264-1_2,Male,70,CU
+Batch-04_1267-1_1,4,1267-1_1,Male,82,DEM-AD
+Batch-04_1267-1_2,4,1267-1_2,Male,82,DEM-AD
+Batch-04_Pool-7_1,4,Pool-7_1,NA,NA,NA
+Batch-04_Pool-7_2,4,Pool-7_2,NA,NA,NA
+Batch-04_Pool-8_1,4,Pool-8_1,NA,NA,NA
+Batch-04_Pool-8_2,4,Pool-8_2,NA,NA,NA
+Batch-05_1187-1_1r,5,1187-1_1r,Female,82,NPH
+Batch-05_1187-1_2,5,1187-1_2,Female,82,NPH
+Batch-05_1269-1_1,5,1269-1_1,Male,82,DEM-AD
+Batch-05_1269-1_2,5,1269-1_2,Male,82,DEM-AD
+Batch-05_1270-1_1,5,1270-1_1,Female,69,CU
+Batch-05_1270-1_2,5,1270-1_2,Female,69,CU
+Batch-05_1270-2_1,5,1270-2_1,Female,69,CU
+Batch-05_1270-2_2,5,1270-2_2,Female,69,CU
+Batch-05_1270-3_1,5,1270-3_1,Female,69,CU
+Batch-05_1270-3_2,5,1270-3_2,Female,69,CU
+Batch-05_1270-4_1,5,1270-4_1,Female,69,CU
+Batch-05_1270-4_2,5,1270-4_2,Female,69,CU
+Batch-05_1271-1_1,5,1271-1_1,Female,72,NPH
+Batch-05_1271-1_2,5,1271-1_2,Female,72,NPH
+Batch-05_1274-1_1,5,1274-1_1,Male,58,CU
+Batch-05_1274-1_2,5,1274-1_2,Male,58,CU
+Batch-05_1275-1_1,5,1275-1_1,Male,70,MCI-AD
+Batch-05_1275-1_2,5,1275-1_2,Male,70,MCI-AD
+Batch-05_1276-1_1,5,1276-1_1,Female,80,NPH
+Batch-05_1276-1_2r,5,1276-1_2r,Female,80,NPH
+Batch-05_1277-1_1r,5,1277-1_1r,Female,76,DEM-AD
+Batch-05_1277-1_2r,5,1277-1_2r,Female,76,DEM-AD
+Batch-05_1281-1_1,5,1281-1_1,Male,55,CU
+Batch-05_1281-1_2,5,1281-1_2,Male,55,CU
+Batch-05_1284-1_1,5,1284-1_1,Male,65,MCI-other
+Batch-05_1284-1_2,5,1284-1_2,Male,65,MCI-other
+Batch-05_1289-1_1,5,1289-1_1,Female,81,CU
+Batch-05_1289-1_2,5,1289-1_2,Female,81,CU
+Batch-05_1292-1_1,5,1292-1_1,Female,77,NPH
+Batch-05_1292-1_2,5,1292-1_2,Female,77,NPH
+Batch-05_1292-2_1,5,1292-2_1,Female,77,NPH
+Batch-05_1292-2_2,5,1292-2_2,Female,77,NPH
+Batch-05_1293-1_1,5,1293-1_1,Female,69,MCI-AD
+Batch-05_1293-1_2,5,1293-1_2,Female,69,MCI-AD
+Batch-05_1295-1_1,5,1295-1_1,Female,69,CU
+Batch-05_1295-1_2,5,1295-1_2,Female,69,CU
+Batch-05_1297-1_1,5,1297-1_1,Male,77,MCI-AD
+Batch-05_1297-1_2,5,1297-1_2,Male,77,MCI-AD
+Batch-05_1299-1_1,5,1299-1_1,Female,66,MCI-other
+Batch-05_1299-1_2,5,1299-1_2,Female,66,MCI-other
+Batch-05_1300-1_1,5,1300-1_1,Male,58,CU
+Batch-05_1300-1_2,5,1300-1_2,Male,58,CU
+Batch-05_1301-1_1,5,1301-1_1,Male,81,NPH
+Batch-05_1301-1_2,5,1301-1_2,Male,81,NPH
+Batch-05_Pool-10_1,5,Pool-10_1,NA,NA,NA
+Batch-05_Pool-10_2,5,Pool-10_2,NA,NA,NA
+Batch-05_Pool-9_1,5,Pool-9_1,NA,NA,NA
+Batch-05_Pool-9_2,5,Pool-9_2,NA,NA,NA
+Batch-06_1303-1_1,6,1303-1_1,Male,80,MCI-other
+Batch-06_1303-1_2,6,1303-1_2,Male,80,MCI-other
+Batch-06_1304-1_1,6,1304-1_1,Female,66,MCI-AD
+Batch-06_1304-1_2,6,1304-1_2,Female,66,MCI-AD
+Batch-06_1304-2_1,6,1304-2_1,Female,66,MCI-AD
+Batch-06_1304-2_2,6,1304-2_2,Female,66,MCI-AD
+Batch-06_1305-1_1,6,1305-1_1,Female,66,MCI-other
+Batch-06_1305-1_2,6,1305-1_2,Female,66,MCI-other
+Batch-06_1306-1_1,6,1306-1_1,Female,59,MCI-AD
+Batch-06_1306-1_2,6,1306-1_2,Female,59,MCI-AD
+Batch-06_1307-1_1,6,1307-1_1,Male,77,NPH
+Batch-06_1307-1_2,6,1307-1_2,Male,77,NPH
+Batch-06_1313-1_1,6,1313-1_1,Female,72,CU
+Batch-06_1313-1_2,6,1313-1_2,Female,72,CU
+Batch-06_1314-1_1,6,1314-1_1,Male,73,MCI-AD
+Batch-06_1314-1_2,6,1314-1_2,Male,73,MCI-AD
+Batch-06_1315-1_1,6,1315-1_1,Male,66,MCI-other
+Batch-06_1315-1_2,6,1315-1_2,Male,66,MCI-other
+Batch-06_1317-1_1,6,1317-1_1,Female,63,MCI-AD
+Batch-06_1317-1_2,6,1317-1_2,Female,63,MCI-AD
+Batch-06_1318-1_1,6,1318-1_1,Male,57,CU
+Batch-06_1318-1_2,6,1318-1_2,Male,57,CU
+Batch-06_1319-1_1,6,1319-1_1,Male,81,NPH
+Batch-06_1319-1_2,6,1319-1_2,Male,81,NPH
+Batch-06_1320-1_1,6,1320-1_1,Female,72,NPH
+Batch-06_1320-1_2,6,1320-1_2,Female,72,NPH
+Batch-06_1322-1_1,6,1322-1_1,Male,65,MCI-AD
+Batch-06_1322-1_2,6,1322-1_2,Male,65,MCI-AD
+Batch-06_1323-1_1,6,1323-1_1,Female,56,CU
+Batch-06_1323-1_2,6,1323-1_2,Female,56,CU
+Batch-06_1324-1_1,6,1324-1_1,Male,72,MCI-other
+Batch-06_1324-1_2,6,1324-1_2,Male,72,MCI-other
+Batch-06_1329-1_1,6,1329-1_1,Male,68,MCI-other
+Batch-06_1329-1_2,6,1329-1_2,Male,68,MCI-other
+Batch-06_1331-1_1,6,1331-1_1,Male,66,CU
+Batch-06_1331-1_2,6,1331-1_2,Male,66,CU
+Batch-06_1332-1_1,6,1332-1_1,Female,65,MCI-other
+Batch-06_1332-1_2,6,1332-1_2,Female,65,MCI-other
+Batch-06_1332-2_1,6,1332-2_1,Female,65,MCI-other
+Batch-06_1332-2_2,6,1332-2_2,Female,65,MCI-other
+Batch-06_1333-1_1,6,1333-1_1,Male,66,NPH
+Batch-06_1333-1_2,6,1333-1_2,Male,66,NPH
+Batch-06_1334-1_1,6,1334-1_1,Female,57,CU
+Batch-06_1334-1_2,6,1334-1_2,Female,57,CU
+Batch-06_Pool-11_1,6,Pool-11_1,NA,NA,NA
+Batch-06_Pool-11_2,6,Pool-11_2,NA,NA,NA
+Batch-06_Pool-12_1,6,Pool-12_1,NA,NA,NA
+Batch-06_Pool-12_2,6,Pool-12_2,NA,NA,NA
+Batch-07_1335-1_1,7,1335-1_1,Female,71,MCI-AD
+Batch-07_1335-1_2,7,1335-1_2,Female,71,MCI-AD
+Batch-07_1337-2_1,7,1337-2_1,NA,NA,NA
+Batch-07_1337-2_2,7,1337-2_2,NA,NA,NA
+Batch-07_1338-1_1,7,1338-1_1,Female,69,CU
+Batch-07_1338-1_2,7,1338-1_2,Female,69,CU
+Batch-07_1339-1_1,7,1339-1_1,Female,76,MCI-AD
+Batch-07_1339-1_2,7,1339-1_2,Female,76,MCI-AD
+Batch-07_1340-1_1,7,1340-1_1,Female,60,MCI-AD
+Batch-07_1340-1_2,7,1340-1_2,Female,60,MCI-AD
+Batch-07_1344-1_1,7,1344-1_1,Female,81,DEM-AD
+Batch-07_1344-1_2,7,1344-1_2,Female,81,DEM-AD
+Batch-07_1345-1_1,7,1345-1_1,Male,58,MCI-AD
+Batch-07_1345-1_2,7,1345-1_2,Male,58,MCI-AD
+Batch-07_1347-1_1,7,1347-1_1,Female,63,CU
+Batch-07_1347-1_2,7,1347-1_2,Female,63,CU
+Batch-07_1351-1_1,7,1351-1_1,Female,80,NPH
+Batch-07_1351-1_2,7,1351-1_2,Female,80,NPH
+Batch-07_1352-1_1,7,1352-1_1,Male,66,NPH
+Batch-07_1352-1_2,7,1352-1_2,Male,66,NPH
+Batch-07_1354-1_1,7,1354-1_1,Male,79,MCI-other
+Batch-07_1354-1_2,7,1354-1_2,Male,79,MCI-other
+Batch-07_1356-1_1,7,1356-1_1,Female,76,DEM-AD
+Batch-07_1356-1_2,7,1356-1_2,Female,76,DEM-AD
+Batch-07_1357-1_1,7,1357-1_1,Male,60,MCI-other
+Batch-07_1357-1_2,7,1357-1_2,Male,60,MCI-other
+Batch-07_1359-1_1,7,1359-1_1,Male,65,DEM-AD
+Batch-07_1359-1_2,7,1359-1_2,Male,65,DEM-AD
+Batch-07_1360-2_1,7,1360-2_1,NA,NA,NA
+Batch-07_1360-2_2,7,1360-2_2,NA,NA,NA
+Batch-07_1362-1_1,7,1362-1_1,Male,64,MCI-AD
+Batch-07_1362-1_2,7,1362-1_2,Male,64,MCI-AD
+Batch-07_1366-1_1,7,1366-1_1,Male,84,MCI-other
+Batch-07_1366-1_2,7,1366-1_2,Male,84,MCI-other
+Batch-07_1367-1_1,7,1367-1_1,Male,70,DEM-AD
+Batch-07_1367-1_2,7,1367-1_2,Male,70,DEM-AD
+Batch-07_1369-1_1,7,1369-1_1,Female,64,DEM-AD
+Batch-07_1369-1_2,7,1369-1_2,Female,64,DEM-AD
+Batch-07_1370-1_1,7,1370-1_1,Male,71,DEM-other
+Batch-07_1370-1_2,7,1370-1_2,Male,71,DEM-other
+Batch-07_1371-1_1,7,1371-1_1,Female,61,CU
+Batch-07_1371-1_2,7,1371-1_2,Female,61,CU
+Batch-07_1379-1_1,7,1379-1_1,Female,71,MCI-AD
+Batch-07_1379-1_2,7,1379-1_2,Female,71,MCI-AD
+Batch-07_Pool-13_1,7,Pool-13_1,NA,NA,NA
+Batch-07_Pool-13_2,7,Pool-13_2,NA,NA,NA
+Batch-07_Pool-14_1,7,Pool-14_1,NA,NA,NA
+Batch-07_Pool-14_2,7,Pool-14_2,NA,NA,NA
+Batch-08_1381-1_1,8,1381-1_1,Female,68,DEM-AD
+Batch-08_1381-1_2,8,1381-1_2,Female,68,DEM-AD
+Batch-08_1382-1_1,8,1382-1_1,Male,75,DEM-other
+Batch-08_1382-1_2,8,1382-1_2,Male,75,DEM-other
+Batch-08_1383-1_1,8,1383-1_1,Male,78,NPH
+Batch-08_1383-1_2,8,1383-1_2,Male,78,NPH
+Batch-08_1385-1_1,8,1385-1_1,Female,80,DEM-other
+Batch-08_1385-1_2,8,1385-1_2,Female,80,DEM-other
+Batch-08_1386-1_1,8,1386-1_1,Female,77,MCI-AD
+Batch-08_1386-1_2,8,1386-1_2,Female,77,MCI-AD
+Batch-08_1388-1_1,8,1388-1_1,Female,66,MCI-AD
+Batch-08_1388-1_2,8,1388-1_2,Female,66,MCI-AD
+Batch-08_1390-1_1,8,1390-1_1,Female,78,DEM-AD
+Batch-08_1390-1_2,8,1390-1_2,Female,78,DEM-AD
+Batch-08_1391-1_1,8,1391-1_1,Female,70,MCI-AD
+Batch-08_1391-1_2,8,1391-1_2,Female,70,MCI-AD
+Batch-08_1394-1_1,8,1394-1_1,Male,82,MCI-AD
+Batch-08_1394-1_2,8,1394-1_2,Male,82,MCI-AD
+Batch-08_1395-1_1,8,1395-1_1,Male,82,DEM-AD
+Batch-08_1395-1_2,8,1395-1_2,Male,82,DEM-AD
+Batch-08_1397-1_1,8,1397-1_1,Female,64,CU
+Batch-08_1397-1_2,8,1397-1_2,Female,64,CU
+Batch-08_1398-1_1,8,1398-1_1,Male,78,NPH
+Batch-08_1398-1_2,8,1398-1_2,Male,78,NPH
+Batch-08_1399-1_1,8,1399-1_1,Female,82,DEM-other
+Batch-08_1399-1_2,8,1399-1_2,Female,82,DEM-other
+Batch-08_1400-1_1,8,1400-1_1,Male,84,MCI-AD
+Batch-08_1400-1_2,8,1400-1_2,Male,84,MCI-AD
+Batch-08_1401-1_1,8,1401-1_1,Female,64,DEM-AD
+Batch-08_1401-1_2,8,1401-1_2,Female,64,DEM-AD
+Batch-08_1402-1_1,8,1402-1_1,Male,63,DEM-AD
+Batch-08_1402-1_2,8,1402-1_2,Male,63,DEM-AD
+Batch-08_1403-1_1,8,1403-1_1,Male,80,MCI-AD
+Batch-08_1403-1_2,8,1403-1_2,Male,80,MCI-AD
+Batch-08_1404-1_1,8,1404-1_1,Male,74,MCI-AD
+Batch-08_1404-1_2,8,1404-1_2,Male,74,MCI-AD
+Batch-08_1405-1_1,8,1405-1_1,Male,77,NPH
+Batch-08_1405-1_2,8,1405-1_2,Male,77,NPH
+Batch-08_1406-1_1,8,1406-1_1,Female,78,DEM-AD
+Batch-08_1406-1_2,8,1406-1_2,Female,78,DEM-AD
+Batch-08_1408-1_1,8,1408-1_1,Male,77,MCI-other
+Batch-08_1408-1_2,8,1408-1_2,Male,77,MCI-other
+Batch-08_1409-1_1,8,1409-1_1,Male,77,NPH
+Batch-08_1409-1_2,8,1409-1_2,Male,77,NPH
+Batch-08_Pool-15_1,8,Pool-15_1,NA,NA,NA
+Batch-08_Pool-15_2,8,Pool-15_2,NA,NA,NA
+Batch-08_Pool-16_1,8,Pool-16_1,NA,NA,NA
+Batch-08_Pool-16_2,8,Pool-16_2,NA,NA,NA
+Batch-09_1411-1_1,9,1411-1_1,Male,62,MCI-AD
+Batch-09_1411-1_2,9,1411-1_2,Male,62,MCI-AD
+Batch-09_1412-1_1,9,1412-1_1,Female,73,DEM-AD
+Batch-09_1412-1_2,9,1412-1_2,Female,73,DEM-AD
+Batch-09_1415-1_1,9,1415-1_1,Male,79,DEM-AD
+Batch-09_1415-1_2,9,1415-1_2,Male,79,DEM-AD
+Batch-09_1420-1_1,9,1420-1_1,Male,59,MCI-AD
+Batch-09_1420-1_2,9,1420-1_2,Male,59,MCI-AD
+Batch-09_1423-1_1,9,1423-1_1,Female,75,MCI-other
+Batch-09_1423-1_2,9,1423-1_2,Female,75,MCI-other
+Batch-09_1425-1_1,9,1425-1_1,Male,60,CU
+Batch-09_1425-1_2,9,1425-1_2,Male,60,CU
+Batch-09_1428-1_1,9,1428-1_1,Male,81,NPH
+Batch-09_1428-1_2,9,1428-1_2,Male,81,NPH
+Batch-09_1429-1_1,9,1429-1_1,Female,73,NPH
+Batch-09_1429-1_2,9,1429-1_2,Female,73,NPH
+Batch-09_1430-1_1,9,1430-1_1,Female,74,MCI-AD
+Batch-09_1430-1_2,9,1430-1_2,Female,74,MCI-AD
+Batch-09_1431-1_1,9,1431-1_1,Male,59,CU
+Batch-09_1431-1_2,9,1431-1_2,Male,59,CU
+Batch-09_1435-1_1,9,1435-1_1,Male,68,MCI-AD
+Batch-09_1435-1_2,9,1435-1_2,Male,68,MCI-AD
+Batch-09_1437-1_1,9,1437-1_1,Male,66,CU
+Batch-09_1437-1_2,9,1437-1_2,Male,66,CU
+Batch-09_1440-1_1,9,1440-1_1,Female,63,CU
+Batch-09_1440-1_2,9,1440-1_2,Female,63,CU
+Batch-09_1441-1_1,9,1441-1_1,Female,64,DEM-AD
+Batch-09_1441-1_2,9,1441-1_2,Female,64,DEM-AD
+Batch-09_1442-1_1,9,1442-1_1,Male,65,MCI-AD
+Batch-09_1442-1_2,9,1442-1_2,Male,65,MCI-AD
+Batch-09_1444-1_1,9,1444-1_1,Male,55,MCI-other
+Batch-09_1444-1_2,9,1444-1_2,Male,55,MCI-other
+Batch-09_1445-1_1,9,1445-1_1,Male,72,MCI-AD
+Batch-09_1445-1_2,9,1445-1_2,Male,72,MCI-AD
+Batch-09_1446-1_1,9,1446-1_1,Male,74,NPH
+Batch-09_1446-1_2,9,1446-1_2,Male,74,NPH
+Batch-09_1447-1_1,9,1447-1_1,Male,57,MCI-other
+Batch-09_1447-1_2,9,1447-1_2,Male,57,MCI-other
+Batch-09_1449-1_1,9,1449-1_1,Male,71,MCI-other
+Batch-09_1449-1_2,9,1449-1_2,Male,71,MCI-other
+Batch-09_1450-1_1,9,1450-1_1,Female,59,CU
+Batch-09_1450-1_2,9,1450-1_2,Female,59,CU
+Batch-09_1451-1_1,9,1451-1_1,Female,75,CU
+Batch-09_1451-1_2,9,1451-1_2,Female,75,CU
+Batch-09_Pool-17_1,9,Pool-17_1,NA,NA,NA
+Batch-09_Pool-17_2,9,Pool-17_2,NA,NA,NA
+Batch-09_Pool-18_1,9,Pool-18_1,NA,NA,NA
+Batch-09_Pool-18_2,9,Pool-18_2,NA,NA,NA
+Batch-10_1452-1_1,10,1452-1_1,Female,60,MCI-other
+Batch-10_1452-1_2,10,1452-1_2,Female,60,MCI-other
+Batch-10_1453-1_1,10,1453-1_1,Male,67,MCI-AD
+Batch-10_1453-1_2,10,1453-1_2,Male,67,MCI-AD
+Batch-10_1454-1_1,10,1454-1_1,Female,70,CU
+Batch-10_1454-1_2,10,1454-1_2,Female,70,CU
+Batch-10_1455-1_1,10,1455-1_1,Male,83,DEM-AD
+Batch-10_1455-1_2,10,1455-1_2,Male,83,DEM-AD
+Batch-10_1458-1_1,10,1458-1_1,Male,82,MCI-AD
+Batch-10_1458-1_2,10,1458-1_2,Male,82,MCI-AD
+Batch-10_1459-1_1,10,1459-1_1,Female,73,MCI-other
+Batch-10_1459-1_2,10,1459-1_2,Female,73,MCI-other
+Batch-10_1460-1_1,10,1460-1_1,Male,75,MCI-AD
+Batch-10_1460-1_2,10,1460-1_2,Male,75,MCI-AD
+Batch-10_1465-1_1,10,1465-1_1,Female,71,CU
+Batch-10_1465-1_2,10,1465-1_2,Female,71,CU
+Batch-10_1467-1_1,10,1467-1_1,Male,72,MCI-other
+Batch-10_1467-1_2,10,1467-1_2,Male,72,MCI-other
+Batch-10_1467-2_1,10,1467-2_1,Male,72,MCI-other
+Batch-10_1467-2_2,10,1467-2_2,Male,72,MCI-other
+Batch-10_1468-1_1,10,1468-1_1,Female,73,DEM-AD
+Batch-10_1468-1_2,10,1468-1_2,Female,73,DEM-AD
+Batch-10_1471-1_1,10,1471-1_1,Male,73,MCI-AD
+Batch-10_1471-1_2,10,1471-1_2,Male,73,MCI-AD
+Batch-10_1472-1_1,10,1472-1_1,Male,76,NPH
+Batch-10_1472-1_2,10,1472-1_2,Male,76,NPH
+Batch-10_1474-1_1,10,1474-1_1,Female,66,CU
+Batch-10_1474-1_2,10,1474-1_2,Female,66,CU
+Batch-10_1476-1_1,10,1476-1_1,Male,55,CU
+Batch-10_1476-1_2,10,1476-1_2,Male,55,CU
+Batch-10_1477-1_1,10,1477-1_1,Female,67,MCI-other
+Batch-10_1477-1_2,10,1477-1_2,Female,67,MCI-other
+Batch-10_1478-1_1,10,1478-1_1,Female,73,CU
+Batch-10_1478-1_2,10,1478-1_2,Female,73,CU
+Batch-10_1480-1_1,10,1480-1_1,Female,59,DEM-AD
+Batch-10_1480-1_2,10,1480-1_2,Female,59,DEM-AD
+Batch-10_1482-1_1,10,1482-1_1,Male,69,MCI-other
+Batch-10_1482-1_2,10,1482-1_2,Male,69,MCI-other
+Batch-10_1484-1_1,10,1484-1_1,Female,60,NPH
+Batch-10_1484-1_2,10,1484-1_2,Female,60,NPH
+Batch-10_1485-1_1,10,1485-1_1,Male,72,MCI-other
+Batch-10_1485-1_2,10,1485-1_2,Male,72,MCI-other
+Batch-10_1486-1_1,10,1486-1_1,Male,84,DEM-AD
+Batch-10_1486-1_2,10,1486-1_2,Male,84,DEM-AD
+Batch-10_Pool-19_1,10,Pool-19_1,NA,NA,NA
+Batch-10_Pool-19_2,10,Pool-19_2,NA,NA,NA
+Batch-10_Pool-20_1,10,Pool-20_1,NA,NA,NA
+Batch-10_Pool-20_2,10,Pool-20_2,NA,NA,NA
+Batch-11_1487-1_1,11,1487-1_1,Male,94,NPH
+Batch-11_1487-1_2,11,1487-1_2,Male,94,NPH
+Batch-11_1489-1_1,11,1489-1_1,Male,63,CU
+Batch-11_1489-1_2,11,1489-1_2,Male,63,CU
+Batch-11_1490-1_1,11,1490-1_1,Male,79,DEM-AD
+Batch-11_1490-1_2,11,1490-1_2,Male,79,DEM-AD
+Batch-11_1492-1_1,11,1492-1_1,Female,69,MCI-AD
+Batch-11_1492-1_2,11,1492-1_2,Female,69,MCI-AD
+Batch-11_1493-1_1,11,1493-1_1,Female,58,NPH
+Batch-11_1493-1_2,11,1493-1_2,Female,58,NPH
+Batch-11_1494-1_1,11,1494-1_1,Male,77,MCI-other
+Batch-11_1494-1_2,11,1494-1_2,Male,77,MCI-other
+Batch-11_1495-1_1,11,1495-1_1,Female,73,DEM-AD
+Batch-11_1495-1_2,11,1495-1_2,Female,73,DEM-AD
+Batch-11_1496-1_1,11,1496-1_1,Female,79,DEM-AD
+Batch-11_1496-1_2,11,1496-1_2,Female,79,DEM-AD
+Batch-11_1497-1_1,11,1497-1_1,Male,81,DEM-AD
+Batch-11_1497-1_2,11,1497-1_2,Male,81,DEM-AD
+Batch-11_1499-1_1,11,1499-1_1,Male,70,DEM-AD
+Batch-11_1499-1_2,11,1499-1_2,Male,70,DEM-AD
+Batch-11_1500-1_1,11,1500-1_1,Female,71,MCI-AD
+Batch-11_1500-1_2,11,1500-1_2,Female,71,MCI-AD
+Batch-11_1501-1_1,11,1501-1_1,Female,72,MCI-AD
+Batch-11_1501-1_2,11,1501-1_2,Female,72,MCI-AD
+Batch-11_1502-1_1,11,1502-1_1,Male,77,MCI-other
+Batch-11_1502-1_2,11,1502-1_2,Male,77,MCI-other
+Batch-11_1503-1_1,11,1503-1_1,Male,80,DEM-AD
+Batch-11_1503-1_2,11,1503-1_2,Male,80,DEM-AD
+Batch-11_1504-1_1,11,1504-1_1,Female,68,DEM-AD
+Batch-11_1504-1_2,11,1504-1_2,Female,68,DEM-AD
+Batch-11_1505-1_1,11,1505-1_1,Male,74,MCI-other
+Batch-11_1505-1_2,11,1505-1_2,Male,74,MCI-other
+Batch-11_1507-1_1,11,1507-1_1,Male,75,MCI-other
+Batch-11_1507-1_2,11,1507-1_2,Male,75,MCI-other
+Batch-11_1509-1_1,11,1509-1_1,Female,63,CU
+Batch-11_1509-1_2,11,1509-1_2,Female,63,CU
+Batch-11_1511-1_1,11,1511-1_1,Female,62,MCI-other
+Batch-11_1511-1_2,11,1511-1_2,Female,62,MCI-other
+Batch-11_1513-1_1,11,1513-1_1,Female,83,NPH
+Batch-11_1513-1_2,11,1513-1_2,Female,83,NPH
+Batch-11_1514-1_1,11,1514-1_1,Male,75,MCI-AD
+Batch-11_1514-1_2,11,1514-1_2,Male,75,MCI-AD
+Batch-11_1517-1_1,11,1517-1_1,Female,67,MCI-other
+Batch-11_1517-1_2,11,1517-1_2,Female,67,MCI-other
+Batch-11_Pool-22_1,11,Pool-22_1,NA,NA,NA
+Batch-11_Pool-22_2,11,Pool-22_2,NA,NA,NA
+Batch-11_Pool1-21_1,11,Pool1-21_1,NA,NA,NA
+Batch-11_Pool1-21_2,11,Pool1-21_2,NA,NA,NA
+Batch-12_1518-1_1,12,1518-1_1,Male,57,MCI-AD
+Batch-12_1518-1_2,12,1518-1_2,Male,57,MCI-AD
+Batch-12_1520-1_1,12,1520-1_1,Female,56,DEM-AD
+Batch-12_1520-1_2,12,1520-1_2,Female,56,DEM-AD
+Batch-12_1521-1_1,12,1521-1_1,Male,67,MCI-AD
+Batch-12_1521-1_2,12,1521-1_2,Male,67,MCI-AD
+Batch-12_1522-1_1,12,1522-1_1,Male,71,MCI-AD
+Batch-12_1522-1_2,12,1522-1_2,Male,71,MCI-AD
+Batch-12_1525-1_1,12,1525-1_1,Male,71,MCI-AD
+Batch-12_1525-1_2,12,1525-1_2,Male,71,MCI-AD
+Batch-12_1528-1_1,12,1528-1_1,Male,86,MCI-AD
+Batch-12_1528-1_2,12,1528-1_2,Male,86,MCI-AD
+Batch-12_1529-1_1,12,1529-1_1,Male,83,MCI-AD
+Batch-12_1529-1_2,12,1529-1_2,Male,83,MCI-AD
+Batch-12_1531-1_1,12,1531-1_1,Male,58,MCI-other
+Batch-12_1531-1_2,12,1531-1_2,Male,58,MCI-other
+Batch-12_1532-1_1,12,1532-1_1,Female,79,MCI-AD
+Batch-12_1532-1_2,12,1532-1_2,Female,79,MCI-AD
+Batch-12_1533-1_1,12,1533-1_1,Female,58,CU
+Batch-12_1533-1_2,12,1533-1_2,Female,58,CU
+Batch-12_1537-1_1,12,1537-1_1,Female,76,MCI-AD
+Batch-12_1537-1_2,12,1537-1_2,Female,76,MCI-AD
+Batch-12_1538-1_1,12,1538-1_1,Female,61,MCI-AD
+Batch-12_1538-1_2,12,1538-1_2,Female,61,MCI-AD
+Batch-12_1539-1_1,12,1539-1_1,Male,71,NPH
+Batch-12_1539-1_2,12,1539-1_2,Male,71,NPH
+Batch-12_1540-1_1,12,1540-1_1,Male,71,MCI-AD
+Batch-12_1540-1_2,12,1540-1_2,Male,71,MCI-AD
+Batch-12_1541-1_1,12,1541-1_1,Female,68,MCI-AD
+Batch-12_1541-1_2,12,1541-1_2,Female,68,MCI-AD
+Batch-12_1542-1_1,12,1542-1_1,Female,58,MCI-other
+Batch-12_1542-1_2,12,1542-1_2,Female,58,MCI-other
+Batch-12_1545-1_1,12,1545-1_1,Female,55,MCI-other
+Batch-12_1545-1_2,12,1545-1_2,Female,55,MCI-other
+Batch-12_1546-1_1,12,1546-1_1,Male,58,DEM-other
+Batch-12_1546-1_2,12,1546-1_2,Male,58,DEM-other
+Batch-12_1547-1_1,12,1547-1_1,Male,57,DEM-other
+Batch-12_1547-1_2,12,1547-1_2,Male,57,DEM-other
+Batch-12_1548-1_1,12,1548-1_1,Male,58,DEM-AD
+Batch-12_1548-1_2,12,1548-1_2,Male,58,DEM-AD
+Batch-12_1549-1_1,12,1549-1_1,Male,75,MCI-AD
+Batch-12_1549-1_2,12,1549-1_2,Male,75,MCI-AD
+Batch-12_1552-1_1,12,1552-1_1,Female,59,CU
+Batch-12_1552-1_2,12,1552-1_2,Female,59,CU
+Batch-12_Pool-23_1,12,Pool-23_1,NA,NA,NA
+Batch-12_Pool-23_2,12,Pool-23_2,NA,NA,NA
+Batch-12_Pool-24_1,12,Pool-24_1,NA,NA,NA
+Batch-12_Pool-24_2,12,Pool-24_2,NA,NA,NA
+Batch-13_1553-1_1,13,1553-1_1,Female,56,CU
+Batch-13_1554-1_1,13,1554-1_1,Male,78,MCI-other
+Batch-13_1554-1_2,13,1554-1_2,Male,78,MCI-other
+Batch-13_1554-2_1,13,1554-2_1,Male,78,MCI-other
+Batch-13_1554-2_2,13,1554-2_2,Male,78,MCI-other
+Batch-13_1555-1_1,13,1555-1_1,Male,56,CU
+Batch-13_1555-1_2,13,1555-1_2,Male,56,CU
+Batch-13_1559-1_1,13,1559-1_1,Female,58,CU
+Batch-13_1559-1_2,13,1559-1_2,Female,58,CU
+Batch-13_1560-1_1,13,1560-1_1,Female,69,NPH
+Batch-13_1560-1_2,13,1560-1_2,Female,69,NPH
+Batch-13_1560-2_1,13,1560-2_1,Female,69,NPH
+Batch-13_1560-2_2,13,1560-2_2,Female,69,NPH
+Batch-13_1563-1_1,13,1563-1_1,Male,73,MCI-other
+Batch-13_1563-1_2,13,1563-1_2,Male,73,MCI-other
+Batch-13_1566-1_1,13,1566-1_1,Male,74,MCI-AD
+Batch-13_1566-1_2,13,1566-1_2,Male,74,MCI-AD
+Batch-13_1567-1_1,13,1567-1_1,Male,88,DEM-AD
+Batch-13_1567-1_2,13,1567-1_2,Male,88,DEM-AD
+Batch-13_1568-1_1,13,1568-1_1,Male,77,MCI-other
+Batch-13_1568-1_2,13,1568-1_2,Male,77,MCI-other
+Batch-13_1569-1_1,13,1569-1_1,Male,73,MCI-AD
+Batch-13_1569-1_2,13,1569-1_2,Male,73,MCI-AD
+Batch-13_1570-1_1,13,1570-1_1,Male,79,MCI-AD
+Batch-13_1570-1_2,13,1570-1_2,Male,79,MCI-AD
+Batch-13_1571-1_1,13,1571-1_1,Male,74,MCI-other
+Batch-13_1571-1_2,13,1571-1_2,Male,74,MCI-other
+Batch-13_1572-1_1,13,1572-1_1,Female,56,CU
+Batch-13_1572-1_2,13,1572-1_2,Female,56,CU
+Batch-13_1573-1_1,13,1573-1_1,Female,73,CU
+Batch-13_1573-1_2,13,1573-1_2,Female,73,CU
+Batch-13_1574-1_1,13,1574-1_1,Female,91,NPH
+Batch-13_1574-1_2,13,1574-1_2,Female,91,NPH
+Batch-13_1575-1_1,13,1575-1_1,Female,65,DEM-other
+Batch-13_1575-1_2,13,1575-1_2,Female,65,DEM-other
+Batch-13_1576-1_1,13,1576-1_1,Female,78,MCI-AD
+Batch-13_1576-1_2,13,1576-1_2,Female,78,MCI-AD
+Batch-13_1580-1_1,13,1580-1_1,Male,64,NPH
+Batch-13_1580-1_2,13,1580-1_2,Male,64,NPH
+Batch-13_1581-1_1,13,1581-1_1,Female,57,NPH
+Batch-13_1581-1_2,13,1581-1_2,Female,57,NPH
+Batch-13_1582-1_1,13,1582-1_1,Male,76,MCI-other
+Batch-13_1582-1_2,13,1582-1_2,Male,76,MCI-other
+Batch-13_Pool-25_1,13,Pool-25_1,NA,NA,NA
+Batch-13_Pool-25_2,13,Pool-25_2,NA,NA,NA
+Batch-13_Pool-26_1,13,Pool-26_1,NA,NA,NA
+Batch-13_Pool-26_2,13,Pool-26_2,NA,NA,NA
+Batch-14_1583-1_1,14,1583-1_1,Female,67,MCI-other
+Batch-14_1583-1_2,14,1583-1_2,Female,67,MCI-other
+Batch-14_1585-1_1,14,1585-1_1,Male,70,NPH
+Batch-14_1585-1_2,14,1585-1_2,Male,70,NPH
+Batch-14_1586-1_1,14,1586-1_1,Male,76,DEM-other
+Batch-14_1586-1_2,14,1586-1_2,Male,76,DEM-other
+Batch-14_1588-1_1,14,1588-1_1,Male,56,CU
+Batch-14_1588-1_2,14,1588-1_2,Male,56,CU
+Batch-14_1593-1_1,14,1593-1_1,Male,74,NPH
+Batch-14_1593-1_2,14,1593-1_2,Male,74,NPH
+Batch-14_1595-1_1,14,1595-1_1,Female,61,MCI-other
+Batch-14_1595-1_2,14,1595-1_2,Female,61,MCI-other
+Batch-14_1597-1_1,14,1597-1_1,Male,65,MCI-AD
+Batch-14_1597-1_2,14,1597-1_2,Male,65,MCI-AD
+Batch-14_1598-1_1,14,1598-1_1,Female,82,DEM-AD
+Batch-14_1598-1_2,14,1598-1_2,Female,82,DEM-AD
+Batch-14_1601-1_1,14,1601-1_1,Male,73,NPH
+Batch-14_1601-1_2,14,1601-1_2,Male,73,NPH
+Batch-14_1603-1_1,14,1603-1_1,Male,81,NPH
+Batch-14_1603-1_2,14,1603-1_2,Male,81,NPH
+Batch-14_1604-1_1,14,1604-1_1,Male,70,DEM-other
+Batch-14_1604-1_2,14,1604-1_2,Male,70,DEM-other
+Batch-14_1606-1_1,14,1606-1_1,Male,84,NPH
+Batch-14_1606-1_2,14,1606-1_2,Male,84,NPH
+Batch-14_1607-1_1,14,1607-1_1,Male,67,MCI-other
+Batch-14_1607-1_2,14,1607-1_2,Male,67,MCI-other
+Batch-14_1608-1_1,14,1608-1_1,Female,78,CU
+Batch-14_1608-1_2,14,1608-1_2,Female,78,CU
+Batch-14_1609-1_1,14,1609-1_1,Male,72,MCI-other
+Batch-14_1609-1_2,14,1609-1_2,Male,72,MCI-other
+Batch-14_1610-1_1,14,1610-1_1,Male,63,MCI-other
+Batch-14_1610-1_2,14,1610-1_2,Male,63,MCI-other
+Batch-14_1614-1_1,14,1614-1_1,Female,69,DEM-AD
+Batch-14_1614-1_2,14,1614-1_2,Female,69,DEM-AD
+Batch-14_1616-1_1,14,1616-1_1,Male,74,DEM-AD
+Batch-14_1616-1_2,14,1616-1_2,Male,74,DEM-AD
+Batch-14_1618-1_1,14,1618-1_1,Male,74,DEM-other
+Batch-14_1618-1_2,14,1618-1_2,Male,74,DEM-other
+Batch-14_1619-1_1,14,1619-1_1,Female,89,DEM-other
+Batch-14_1619-1_2,14,1619-1_2,Female,89,DEM-other
+Batch-14_1620-1_1,14,1620-1_1,Male,59,MCI-other
+Batch-14_1620-1_2,14,1620-1_2,Male,59,MCI-other
+Batch-14_1621-1_1,14,1621-1_1,Female,55,CU
+Batch-14_1621-1_2,14,1621-1_2,Female,55,CU
+Batch-14_Pool-27_1,14,Pool-27_1,NA,NA,NA
+Batch-14_Pool-27_2,14,Pool-27_2,NA,NA,NA
+Batch-14_Pool-28_1,14,Pool-28_1,NA,NA,NA
+Batch-14_Pool-28_2,14,Pool-28_2,NA,NA,NA
+Batch-15_1622-1_1,15,1622-1_1,Female,69,CU
+Batch-15_1622-1_2,15,1622-1_2,Female,69,CU
+Batch-15_1623-1_1,15,1623-1_1,Male,76,DEM-AD
+Batch-15_1623-1_2,15,1623-1_2,Male,76,DEM-AD
+Batch-15_1624-1_1,15,1624-1_1,Female,78,MCI-AD
+Batch-15_1624-1_2,15,1624-1_2,Female,78,MCI-AD
+Batch-15_1625-1_1,15,1625-1_1,Male,63,DEM-other
+Batch-15_1625-1_2,15,1625-1_2,Male,63,DEM-other
+Batch-15_1629-1_1,15,1629-1_1,Male,69,DEM-AD
+Batch-15_1629-1_2,15,1629-1_2,Male,69,DEM-AD
+Batch-15_1630-1_1,15,1630-1_1,Female,71,MCI-AD
+Batch-15_1630-1_2,15,1630-1_2,Female,71,MCI-AD
+Batch-15_1631-1_1,15,1631-1_1,Male,58,MCI-AD
+Batch-15_1631-1_2,15,1631-1_2,Male,58,MCI-AD
+Batch-15_1632-1_1,15,1632-1_1,Female,75,MCI-AD
+Batch-15_1632-1_2,15,1632-1_2,Female,75,MCI-AD
+Batch-15_1633-1_1,15,1633-1_1,Male,79,MCI-other
+Batch-15_1633-1_2,15,1633-1_2,Male,79,MCI-other
+Batch-15_1634-1_1,15,1634-1_1,Male,61,DEM-other
+Batch-15_1634-1_2,15,1634-1_2,Male,61,DEM-other
+Batch-15_1635-1_1,15,1635-1_1,Male,60,DEM-other
+Batch-15_1635-1_2,15,1635-1_2,Male,60,DEM-other
+Batch-15_1637-1_1,15,1637-1_1,Female,60,MCI-other
+Batch-15_1637-1_2,15,1637-1_2,Female,60,MCI-other
+Batch-15_1638-1_1,15,1638-1_1,Male,75,MCI-other
+Batch-15_1638-1_2,15,1638-1_2,Male,75,MCI-other
+Batch-15_1640-1_1,15,1640-1_1,Male,66,MCI-AD
+Batch-15_1640-1_2,15,1640-1_2,Male,66,MCI-AD
+Batch-15_1641-1_1,15,1641-1_1,Female,63,MCI-other
+Batch-15_1641-1_2,15,1641-1_2,Female,63,MCI-other
+Batch-15_1642-1_1,15,1642-1_1,Female,74,NPH
+Batch-15_1642-1_2,15,1642-1_2,Female,74,NPH
+Batch-15_1643-1_1,15,1643-1_1,Female,82,MCI-other
+Batch-15_1643-1_2,15,1643-1_2,Female,82,MCI-other
+Batch-15_1645-1_1,15,1645-1_1,Female,66,CU
+Batch-15_1645-1_2,15,1645-1_2,Female,66,CU
+Batch-15_1646-1_1,15,1646-1_1,Male,62,DEM-AD
+Batch-15_1646-1_2,15,1646-1_2,Male,62,DEM-AD
+Batch-15_1647-1_1,15,1647-1_1,Male,66,DEM-AD
+Batch-15_1647-1_2,15,1647-1_2,Male,66,DEM-AD
+Batch-15_1648-1_1,15,1648-1_1,Female,74,DEM-AD
+Batch-15_1648-1_2,15,1648-1_2,Female,74,DEM-AD
+Batch-15_1650-1_1,15,1650-1_1,Male,81,NPH
+Batch-15_1650-1_2,15,1650-1_2,Male,81,NPH
+Batch-15_Pool-29_1,15,Pool-29_1,NA,NA,NA
+Batch-15_Pool-29_2,15,Pool-29_2,NA,NA,NA
+Batch-15_Pool-30_1,15,Pool-30_1,NA,NA,NA
+Batch-15_Pool-30_2,15,Pool-30_2,NA,NA,NA
+Batch-16_1652-1_1,16,1652-1_1,Female,77,DEM-other
+Batch-16_1652-1_2,16,1652-1_2,Female,77,DEM-other
+Batch-16_1653-1_1,16,1653-1_1,Female,75,MCI-AD
+Batch-16_1653-1_2,16,1653-1_2,Female,75,MCI-AD
+Batch-16_1654-1_1,16,1654-1_1,Male,74,DEM-AD
+Batch-16_1654-1_2,16,1654-1_2,Male,74,DEM-AD
+Batch-16_1655-1_1,16,1655-1_1,Female,85,DEM-other
+Batch-16_1655-1_2,16,1655-1_2,Female,85,DEM-other
+Batch-16_1658-1_1,16,1658-1_1,Female,59,CU
+Batch-16_1658-1_2,16,1658-1_2,Female,59,CU
+Batch-16_1659-1_1,16,1659-1_1,Male,75,CU
+Batch-16_1659-1_2,16,1659-1_2,Male,75,CU
+Batch-16_1660-1_1,16,1660-1_1,Female,59,CU
+Batch-16_1660-1_2,16,1660-1_2,Female,59,CU
+Batch-16_1661-1_1,16,1661-1_1,Female,81,MCI-AD
+Batch-16_1661-1_2,16,1661-1_2,Female,81,MCI-AD
+Batch-16_1662-1_1,16,1662-1_1,Male,56,DEM-AD
+Batch-16_1662-1_2,16,1662-1_2,Male,56,DEM-AD
+Batch-16_1664-1_1,16,1664-1_1,Male,56,CU
+Batch-16_1664-1_2,16,1664-1_2,Male,56,CU
+Batch-16_1669-1_1,16,1669-1_1,Female,59,CU
+Batch-16_1669-1_2,16,1669-1_2,Female,59,CU
+Batch-16_1671-1_1,16,1671-1_1,Male,89,DEM-AD
+Batch-16_1671-1_2,16,1671-1_2,Male,89,DEM-AD
+Batch-16_1672-1_1,16,1672-1_1,Male,72,MCI-other
+Batch-16_1672-1_2,16,1672-1_2,Male,72,MCI-other
+Batch-16_1674-1_1,16,1674-1_1,Female,72,DEM-AD
+Batch-16_1674-1_2,16,1674-1_2,Female,72,DEM-AD
+Batch-16_1676-1_1,16,1676-1_1,Male,56,DEM-AD
+Batch-16_1676-1_2,16,1676-1_2,Male,56,DEM-AD
+Batch-16_1678-1_1,16,1678-1_1,Female,66,DEM-AD
+Batch-16_1678-1_2,16,1678-1_2,Female,66,DEM-AD
+Batch-16_1679-1_1,16,1679-1_1,Female,85,CU
+Batch-16_1679-1_2,16,1679-1_2,Female,85,CU
+Batch-16_1680-1_1,16,1680-1_1,Male,72,MCI-AD
+Batch-16_1680-1_2,16,1680-1_2,Male,72,MCI-AD
+Batch-16_1681-1_1,16,1681-1_1,Female,75,NPH
+Batch-16_1681-1_2,16,1681-1_2,Female,75,NPH
+Batch-16_1682-1_1,16,1682-1_1,Female,59,MCI-AD
+Batch-16_1682-1_2,16,1682-1_2,Female,59,MCI-AD
+Batch-16_1683-1_1,16,1683-1_1,Female,74,CU
+Batch-16_1683-1_2,16,1683-1_2,Female,74,CU
+Batch-16_1686-1_1,16,1686-1_1,Female,77,MCI-AD
+Batch-16_1686-1_2,16,1686-1_2,Female,77,MCI-AD
+Batch-16_Pool-31_1,16,Pool-31_1,NA,NA,NA
+Batch-16_Pool-31_2,16,Pool-31_2,NA,NA,NA
+Batch-16_Pool-32_1,16,Pool-32_1,NA,NA,NA
+Batch-16_Pool-32_2,16,Pool-32_2,NA,NA,NA
+Batch-17_1689-1_1,17,1689-1_1,Female,59,MCI-other
+Batch-17_1689-1_2,17,1689-1_2,Female,59,MCI-other
+Batch-17_1690-1_1,17,1690-1_1,Male,69,NPH
+Batch-17_1690-1_2,17,1690-1_2,Male,69,NPH
+Batch-17_1691-1_1,17,1691-1_1,Female,55,MCI-other
+Batch-17_1691-1_2,17,1691-1_2,Female,55,MCI-other
+Batch-17_1692-1_1,17,1692-1_1,Male,70,CU
+Batch-17_1692-1_2,17,1692-1_2,Male,70,CU
+Batch-17_1694-1_1,17,1694-1_1,Male,57,DEM-AD
+Batch-17_1694-1_2,17,1694-1_2,Male,57,DEM-AD
+Batch-17_1695-1_1,17,1695-1_1,Male,62,DEM-AD
+Batch-17_1695-1_2,17,1695-1_2,Male,62,DEM-AD
+Batch-17_1696-1_1,17,1696-1_1,Male,91,NPH
+Batch-17_1696-1_2,17,1696-1_2,Male,91,NPH
+Batch-17_1697-1_1,17,1697-1_1,Male,68,CU
+Batch-17_1697-1_2,17,1697-1_2,Male,68,CU
+Batch-17_1698-1_1,17,1698-1_1,Male,61,MCI-other
+Batch-17_1698-1_2,17,1698-1_2,Male,61,MCI-other
+Batch-17_1700-1_1,17,1700-1_1,Male,56,MCI-AD
+Batch-17_1700-1_2,17,1700-1_2,Male,56,MCI-AD
+Batch-17_1705-1_1,17,1705-1_1,Female,69,CU
+Batch-17_1705-1_2,17,1705-1_2,Female,69,CU
+Batch-17_1706-1_1,17,1706-1_1,Female,82,NPH
+Batch-17_1706-1_2,17,1706-1_2,Female,82,NPH
+Batch-17_1710-1_1,17,1710-1_1,Male,76,NPH
+Batch-17_1710-1_2,17,1710-1_2,Male,76,NPH
+Batch-17_1712-1_1,17,1712-1_1,Female,75,MCI-AD
+Batch-17_1712-1_2,17,1712-1_2,Female,75,MCI-AD
+Batch-17_1713-1_1,17,1713-1_1,Male,85,MCI-AD
+Batch-17_1713-1_2,17,1713-1_2,Male,85,MCI-AD
+Batch-17_1714-1_1,17,1714-1_1,Female,72,MCI-other
+Batch-17_1714-1_2,17,1714-1_2,Female,72,MCI-other
+Batch-17_1715-1_1,17,1715-1_1,Male,83,NPH
+Batch-17_1715-1_2,17,1715-1_2,Male,83,NPH
+Batch-17_1717-1_1,17,1717-1_1,Male,71,MCI-other
+Batch-17_1717-1_2,17,1717-1_2,Male,71,MCI-other
+Batch-17_1720-1_1,17,1720-1_1,Female,70,MCI-other
+Batch-17_1720-1_2,17,1720-1_2,Female,70,MCI-other
+Batch-17_1722-1_1,17,1722-1_1,Female,76,DEM-AD
+Batch-17_1722-1_2,17,1722-1_2,Female,76,DEM-AD
+Batch-17_1724-1_1,17,1724-1_1,Male,69,DEM-AD
+Batch-17_1724-1_2,17,1724-1_2,Male,69,DEM-AD
+Batch-17_1725-1_1,17,1725-1_1,Male,81,NPH
+Batch-17_1725-1_2,17,1725-1_2,Male,81,NPH
+Batch-17_Pool-33_1,17,Pool-33_1,NA,NA,NA
+Batch-17_Pool-33_2,17,Pool-33_2,NA,NA,NA
+Batch-17_Pool-34_1,17,Pool-34_1,NA,NA,NA
+Batch-17_Pool-34_2,17,Pool-34_2,NA,NA,NA
+Batch-18_1726-1_1,18,1726-1_1,Male,73,CU
+Batch-18_1726-1_2,18,1726-1_2,Male,73,CU
+Batch-18_1727-1_1,18,1727-1_1,Male,56,CU
+Batch-18_1727-1_2,18,1727-1_2,Male,56,CU
+Batch-18_1731-1_1,18,1731-1_1,Male,70,DEM-AD
+Batch-18_1731-1_2,18,1731-1_2,Male,70,DEM-AD
+Batch-18_1733-1_1,18,1733-1_1,Female,63,MCI-other
+Batch-18_1733-1_2,18,1733-1_2,Female,63,MCI-other
+Batch-18_1734-1_1,18,1734-1_1,Male,77,MCI-AD
+Batch-18_1734-1_2,18,1734-1_2,Male,77,MCI-AD
+Batch-18_1735-1_1,18,1735-1_1,Male,58,DEM-AD
+Batch-18_1735-1_2,18,1735-1_2,Male,58,DEM-AD
+Batch-18_1737-1_1,18,1737-1_1,Male,88,DEM-AD
+Batch-18_1737-1_2,18,1737-1_2,Male,88,DEM-AD
+Batch-18_1741-1_1,18,1741-1_1,Male,81,DEM-other
+Batch-18_1741-1_2,18,1741-1_2,Male,81,DEM-other
+Batch-18_1743-1_1,18,1743-1_1,Male,79,MCI-AD
+Batch-18_1743-1_2,18,1743-1_2,Male,79,MCI-AD
+Batch-18_1746-1_1,18,1746-1_1,Male,75,MCI-other
+Batch-18_1746-1_2,18,1746-1_2,Male,75,MCI-other
+Batch-18_1747-1_1,18,1747-1_1,Male,67,MCI-other
+Batch-18_1747-1_2,18,1747-1_2,Male,67,MCI-other
+Batch-18_1748-1_1,18,1748-1_1,Male,78,CU
+Batch-18_1748-1_2,18,1748-1_2,Male,78,CU
+Batch-18_1749-1_1,18,1749-1_1,Female,76,MCI-AD
+Batch-18_1749-1_2,18,1749-1_2,Female,76,MCI-AD
+Batch-18_1750-1_1,18,1750-1_1,Female,63,DEM-AD
+Batch-18_1750-1_2,18,1750-1_2,Female,63,DEM-AD
+Batch-18_1751-1_1,18,1751-1_1,Female,80,MCI-AD
+Batch-18_1751-1_2,18,1751-1_2,Female,80,MCI-AD
+Batch-18_1755-1_1,18,1755-1_1,Female,74,DEM-AD
+Batch-18_1755-1_2,18,1755-1_2,Female,74,DEM-AD
+Batch-18_1756-1_1,18,1756-1_1,Female,64,DEM-other
+Batch-18_1756-1_2,18,1756-1_2,Female,64,DEM-other
+Batch-18_1757-1_1,18,1757-1_1,Female,61,DEM-AD
+Batch-18_1757-1_2,18,1757-1_2,Female,61,DEM-AD
+Batch-18_1760-1_1,18,1760-1_1,Male,68,CU
+Batch-18_1760-1_2,18,1760-1_2,Male,68,CU
+Batch-18_1761-1_1,18,1761-1_1,Male,66,DEM-other
+Batch-18_1761-1_2,18,1761-1_2,Male,66,DEM-other
+Batch-18_1762-1_1,18,1762-1_1,Female,66,NPH
+Batch-18_1762-1_2,18,1762-1_2,Female,66,NPH
+Batch-18_1764-1_1,18,1764-1_1,Male,61,CU
+Batch-18_1764-1_2,18,1764-1_2,Male,61,CU
+Batch-18_Pool-35_1,18,Pool-35_1,NA,NA,NA
+Batch-18_Pool-35_2,18,Pool-35_2,NA,NA,NA
+Batch-18_Pool-36_1,18,Pool-36_1,NA,NA,NA
+Batch-18_Pool-36_2,18,Pool-36_2,NA,NA,NA
+Batch-19_1765-1_1,19,1765-1_1,Female,67,MCI-AD
+Batch-19_1765-1_2,19,1765-1_2,Female,67,MCI-AD
+Batch-19_1766-1_1,19,1766-1_1,Male,67,MCI-other
+Batch-19_1766-1_2,19,1766-1_2,Male,67,MCI-other
+Batch-19_1767-1_1,19,1767-1_1,Male,57,CU
+Batch-19_1767-1_2,19,1767-1_2,Male,57,CU
+Batch-19_1770-1_1,19,1770-1_1,Male,77,NPH
+Batch-19_1770-1_2,19,1770-1_2,Male,77,NPH
+Batch-19_1772-1_1,19,1772-1_1,Female,80,DEM-AD
+Batch-19_1772-1_2,19,1772-1_2,Female,80,DEM-AD
+Batch-19_1775-1_1,19,1775-1_1,Female,67,DEM-AD
+Batch-19_1775-1_2,19,1775-1_2,Female,67,DEM-AD
+Batch-19_1776-1_1,19,1776-1_1,Female,70,MCI-other
+Batch-19_1776-1_2,19,1776-1_2,Female,70,MCI-other
+Batch-19_1779-1_1,19,1779-1_1,Male,76,MCI-AD
+Batch-19_1779-1_2,19,1779-1_2,Male,76,MCI-AD
+Batch-19_1780-1_1,19,1780-1_1,Female,65,CU
+Batch-19_1780-1_2,19,1780-1_2,Female,65,CU
+Batch-19_1781-1_1,19,1781-1_1,Female,62,CU
+Batch-19_1781-1_2,19,1781-1_2,Female,62,CU
+Batch-19_1782-1_1,19,1782-1_1,Female,59,CU
+Batch-19_1782-1_2,19,1782-1_2,Female,59,CU
+Batch-19_1785-1_1,19,1785-1_1,Male,73,DEM-AD
+Batch-19_1785-1_2,19,1785-1_2,Male,73,DEM-AD
+Batch-19_1786-1_1,19,1786-1_1,Male,56,DEM-AD
+Batch-19_1786-1_2,19,1786-1_2,Male,56,DEM-AD
+Batch-19_1788-1_1,19,1788-1_1,Female,58,DEM-other
+Batch-19_1788-1_2,19,1788-1_2,Female,58,DEM-other
+Batch-19_1789-1_1,19,1789-1_1,Female,60,MCI-other
+Batch-19_1789-1_2,19,1789-1_2,Female,60,MCI-other
+Batch-19_1790-1_1,19,1790-1_1,Female,61,DEM-AD
+Batch-19_1790-1_2,19,1790-1_2,Female,61,DEM-AD
+Batch-19_1791-1_1,19,1791-1_1,Male,77,MCI-other
+Batch-19_1791-1_2,19,1791-1_2,Male,77,MCI-other
+Batch-19_1793-1_1,19,1793-1_1,Female,63,CU
+Batch-19_1793-1_2,19,1793-1_2,Female,63,CU
+Batch-19_1794-1_1,19,1794-1_1,Male,57,CU
+Batch-19_1794-1_2,19,1794-1_2,Male,57,CU
+Batch-19_1796-1_1,19,1796-1_1,Female,65,CU
+Batch-19_1796-1_2,19,1796-1_2,Female,65,CU
+Batch-19_1797-1_1,19,1797-1_1,Male,70,DEM-AD
+Batch-19_1797-1_2,19,1797-1_2,Male,70,DEM-AD
+Batch-19_1807-1_1,19,1807-1_1,Male,65,NPH
+Batch-19_1807-1_2,19,1807-1_2,Male,65,NPH
+Batch-19_Pool-37_1,19,Pool-37_1,NA,NA,NA
+Batch-19_Pool-37_2,19,Pool-37_2,NA,NA,NA
+Batch-19_Pool-38_1,19,Pool-38_1,NA,NA,NA
+Batch-19_Pool-38_2,19,Pool-38_2,NA,NA,NA
+Batch-20_1048-1_1,20,1048-1_1,Male,60,DEM-other
+Batch-20_1048-1_2,20,1048-1_2,Male,60,DEM-other
+Batch-20_1059-1_1,20,1059-1_1,Female,56,MCI-AD
+Batch-20_1059-1_2,20,1059-1_2,Female,56,MCI-AD
+Batch-20_1068-1_1,20,1068-1_1,Male,71,MCI-other
+Batch-20_1068-1_2,20,1068-1_2,Male,71,MCI-other
+Batch-20_1069-1_1,20,1069-1_1,Male,60,CU
+Batch-20_1069-1_2,20,1069-1_2,Male,60,CU
+Batch-20_1071-1_1,20,1071-1_1,Male,81,NPH
+Batch-20_1071-1_2,20,1071-1_2,Male,81,NPH
+Batch-20_1088-1_1,20,1088-1_1,Male,72,MCI-AD
+Batch-20_1088-1_2,20,1088-1_2,Male,72,MCI-AD
+Batch-20_1100-1_1,20,1100-1_1,Female,56,MCI-other
+Batch-20_1100-1_2,20,1100-1_2,Female,56,MCI-other
+Batch-20_1101-1_1,20,1101-1_1,Male,58,CU
+Batch-20_1101-1_2,20,1101-1_2,Male,58,CU
+Batch-20_1104-1_1,20,1104-1_1,Male,63,MCI-AD
+Batch-20_1104-1_2,20,1104-1_2,Male,63,MCI-AD
+Batch-20_1108-1_1,20,1108-1_1,Male,72,MCI-other
+Batch-20_1108-1_2,20,1108-1_2,Male,72,MCI-other
+Batch-20_1110-1_1,20,1110-1_1,Female,72,DEM-other
+Batch-20_1110-1_2,20,1110-1_2,Female,72,DEM-other
+Batch-20_1111-1_1,20,1111-1_1,Female,56,CU
+Batch-20_1111-1_2,20,1111-1_2,Female,56,CU
+Batch-20_1117-1_1,20,1117-1_1,Male,73,MCI-other
+Batch-20_1117-1_2,20,1117-1_2,Male,73,MCI-other
+Batch-20_1118-1_1,20,1118-1_1,Male,68,MCI-AD
+Batch-20_1118-1_2,20,1118-1_2,Male,68,MCI-AD
+Batch-20_1120-1_1,20,1120-1_1,Male,76,MCI-other
+Batch-20_1120-1_2,20,1120-1_2,Male,76,MCI-other
+Batch-20_1121-1_1,20,1121-1_1,Male,58,MCI-other
+Batch-20_1121-1_2,20,1121-1_2,Male,58,MCI-other
+Batch-20_1123-1_1,20,1123-1_1,Female,57,MCI-other
+Batch-20_1123-1_2,20,1123-1_2,Female,57,MCI-other
+Batch-20_1799-1_1,20,1799-1_1,Male,62,DEM-AD
+Batch-20_1799-1_2,20,1799-1_2,Male,62,DEM-AD
+Batch-20_1808-1_1,20,1808-1_1,Male,78,NPH
+Batch-20_1808-1_2,20,1808-1_2,Male,78,NPH
+Batch-20_1810-1_1,20,1810-1_1,Female,55,CU
+Batch-20_1810-1_2,20,1810-1_2,Female,55,CU
+Batch-20_1811-1_1,20,1811-1_1,Male,66,CU
+Batch-20_1811-1_2,20,1811-1_2,Male,66,CU
+Batch-20_1817-1_1,20,1817-1_1,Female,93,DEM-AD
+Batch-20_1817-1_2,20,1817-1_2,Female,93,DEM-AD
+Batch-20_Pool-39_1,20,Pool-39_1,NA,NA,NA
+Batch-20_Pool-39_2,20,Pool-39_2,NA,NA,NA
+Batch-20_Pool-40_1,20,Pool-40_1,NA,NA,NA
+Batch-20_Pool-40_2,20,Pool-40_2,NA,NA,NA
+Batch-21_1125-1_1,21,1125-1_1,Male,63,NPH
+Batch-21_1125-1_2,21,1125-1_2,Male,63,NPH
+Batch-21_1129-1_1,21,1129-1_1,Male,81,MCI-AD
+Batch-21_1129-1_2,21,1129-1_2,Male,81,MCI-AD
+Batch-21_1130-1_1,21,1130-1_1,Male,62,CU
+Batch-21_1130-1_2,21,1130-1_2,Male,62,CU
+Batch-21_1132-1_1,21,1132-1_1,Male,56,MCI-other
+Batch-21_1132-1_2,21,1132-1_2,Male,56,MCI-other
+Batch-21_1135-1_1,21,1135-1_1,Male,72,MCI-AD
+Batch-21_1135-1_2,21,1135-1_2,Male,72,MCI-AD
+Batch-21_1136-1_1,21,1136-1_1,Male,78,CU
+Batch-21_1136-1_2,21,1136-1_2,Male,78,CU
+Batch-21_1141-1_1,21,1141-1_1,Male,80,CU
+Batch-21_1141-1_2,21,1141-1_2,Male,80,CU
+Batch-21_1147-1_1,21,1147-1_1,Female,71,MCI-AD
+Batch-21_1147-1_2,21,1147-1_2,Female,71,MCI-AD
+Batch-21_1154-1_1,21,1154-1_1,Female,70,DEM-AD
+Batch-21_1154-1_2,21,1154-1_2,Female,70,DEM-AD
+Batch-21_1160-1_1,21,1160-1_1,Female,64,MCI-AD
+Batch-21_1160-1_2,21,1160-1_2,Female,64,MCI-AD
+Batch-21_1162-1_1,21,1162-1_1,Male,60,CU
+Batch-21_1162-1_2,21,1162-1_2,Male,60,CU
+Batch-21_1163-1_1,21,1163-1_1,Male,67,MCI-AD
+Batch-21_1163-1_2,21,1163-1_2,Male,67,MCI-AD
+Batch-21_1165-1_1,21,1165-1_1,Male,74,NPH
+Batch-21_1165-1_2,21,1165-1_2,Male,74,NPH
+Batch-21_1166-1_1,21,1166-1_1,Male,68,MCI-AD
+Batch-21_1166-1_2,21,1166-1_2,Male,68,MCI-AD
+Batch-21_1167-1_1,21,1167-1_1,Female,61,MCI-AD
+Batch-21_1167-1_2,21,1167-1_2,Female,61,MCI-AD
+Batch-21_1169-1_1,21,1169-1_1,Female,55,CU
+Batch-21_1169-1_2,21,1169-1_2,Female,55,CU
+Batch-21_1173-1_1,21,1173-1_1,Male,70,NPH
+Batch-21_1173-1_2,21,1173-1_2,Male,70,NPH
+Batch-21_1173-2_1,21,1173-2_1,Male,70,NPH
+Batch-21_1173-2_2,21,1173-2_2,Male,70,NPH
+Batch-21_1174-1_1,21,1174-1_1,Female,72,DEM-AD
+Batch-21_1174-1_2,21,1174-1_2,Female,72,DEM-AD
+Batch-21_1177-1_1,21,1177-1_1,Female,78,MCI-AD
+Batch-21_1177-1_2,21,1177-1_2,Female,78,MCI-AD
+Batch-21_1183-1_1,21,1183-1_1,Female,59,CU
+Batch-21_1183-1_2,21,1183-1_2,Female,59,CU
+Batch-21_1184-1_1,21,1184-1_1,Female,76,MCI-AD
+Batch-21_1184-1_2,21,1184-1_2,Female,76,MCI-AD
+Batch-21_Pool-41_1,21,Pool-41_1,NA,NA,NA
+Batch-21_Pool-41_2,21,Pool-41_2,NA,NA,NA
+Batch-21_Pool-42_1,21,Pool-42_1,NA,NA,NA
+Batch-21_Pool-42_2,21,Pool-42_2,NA,NA,NA
+Batch-22_1820-1_1,22,1820-1_1,Female,61,DEM-AD
+Batch-22_1820-1_2,22,1820-1_2,Female,61,DEM-AD
+Batch-22_1823-1_1,22,1823-1_1,Male,63,MCI-other
+Batch-22_1823-1_2,22,1823-1_2,Male,63,MCI-other
+Batch-22_1846-1_1,22,1846-1_1,Female,77,DEM-AD
+Batch-22_1846-1_2,22,1846-1_2,Female,77,DEM-AD
+Batch-22_4581-1_1,22,4581-1_1,Male,34,NA
+Batch-22_4581-1_2,22,4581-1_2,Male,34,NA
+Batch-22_4581-2_1,22,4581-2_1,Male,34,NA
+Batch-22_4581-2_2,22,4581-2_2,Male,34,NA
+Batch-22_4592-1_1,22,4592-1_1,Female,46,NA
+Batch-22_4592-1_2,22,4592-1_2,Female,46,NA
+Batch-22_4592-2_1,22,4592-2_1,Female,46,NA
+Batch-22_4592-2_2,22,4592-2_2,Female,46,NA
+Batch-22_4592-3_1,22,4592-3_1,Female,46,NA
+Batch-22_4592-3_2,22,4592-3_2,Female,46,NA
+Batch-22_4607-1_1,22,4607-1_1,Female,33,NA
+Batch-22_4607-1_2,22,4607-1_2,Female,33,NA
+Batch-22_4607-2_1,22,4607-2_1,Female,33,NA
+Batch-22_4607-2_2,22,4607-2_2,Female,33,NA
+Batch-22_4607-3_1,22,4607-3_1,Female,33,NA
+Batch-22_4607-3_2,22,4607-3_2,Female,33,NA
+Batch-22_4615-1_1,22,4615-1_1,Male,28,NA
+Batch-22_4615-1_2,22,4615-1_2,Male,28,NA
+Batch-22_4615-2_1,22,4615-2_1,Male,28,NA
+Batch-22_4615-2_2,22,4615-2_2,Male,28,NA
+Batch-22_4615-3_1,22,4615-3_1,Male,28,NA
+Batch-22_4615-3_2,22,4615-3_2,Male,28,NA
+Batch-22_4632-1_1,22,4632-1_1,Female,67,NA
+Batch-22_4632-1_2,22,4632-1_2,Female,67,NA
+Batch-22_4632-2_1,22,4632-2_1,Female,67,NA
+Batch-22_4632-2_2,22,4632-2_2,Female,67,NA
+Batch-22_4632-3_1,22,4632-3_1,Female,67,NA
+Batch-22_4632-3_2,22,4632-3_2,Female,67,NA
+Batch-22_Pool-43_1,22,Pool-43_1,NA,NA,NA
+Batch-22_Pool-43_2,22,Pool-43_2,NA,NA,NA
+Batch-22_Pool-44_1,22,Pool-44_1,NA,NA,NA
+Batch-22_Pool-44_2,22,Pool-44_2,NA,NA,NA
+Batch-23_4600-1_1,23,4600-1_1,Female,25,NA
+Batch-23_4600-1_2,23,4600-1_2,Female,25,NA
+Batch-23_4600-2_1,23,4600-2_1,Female,25,NA
+Batch-23_4600-2_2,23,4600-2_2,Female,25,NA
+Batch-23_4600-3_1,23,4600-3_1,Female,25,NA
+Batch-23_4600-3_2,23,4600-3_2,Female,25,NA
+Batch-23_4606-1_1,23,4606-1_1,Female,51,NA
+Batch-23_4606-1_2,23,4606-1_2,Female,51,NA
+Batch-23_4606-2_1,23,4606-2_1,Female,51,NA
+Batch-23_4606-2_2,23,4606-2_2,Female,51,NA
+Batch-23_4606-3_1,23,4606-3_1,Female,51,NA
+Batch-23_4606-3_2,23,4606-3_2,Female,51,NA
+Batch-23_4614-1_1,23,4614-1_1,Male,55,NA
+Batch-23_4614-1_2,23,4614-1_2,Male,55,NA
+Batch-23_4614-2_1,23,4614-2_1,Male,55,NA
+Batch-23_4614-2_2,23,4614-2_2,Male,55,NA
+Batch-23_4614-3_1,23,4614-3_1,Male,55,NA
+Batch-23_4614-3_2,23,4614-3_2,Male,55,NA
+Batch-23_4617-1_1,23,4617-1_1,Male,41,NA
+Batch-23_4617-1_2,23,4617-1_2,Male,41,NA
+Batch-23_4617-2_1,23,4617-2_1,Male,41,NA
+Batch-23_4617-2_2,23,4617-2_2,Male,41,NA
+Batch-23_4617-3_1,23,4617-3_1,Male,41,NA
+Batch-23_4617-3_2,23,4617-3_2,Male,41,NA
+Batch-23_Pool-45_1,23,Pool-45_1,NA,NA,NA
+Batch-23_Pool-45_2,23,Pool-45_2,NA,NA,NA
+Batch-23_Pool-46_1,23,Pool-46_1,NA,NA,NA
+Batch-23_Pool-46_2,23,Pool-46_2,NA,NA,NA
