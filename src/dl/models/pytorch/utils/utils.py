@@ -33,7 +33,8 @@ def get_optimizer(model, learning_rate, weight_decay, optimizer_type, momentum=0
     if optimizer_type == 'adam':
         optimizer = torch.optim.Adam(params=model.parameters(),
                                      lr=learning_rate,
-                                     weight_decay=weight_decay, betas=(0.5, 0.9)
+                                     weight_decay=weight_decay
+                                     # betas=(0.5, 0.9)
                                      )
     elif optimizer_type == 'radam':
         optimizer = torch.optim.RAdam(params=model.parameters(),
@@ -145,7 +146,10 @@ class LogConfusionMatrix:
 
             acc = np.mean([0 if pred != c else 1 for pred, c in zip(preds, classes)])
 
-            figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc)
+            try:
+                figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc)
+            except:
+                figure = plot_confusion_matrix(cm, class_names=unique_labels, acc=acc)
             if mlops == "tensorboard":
                 logger.add_figure(f"CM_{group}_all", figure, epoch)
             elif mlops == "neptune":
