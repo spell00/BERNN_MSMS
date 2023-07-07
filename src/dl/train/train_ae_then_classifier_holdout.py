@@ -433,7 +433,7 @@ class TrainAE:
             # while new_combinations:
             if h == 1:
                 for epoch in range(0, self.args.warmup):
-                    if early_stop_counter == self.args.early_stop:
+                    if early_stop_counter == self.args.early_warmup_stop:
                         if self.verbose > 0:
                             print('EARLY STOPPING.', epoch)
                         break
@@ -611,6 +611,10 @@ class TrainAE:
                 ae.classifier.train()
 
             for epoch in range(0, self.args.n_epochs):
+                if early_stop_counter == self.args.early_warmup_stop:
+                    if self.verbose > 0:
+                        print('EARLY STOPPING.', epoch)
+                    break
                 lists, traces = get_empty_traces()
                 closs, _, _ = self.loop('train', ae, sceloss, loaders['train'], lists, traces, nu=nu)
 
@@ -1184,24 +1188,24 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--random_recs', type=int, default=0)
+    parser.add_argument('--random_recs', type=int, default=0)  # TODO to deprecate, no longer used
     parser.add_argument('--predict_tests', type=int, default=0)
     # parser.add_argument('--balanced_rec_loader', type=int, default=0)
-    parser.add_argument('--early_stop', type=int, default=100)
-    parser.add_argument('--early_warmup_stop', type=int, default=0)
-    parser.add_argument('--train_after_warmup', type=int, default=1)
+    parser.add_argument('--early_stop', type=int, default=50)
+    parser.add_argument('--early_warmup_stop', type=int, default=-1)
+    parser.add_argument('--train_after_warmup', type=int, default=0)
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
     parser.add_argument('--device', type=str, default='cuda:0')
-    parser.add_argument('--rec_loss', type=str, default='mse')
+    parser.add_argument('--rec_loss', type=str, default='l1')
     parser.add_argument('--tied_weights', type=int, default=0)
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
     parser.add_argument('--zinb', type=int, default=0)  # TODO resolve problems, do not use
     # parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
     # parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
-    parser.add_argument('--use_mapping', type=int, default=0, help="Use batch mapping for reconstruct")
+    parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
     # parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
     # parser.add_argument('--freeze_ae', type=int, default=0)
     # parser.add_argument('--freeze_c', type=int, default=0)
@@ -1211,7 +1215,7 @@ if __name__ == "__main__":
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
-    parser.add_argument('--remove_zeros', type=int, default=1)
+    parser.add_argument('--remove_zeros', type=int, default=0)
     parser.add_argument('--n_meta', type=int, default=0)
     parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
