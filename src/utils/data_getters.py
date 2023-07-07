@@ -24,7 +24,7 @@ def get_alzheimer(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'test', 'valid']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -80,7 +80,7 @@ def get_alzheimer(path, args, seed=42):
                 data['cats']['train_pool'][
                     valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -281,7 +281,7 @@ def get_amide(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'test', 'valid']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -338,7 +338,7 @@ def get_amide(path, args, seed=42):
                 data['cats']['train_pool'][
                     valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -483,7 +483,7 @@ def get_prostate(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'test', 'valid']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -509,7 +509,7 @@ def get_prostate(path, args, seed=42):
             data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
                 valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -598,7 +598,7 @@ def get_mice(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'valid', 'test']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -624,7 +624,7 @@ def get_mice(path, args, seed=42):
             data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
                 valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -722,7 +722,7 @@ def get_cifar10(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'valid', 'test']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
             train_nums = np.arange(0, len(data['labels']['train']))
             train_inds, valid_inds  = skf.split(train_nums, data['labels']['train']).__next__()
@@ -741,7 +741,7 @@ def get_cifar10(path, args, seed=42):
             data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
                 valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             test_dataset = CIFAR10(root='data/', train=False, transform=ToTensor())
             test_dataset.data = test_dataset.data[:, :, :, 0]
             data['names']['test'] = np.array(test_dataset.targets)
@@ -792,7 +792,7 @@ def get_mnist(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'test', 'valid']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
             train_nums = np.arange(0, len(data['labels']['train']))
             train_inds, valid_inds  = skf.split(train_nums, data['labels']['train']).__next__()
@@ -812,7 +812,7 @@ def get_mnist(path, args, seed=42):
                 valid_inds]
             data['sets'][group] = [group for _ in data['names'][group]]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
 
             # transform = Compose([
             #     # Resize(28),
@@ -1075,7 +1075,7 @@ def get_bacteria1(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'valid', 'test']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -1102,7 +1102,7 @@ def get_bacteria1(path, args, seed=42):
             # data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
             #     valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -1714,7 +1714,7 @@ def get_data(path, args, seed=42):
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'test', 'valid']:
-        if group == 'valid' and not args.use_valid:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -1740,7 +1740,7 @@ def get_data(path, args, seed=42):
             data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
                 valid_inds]
 
-        elif group == 'test' and not args.use_test:
+        elif group == 'test':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
