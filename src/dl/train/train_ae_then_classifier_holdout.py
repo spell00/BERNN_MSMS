@@ -230,8 +230,8 @@ class TrainAE:
             # Track metadata and hyperparameters by assigning them to the run
             model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
             model["best_unique"] = run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            model["use_valid"] = run["use_valid"] = args.use_valid
-            model["use_test"] = run["use_test"] = args.use_test
+            # model["use_valid"] = run["use_valid"] = args.use_valid
+            # model["use_test"] = run["use_test"] = args.use_test
             model["tied_weights"] = run["tied_weights"] = args.tied_weights
             model["random_recs"] = run["random_recs"] = args.random_recs
             model["train_after_warmup"] = run["train_after_warmup"] = args.train_after_warmup
@@ -312,6 +312,7 @@ class TrainAE:
         else:
             warmup = False
         warmup_disc_b = False
+
         while h < self.args.n_repeats:
             print(f'Rep: {h}')
             epoch = 0
@@ -378,7 +379,8 @@ class TrainAE:
                              dropout=dropout,
                              variational=self.args.variational, conditional=False,
                              zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                             use_gnn=self.args.use_gnn, device=self.args.device).to(self.args.device)
+                             use_gnn=0,
+                             device=self.args.device).to(self.args.device)
             ae.mapper.to(self.args.device)
             ae.dec.to(self.args.device)
             # if self.args.embeddings_meta > 0:
@@ -395,7 +397,8 @@ class TrainAE:
                                       dropout=dropout,
                                       variational=self.args.variational, conditional=False,
                                       zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                      use_gnn=self.args.use_gnn, device=self.args.device).to(self.args.device)
+                                      use_gnn=0, # TODO parameter to be removed
+                                      device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
@@ -602,11 +605,14 @@ class TrainAE:
 
                 # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
                 # all layers except the classification layers are frozen
+            if self.args.train_after_warmup == 0:
+                ae = self.freeze_ae(ae)
+                ae.eval()
+                ae.classifier.train()
 
             for epoch in range(0, self.args.n_epochs):
                 lists, traces = get_empty_traces()
                 closs, _, _ = self.loop('train', ae, sceloss, loaders['train'], lists, traces, nu=nu)
-                ae.eval()
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -1185,7 +1191,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_warmup_stop', type=int, default=0)
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
-    parser.add_argument('--n_epochs', type=int, default=10)
+    parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--rec_loss', type=str, default='mse')
@@ -1193,12 +1199,12 @@ if __name__ == "__main__":
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
     parser.add_argument('--zinb', type=int, default=0)  # TODO resolve problems, do not use
-    parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
-    parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
+    # parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
+    # parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
     parser.add_argument('--use_mapping', type=int, default=0, help="Use batch mapping for reconstruct")
-    parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
-    parser.add_argument('--freeze_ae', type=int, default=0)
-    parser.add_argument('--freeze_c', type=int, default=0)
+    # parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
+    # parser.add_argument('--freeze_ae', type=int, default=0)
+    # parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='revTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
@@ -1214,7 +1220,7 @@ if __name__ == "__main__":
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
-    parser.add_argument('--strategy', type=str, default='CU_')
+    parser.add_argument('--strategy', type=str, default='CU_DEM')
     parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
@@ -1241,7 +1247,7 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 10]},
+        {"name": "warmup", "type": "range", "bounds": [10, 250]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
