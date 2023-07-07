@@ -4,14 +4,22 @@
 
 * Simon Pelletier
 
-# Install python dependencies
+# Install
+All install steps should be done in the root directory of the project. <br/>
+Everything should take only a few minutes to install,
+though it could be longer depending on your internet connection. <br/>
+The package 
+
+## Install python dependencies
 `pip install -r requirements.txt`
 
-# Install R dependencies
+## Install R dependencies
 `install.packages("harmony")`
 `install.packages("sva")`
 `devtools::install_github("immunogenomics/lisi")`
 
+## Install package
+`pip install -e .`
 
 # Run experiments
 To launch experiments, use the two bash files (launch_train_ae_then_classifier_holdout_experiment.sh or 

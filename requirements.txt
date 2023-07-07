@@ -1,9 +1,9 @@
-numpy
+numpy==1.21.6
 # jax==0.4.7
 # numpyro==0.12.1
 # Pillow==8.4.0
-scikit-learn
-pandas
+scikit-learn==1.0.2
+pandas==1.4.4
 scikit-optimize
 pytest
 pytest-cov
@@ -12,28 +12,28 @@ pytest-pylint
 matplotlib
 seaborn
 tabulate
-scipy
+scipy==1.9.1
 tqdm
 joblib~=1.0.0
 # sunbird
-ax-platform
+ax-platform==0.2.10
 # combat
-shap
+# shap
 pycombat
 PTable
-torch
-torchvision
-tensorboardX
-tensorboard
-tensorflow
-ax-platform
+torch==1.13.1
+torchvision==0.14.1
+tensorboardX==2.5.1
+tensorboard==2.11.0
+tensorflow==2.11.0
+ax-platform==0.2.10
 psutil
 scikit-image
 nibabel
 mpmath
 patsy
 umap-learn
-shapely
+shapely==2.0.0
 rpy2
 openpyxl
 xgboost
