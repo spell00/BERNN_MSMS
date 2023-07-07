@@ -134,29 +134,19 @@ def get_alzheimer(path, args, seed=42):
             meta = pd.read_csv(
                 f"{path}/subjects_experiment_ATN_verified_diagnosis.csv", sep=","
             )
-            meta_names = meta.loc[:, 'SampleID']
+            meta_names = pd.Series([x.split('_')[1].split('-')[0] for x in meta.loc[:, 'sample_id']])
             meta_labels = meta.loc[:, 'ATN_diagnosis']
-            meta_atn = meta.loc[:, 'CSF ATN Status Binary']
+            # meta_atn = meta.loc[:, 'CSF ATN Status Binary']
             meta_gender = meta.loc[:, 'Gender']
             meta_age = meta.loc[:, 'Age at time of LP (yrs)']
             meta_not_nans = [i for i, x in enumerate(meta_labels.isna()) if not x]
             meta_names, meta_labels = meta_names.iloc[meta_not_nans], meta_labels.iloc[meta_not_nans]
-            meta_gender, meta_age, meta_atn = meta_gender.iloc[meta_not_nans], meta_age.iloc[meta_not_nans], \
-                meta_atn.iloc[meta_not_nans]
-            # meta_not_nans = [i for i, x in enumerate(meta_atn.isna()) if not x]
-            # meta_names, meta_labels = meta_names.iloc[meta_not_nans], meta_labels.iloc[meta_not_nans]
-            # meta_gender, meta_age, meta_atn = meta_gender.iloc[meta_not_nans], meta_age.iloc[meta_not_nans], \
-            #                                   meta_atn.iloc[meta_not_nans]
-            meta_nans = [i for i, x in enumerate(meta_atn.isna()) if x]
-            meta_atn.iloc[meta_nans] = "A- T- N-"
-            meta_As = np.array([1 if x.split(' ')[0] == 'A+' else 0 for i, x in enumerate(meta_atn)])
-            meta_Ts = np.array([1 if x.split(' ')[1] == 'T+' else 0 for i, x in enumerate(meta_atn)])
-            meta_Ns = np.array([1 if x.split(' ')[2] == 'N+' else 0 for i, x in enumerate(meta_atn)])
+            meta_gender, meta_age = meta_gender.iloc[meta_not_nans], meta_age.iloc[meta_not_nans]
             meta_gender = np.array([1 if x == 'Female' else 0 for i, x in enumerate(meta_gender)])
             matrix = pd.read_csv(
                 f"{path}/{args.csv_file}", sep=','
             )
-            matrix.index = matrix['Unnamed: 0']
+            matrix.index = matrix['Gene_id']
             matrix = matrix.iloc[:, 1:].fillna(0)
             if args.remove_zeros:
                 mask1 = (matrix == 0).mean(axis=1) < 0.2
@@ -186,7 +176,7 @@ def get_alzheimer(path, args, seed=42):
             pool_meta_pos = [i for i, name in enumerate(meta_names) if name.split("_")[0] == 'Pool']
             pos = np.concatenate([
                 np.argwhere(name == names2)
-                for i, name in enumerate(meta_names2) if name in names2.tolist()
+                for i, name in enumerate(np.unique(meta_names2)) if name in names2.tolist()
             ]).squeeze()
 
             data['inputs'][group] = matrix.iloc[:, pos].T
