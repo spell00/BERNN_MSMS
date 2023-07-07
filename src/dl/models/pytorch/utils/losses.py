@@ -2,6 +2,7 @@
 import torch
 from torch.nn import functional as F
 from torch.autograd import Variable
+from torch import nn
 
 
 def softmax_mse_loss(input_logits, target_logits):
@@ -44,3 +45,36 @@ def symmetric_mse_loss(input1, input2):
     assert input1.size() == input2.size()
     num_classes = input1.size()[1]
     return torch.sum((input1 - input2)**2) / num_classes
+
+def get_losses(scale, smooth, margin, args):
+    """
+    Getter for the losses.
+    Args:
+        scale: Scaler that was used, e.g. normalizer or binarize
+        smooth: Parameter for label_smoothing
+        margin: Parameter for the TripletMarginLoss
+
+    Returns:
+        sceloss: CrossEntropyLoss (with label smoothing)
+        celoss: CrossEntropyLoss object (without label smoothing)
+        mseloss: MSELoss object
+        triplet_loss: TripletMarginLoss object
+    """
+    if args.classif_loss == 'ce':
+        sceloss = nn.CrossEntropyLoss(label_smoothing=smooth)
+    elif args.classif_loss == 'cosine':
+        sceloss = nn.CosineSimilarity()
+    celoss = nn.CrossEntropyLoss()
+    if args.rec_loss == 'mse':
+        mseloss = nn.MSELoss()
+    elif args.rec_loss == 'l1':
+        mseloss = nn.L1Loss()
+    if scale == "binarize":
+        mseloss = nn.BCELoss()
+
+    if args.dloss == 'revTriplet':
+        triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
+    else:
+        triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+
+    return sceloss, celoss, mseloss, triplet_loss

@@ -35,6 +35,7 @@ from src.utils.utils import scale_data, get_unique_labels, to_csv
 from src.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_loss_from_tb, get_best_acc_from_tb, get_best_values, add_to_logger, add_to_neptune, \
     add_to_mlflow
+from src.dl.models.pytorch.utils.losses import get_losses
 from src.dl.models.pytorch.utils.loggings import make_data
 import neptune.new as neptune
 import mlflow
@@ -387,7 +388,7 @@ class TrainAE:
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
             loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-            sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
+            sceloss, celoss, mseloss, triplet_loss = get_losses(scale, smooth, margin, args)
 
             optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
 
@@ -790,14 +791,14 @@ class TrainAE:
                 except:
                     pass
 
-    def loop(self, group, optimizer_ae, ae, celoss, loader, lists, traces, nu=1, mapping=True):
+    def loop(self, group, optimizer_ae, ae, sceloss, loader, lists, traces, nu=1, mapping=True):
         """
 
         Args:
             group: Which set? Train, valid or test
             optimizer_ae: Object that contains the optimizer for the autoencoder
             ae: AutoEncoder (pytorch model, inherits nn.Module)
-            celoss: torch.nn.CrossEntropyLoss instance
+            sceloss: torch.nn.CrossEntropyLoss instance
             triplet_loss: torch.nn.TripletMarginLoss instance
             loader: torch.utils.data.DataLoader
             lists: List keeping informations on the current run
@@ -841,7 +842,13 @@ class TrainAE:
                 domain_preds = ae.dann_discriminator(enc)
                 try:
                     cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float().to('cuda')
-                    classif_loss = celoss(preds, cats)
+                    # classif_loss = sceloss(preds, cats)
+                    if self.args.classif_loss == 'cosine':
+                        preds = torch.nn.functional.normalize(preds, p=2, dim=1, eps=1e-12, out=None)
+                        classif_loss = 1 - torch.nn.functional.cosine_similarity(preds, cats).mean()
+                    else:
+                        classif_loss = sceloss(preds, cats)
+
                 except:
                     cats = torch.Tensor([self.n_cats + 1 for _ in labels])
                     classif_loss = torch.Tensor([0])
@@ -1276,6 +1283,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--classif_loss', type=str, default='ce', help='ce or cosine')
 
     args = parser.parse_args()
     try:

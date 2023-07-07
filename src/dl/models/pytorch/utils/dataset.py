@@ -414,11 +414,24 @@ def stretch_and_squeeze(x, ratio=0.1):
 
 
 class MSDataset3(Dataset):
-    def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,
-                 remove_paddings=False, crop_size=-1, add_noise=False, random_recs=False, triplet_dloss=False,
-                 device='cuda'):
+    def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, crop_size=-1,
+                 add_noise=False, random_recs=False, triplet_dloss=False):
+        """
+
+        Args:
+            data: Contains a dict of data
+            meta: array of meta data
+            names: array or list of names
+            labels: array or list of labels
+            batches: array or list of batches
+            sets: array or list of sets
+            transform: transform to apply to the data
+            crop_size: crop size to apply to the data
+            add_noise: Whether to add noise to the data
+            random_recs: Whether to sample random reconstructions
+            triplet_dloss: Whether to use triplet loss of the domain
+        """
         self.random_recs = random_recs
-        self.crop_size = crop_size
         try:
             self.samples = data.to_numpy()
         except:
@@ -434,8 +447,6 @@ class MSDataset3(Dataset):
         self.unique_labels = list(set(labels))
         self.batches = batches
         self.unique_batches = np.unique(batches)
-        self.quantize = quantize
-        self.remove_paddings = remove_paddings
         labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels}
         batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
         # try:
@@ -460,8 +471,6 @@ class MSDataset3(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        meta_pos_batch_sample = None
-        meta_neg_batch_sample = None
         meta_to_rec = None
         if self.labels is not None:
             label = self.labels[idx]
@@ -990,45 +999,36 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     ])
 
     train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'].to_numpy(),
-                           data['cats']['train'],
-                           [x for x in data['batches']['train']],
-                           transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                           data['cats']['train'], [x for x in data['batches']['train']],
+                           [x for x in data['sets']['train']], transform=transform, crop_size=-1,
+                           random_recs=random_recs, triplet_dloss=triplet_dloss)
     train_pool_set = MSDataset3(data['inputs']['train_pool'], data['meta']['train_pool'], data['names']['train_pool'],
-                                data['cats']['train_pool'],
-                                [x for x in data['batches']['train_pool']],
-                                transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                                quantize=False, device=device)
+                                data['cats']['train_pool'], [x for x in data['batches']['train_pool']],
+                                [x for x in data['sets']['train_pool']], transform=transform, crop_size=-1,
+                                random_recs=False, triplet_dloss=triplet_dloss)
     valid_pool_set = MSDataset3(data['inputs']['valid_pool'], data['meta']['valid_pool'], data['names']['valid_pool'],
-                                data['cats']['valid_pool'],
-                                [x for x in data['batches']['valid_pool']],
-                                transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                                quantize=False, device=device)
+                                data['cats']['valid_pool'], [x for x in data['batches']['valid_pool']],
+                                [x for x in data['sets']['valid_pool']], transform=transform, crop_size=-1,
+                                random_recs=False, triplet_dloss=triplet_dloss)
     test_pool_set = MSDataset3(data['inputs']['test_pool'], data['meta']['test_pool'], data['names']['test_pool'],
-                               data['cats']['test_pool'],
-                               [x for x in data['batches']['test_pool']],
-                               transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                               quantize=False, device=device)
+                               data['cats']['test_pool'], [x for x in data['batches']['test_pool']],
+                               [x for x in data['sets']['test_pool']], transform=transform, crop_size=-1,
+                               random_recs=False, triplet_dloss=triplet_dloss)
     valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'].to_numpy(),
-                           data['cats']['valid'],
-                           [x for x in data['batches']['valid']],
-                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                           data['cats']['valid'], [x for x in data['batches']['valid']],
+                           [x for x in data['sets']['valid']], transform=transform, crop_size=-1, random_recs=False,
+                           triplet_dloss=triplet_dloss)
     valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'].to_numpy(),
-                            data['cats']['valid'],
-                            [x for x in data['batches']['valid']],
-                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                            quantize=False, device=device)
+                            data['cats']['valid'], [x for x in data['batches']['valid']],
+                            [x for x in data['sets']['valid']], transform=transform, crop_size=-1, random_recs=False,
+                            triplet_dloss=triplet_dloss)
     test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
-                          data['cats']['test'],
-                          [x for x in data['batches']['test']],
-                          transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                          quantize=False, device=device)
+                          data['cats']['test'], [x for x in data['batches']['test']], [x for x in data['sets']['test']],
+                          transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
     test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
-                           data['cats']['test'],
-                           [x for x in data['batches']['test']],
-                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                           data['cats']['test'], [x for x in data['batches']['test']],
+                           [x for x in data['sets']['test']], transform=transform, crop_size=-1, random_recs=False,
+                           triplet_dloss=triplet_dloss)
 
     loaders = {
         'train': DataLoader(train_set,
@@ -1123,13 +1123,11 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
-                                [x for x in data['batches']['valid']],
-                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                                quantize=False, device=device)
+                                [x for x in data['batches']['valid']], [x for x in data['sets']['valid']],
+                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         test_set2 = MSDataset3(data['inputs']['test'], test_names, np.concatenate(test_cats),
-                               [x for x in data['batches']['test']],
-                               transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                               quantize=False, device=device)
+                               [x for x in data['batches']['test']], [x for x in data['sets']['test']],
+                               transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         loaders['valid2'] = DataLoader(valid_set2,
                                        num_workers=0,
                                        shuffle=True,
@@ -1146,18 +1144,17 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
         all_names = np.concatenate(
             (data['names']['train'], np.stack(valid_names).reshape(-1), np.stack(test_names).reshape(-1)))
-        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats,
-                             [x for x in data['time']['all']], transform=transform, crop_size=-1,
-                             random_recs=random_recs, quantize=False, triplet_dloss=triplet_dloss, device=device)
+        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats, [x for x in data['time']['all']],
+                             transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
 
     else:
         all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
-                             [x for x in data['batches']['all']], transform=transform, crop_size=-1,
-                             random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
+                             [x for x in data['batches']['all']], [x for x in data['sets']['all']], transform=transform,
+                             crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
         all_set_pool = MSDataset3(data['inputs']['all_pool'], data['meta']['all_pool'], data['names']['all_pool'],
-                                  data['cats']['all_pool'],
-                                  [x for x in data['batches']['all_pool']], transform=transform, crop_size=-1,
-                                  random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
+                                  data['cats']['all_pool'], [x for x in data['batches']['all_pool']],
+                                  [x for x in data['sets']['all_pool']], transform=transform, crop_size=-1,
+                                  random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders['all'] = DataLoader(all_set,
                                 num_workers=0,
@@ -1327,13 +1324,11 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
-                                [x for x in data['batches']['valid']],
-                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                                quantize=False, device=device)
+                                [x for x in data['batches']['valid']], transform=transform, crop_size=-1,
+                                random_recs=random_recs, triplet_dloss=triplet_dloss)
         test_set2 = MSDataset3(data['inputs']['test'], test_names, np.concatenate(test_cats),
-                               [x for x in data['batches']['test']],
-                               transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                               quantize=False, device=device)
+                               [x for x in data['batches']['test']], transform=transform, crop_size=-1,
+                               random_recs=random_recs, triplet_dloss=triplet_dloss)
         loaders['valid2'] = DataLoader(valid_set2,
                                        num_workers=0,
                                        shuffle=True,
@@ -1350,18 +1345,16 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
         all_names = np.concatenate(
             (data['names']['train'], np.stack(valid_names).reshape(-1), np.stack(test_names).reshape(-1)))
-        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats,
-                             [x for x in data['time']['all']], transform=transform, crop_size=-1,
-                             random_recs=random_recs, quantize=False, triplet_dloss=triplet_dloss, device=device)
+        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats, [x for x in data['time']['all']],
+                             transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
 
     else:
         all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
-                             [x for x in data['batches']['all']], transform=transform, crop_size=-1,
-                             random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
+                             [x for x in data['batches']['all']], transform=transform, crop_size=-1, random_recs=False,
+                             triplet_dloss=triplet_dloss)
         all_set_pool = MSDataset3(data['inputs']['all_pool'], data['meta']['all_pool'], data['names']['all_pool'],
-                                  data['cats']['all_pool'],
-                                  [x for x in data['batches']['all_pool']], transform=transform, crop_size=-1,
-                                  random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
+                                  data['cats']['all_pool'], [x for x in data['batches']['all_pool']],
+                                  transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders['all'] = DataLoader(all_set,
                                 num_workers=0,
@@ -1602,35 +1595,20 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
     ])
 
     train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'],
-                           data['cats']['train'],
-                           [x for x in data['batches']['train']],
-                           sets=data['sets']['all'],
-                           transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                           data['cats']['train'], [x for x in data['batches']['train']], sets=data['sets']['all'],
+                           transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
     valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                           data['cats']['valid'],
-                           [x for x in data['batches']['valid']],
-                           sets=data['sets']['valid'],
-                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                           data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
     valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                            data['cats']['valid'],
-                            [x for x in data['batches']['valid']],
-                            sets=data['sets']['valid'],
-                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                            quantize=False, device=device)
-    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'],
-                          data['cats']['test'],
-                          [x for x in data['batches']['test']],
-                          sets=data['sets']['test'],
-                          transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                          quantize=False, device=device)
-    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'],
-                           data['cats']['test'],
-                           [x for x in data['batches']['test']],
-                           sets=data['sets']['test'],
-                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
-                           quantize=False, device=device)
+                            data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+                          [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                          crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+                           [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                           crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders = {
         'train': DataLoader(train_set,
@@ -1705,15 +1683,11 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
-                                [x for x in data['batches']['valid']],
-                                sets=data['sets']['valid'],
-                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                                quantize=False, device=device)
+                                [x for x in data['batches']['valid']], sets=data['sets']['valid'], transform=transform,
+                                crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         test_set2 = MSDataset3(data['inputs']['test'], test_names, np.concatenate(test_cats),
-                               [x for x in data['batches']['test']],
-                               sets=data['sets']['test'],
-                               transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
-                               quantize=False, device=device)
+                               [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                               crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         loaders['valid2'] = DataLoader(valid_set2,
                                        num_workers=0,
                                        shuffle=True,
@@ -1730,18 +1704,14 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
         all_names = np.concatenate(
             (data['names']['train'], np.stack(valid_names).reshape(-1), np.stack(test_names).reshape(-1)))
-        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats,
-                             [x for x in data['time']['all']],
-                             sets=data['sets']['all'],
-                             transform=transform, crop_size=-1,
-                             random_recs=random_recs, quantize=False, triplet_dloss=triplet_dloss, device=device)
+        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats, [x for x in data['time']['all']],
+                             sets=data['sets']['all'], transform=transform, crop_size=-1, random_recs=random_recs,
+                             triplet_dloss=triplet_dloss)
 
     else:
         all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
-                             [x for x in data['batches']['all']],
-                             sets=data['sets']['all'],
-                             transform=transform, crop_size=-1,
-                             random_recs=False, quantize=False, triplet_dloss=triplet_dloss, device=device)
+                             [x for x in data['batches']['all']], sets=data['sets']['all'], transform=transform,
+                             crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders['all'] = DataLoader(all_set,
                                 num_workers=0,

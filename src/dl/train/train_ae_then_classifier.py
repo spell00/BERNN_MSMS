@@ -24,7 +24,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice, get_data, get_bacteria
+from src.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_data, get_bacteria
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -308,7 +308,7 @@ class TrainAE:
         best_acc = 0
         best_mcc = -np.inf
         if self.args.dataset == 'alzheimer':
-            self.data, self.unique_labels, self.unique_batches = get_harvard(self.path, args, seed=seed)
+            self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
             self.pools = True
         elif self.args.dataset == 'amide':
             self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)

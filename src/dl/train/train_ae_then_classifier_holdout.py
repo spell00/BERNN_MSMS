@@ -14,7 +14,6 @@ import random
 import json
 import copy
 import torch
-from itertools import cycle
 from torch import nn
 import os
 
@@ -24,7 +23,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice
+from src.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -318,7 +317,7 @@ class TrainAE:
             best_acc = 0
             best_mcc = -np.inf
             if self.args.dataset == 'alzheimer':
-                self.data, self.unique_labels, self.unique_batches = get_harvard(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
                 self.pools = True
             elif self.args.dataset == 'amide':
                 self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
@@ -441,7 +440,7 @@ class TrainAE:
                             if warmup or self.args.train_after_warmup:
                                 optimizer_ae.zero_grad()
                             inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = all_batch
+                                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
                             inputs = inputs.to(self.args.device).float()
                             meta_inputs = meta_inputs.to(self.args.device).float()
                             to_rec = to_rec.to(self.args.device).float()
@@ -1181,7 +1180,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_warmup_stop', type=int, default=0)
     parser.add_argument('--train_after_warmup', type=int, default=1)
     parser.add_argument('--threshold', type=float, default=0.)
-    parser.add_argument('--n_epochs', type=int, default=1000)
+    parser.add_argument('--n_epochs', type=int, default=10)
     parser.add_argument('--n_trials', type=int, default=100)
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--rec_loss', type=str, default='mse')
@@ -1237,7 +1236,7 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 1000]},
+        {"name": "warmup", "type": "range", "bounds": [1, 10]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb

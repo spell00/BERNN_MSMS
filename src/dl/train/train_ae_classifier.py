@@ -26,7 +26,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_harvard, get_amide, get_prostate, get_mice, get_bacteria, get_cifar10
+from src.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_bacteria, get_cifar10
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -38,6 +38,7 @@ from src.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get
     log_traces, get_best_loss_from_tb, get_best_acc_from_tb, get_best_values, add_to_logger, add_to_neptune, \
     add_to_mlflow
 from src.dl.models.pytorch.utils.loggings import make_data
+from src.dl.models.pytorch.utils.losses import get_losses
 import neptune.new as neptune
 import mlflow
 import warnings
@@ -320,7 +321,7 @@ class TrainAE:
         self.columns = None
         self.log_deep_only = True
         if self.args.dataset == 'alzheimer':
-            self.data, self.unique_labels, self.unique_batches = get_harvard(self.path, args, seed=seed)
+            self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
             self.pools = True
         elif self.args.dataset == 'amide':
             self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
@@ -404,7 +405,7 @@ class TrainAE:
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
             loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-            sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
+            sceloss, celoss, mseloss, triplet_loss = get_losses(scale, smooth, margin, args)
 
             optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
 
@@ -808,14 +809,14 @@ class TrainAE:
                 except:
                     pass
 
-    def loop(self, group, optimizer_ae, ae, celoss, loader, lists, traces, nu=1, mapping=True):
+    def loop(self, group, optimizer_ae, ae, sceloss, loader, lists, traces, nu=1, mapping=True):
         """
 
         Args:
             group: Which set? Train, valid or test
             optimizer_ae: Object that contains the optimizer for the autoencoder
             ae: AutoEncoder (pytorch model, inherits nn.Module)
-            celoss: torch.nn.CrossEntropyLoss instance
+            sceloss: torch.nn.CrossEntropyLoss instance
             triplet_loss: torch.nn.TripletMarginLoss instance
             loader: torch.utils.data.DataLoader
             lists: List keeping informations on the current run
@@ -858,7 +859,12 @@ class TrainAE:
             domain_preds = ae.dann_discriminator(enc)
             try:
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float().to('cuda')
-                classif_loss = celoss(preds, cats)
+                if self.args.classif_loss == 'cosine':
+                    preds = torch.nn.functional.normalize(preds, p=2, dim=1, eps=1e-12, out=None)
+                    classif_loss = 1 - torch.nn.functional.cosine_similarity(preds, cats).mean()
+                else:
+                    classif_loss = sceloss(preds, cats)
+
             except:
                 cats = torch.Tensor([self.n_cats + 1 for _ in labels])
                 classif_loss = torch.Tensor([0])
@@ -961,35 +967,6 @@ class TrainAE:
             dloss = -dloss
         return dloss, domain
 
-    def get_losses(self, scale, smooth, margin, dloss):
-        """
-        Getter for the losses.
-        Args:
-            scale: Scaler that was used, e.g. normalizer or binarize
-            smooth: Parameter for label_smoothing
-            margin: Parameter for the TripletMarginLoss
-
-        Returns:
-            sceloss: CrossEntropyLoss (with label smoothing)
-            celoss: CrossEntropyLoss object (without label smoothing)
-            mseloss: MSELoss object
-            triplet_loss: TripletMarginLoss object
-        """
-        sceloss = nn.CrossEntropyLoss(label_smoothing=smooth)
-        celoss = nn.CrossEntropyLoss()
-        if self.args.rec_loss == 'mse':
-            mseloss = nn.MSELoss()
-        elif self.args.rec_loss == 'l1':
-            mseloss = nn.L1Loss()
-        if scale == "binarize":
-            mseloss = nn.BCELoss()
-
-        if dloss == 'revTriplet':
-            triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
-        else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
-
-        return sceloss, celoss, mseloss, triplet_loss
 
     def freeze_dlayers(self, ae):
         """
@@ -1119,8 +1096,10 @@ class TrainAE:
                 domain_preds = ae.dann_discriminator(reverse)
             else:
                 domain_preds = ae.dann_discriminator(enc)
-            if args.dloss not in ['revTriplet', 'inverseTriplet']:
+            if args.dloss not in ['revTriplet', 'inverseTriplet', 'inverseTripletSCA']:
                 dloss, domain = self.get_dloss(celoss, domain, domain_preds)
+                scaloss = torch.Tensor([0]).to(self.args.device)
+
             elif args.dloss == 'revTriplet':
                 pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                 neg_batch_sample = neg_batch_sample.to(self.args.device).float()
@@ -1147,6 +1126,7 @@ class TrainAE:
                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(enc, pos_enc, neg_enc)
                 # domain = domain.argmax(1)
+                scaloss = torch.Tensor([0]).to(self.args.device)
 
             if torch.isnan(enc[0][0]):
                 if self.log_mlflow:
@@ -1295,6 +1275,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=0, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--binary', type=int, default=0, help='blk vs bact^')
+    parser.add_argument('--classif_loss', type=str, default='ce', help='ce or cosine')
 
     args = parser.parse_args()
     try:

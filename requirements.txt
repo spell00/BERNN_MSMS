@@ -1,22 +1,21 @@
 numpy
-jax
-numpyro
-Pillow==8.4.0
-scikit_learn
+# jax==0.4.7
+# numpyro==0.12.1
+# Pillow==8.4.0
+scikit-learn
 pandas
 scikit-optimize
 pytest
 pytest-cov
 pylint
 pytest-pylint
-sklearn
 matplotlib
 seaborn
 tabulate
 scipy
 tqdm
 joblib~=1.0.0
-sunbird~=0.0.4
+# sunbird
 ax-platform
 # combat
 shap
@@ -38,10 +37,10 @@ shapely
 rpy2
 openpyxl
 xgboost
-# matplotlib
 torch-geometric
 neptune
 fastapi
+mlflow[extras]
 # R packages:
 # install.packages("harmony")
 # install.packages("sva")

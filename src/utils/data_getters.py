@@ -8,7 +8,7 @@ from src.dl.models.pytorch.utils.dataset import MSCSV, MS2CSV
 from torchvision.datasets import CIFAR10, MNIST, SVHN
 from torchvision.transforms import ToTensor, Compose, Grayscale, Resize, ToPILImage, Normalize
 
-def get_harvard(path, args, seed=42):
+def get_alzheimer(path, args, seed=42):
     """
     Args:
         path: Path where data is located.
@@ -19,7 +19,7 @@ def get_harvard(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -248,6 +248,8 @@ def get_harvard(path, args, seed=42):
                     else:
                         data[key][group] = data[key][group][inds_to_keep]
 
+    for key in list(data['names'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
@@ -284,7 +286,7 @@ def get_amide(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -448,6 +450,8 @@ def get_amide(path, args, seed=42):
             unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
             data['cats'][group] = np.array(
                 [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+    for key in list(data['sets'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
@@ -484,7 +488,7 @@ def get_prostate(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -569,6 +573,8 @@ def get_prostate(path, args, seed=42):
             # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
             unique_labels = get_unique_labels(data['labels'][group])
             data['cats'][group] = data['labels'][group]
+    for key in list(data['sets'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
@@ -597,7 +603,7 @@ def get_mice(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -698,6 +704,9 @@ def get_mice(path, args, seed=42):
             data['cats'][group] = np.array(
                 [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
 
+    for key in list(data['sets'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
+
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
@@ -718,7 +727,7 @@ def get_mice(path, args, seed=42):
 def get_cifar10(path, args, seed=42):
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -1710,7 +1719,7 @@ def get_data(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders']:
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
