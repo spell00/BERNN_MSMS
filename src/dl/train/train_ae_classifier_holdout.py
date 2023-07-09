@@ -1309,7 +1309,7 @@ if __name__ == "__main__":
     parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
-    parser.add_argument('--dloss', type=str, default='revTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
+    parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
@@ -1384,9 +1384,9 @@ if __name__ == "__main__":
 
     )
 
-    fig = plt.figure()
+    # fig = plt.figure()
     # render(plot_contour(model=model, param_x="learning_rate", param_y="weight_decay", metric_name='Loss'))
     # fig.savefig('test.jpg')
-    print('Best Loss:', values[0]['loss'])
-    print('Best Parameters:')
-    print(json.dumps(best_parameters, indent=4))
+    # print('Best Loss:', values[0]['loss'])
+    # print('Best Parameters:')
+    # print(json.dumps(best_parameters, indent=4))

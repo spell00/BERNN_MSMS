@@ -21,6 +21,18 @@ The package was tested on Windows 10 and Ubuntu 20.04.4 LTS with Python 3.10.11 
 ## Install package
 `pip install -e .`
 
+## Training scripts
+The main scripts for training models are located in src/dl/train. <br/>
+Use `train_ae_then_classifier_holdout.py` 
+to train a model that freezes the autoencoder and DANN/revTriplet/invTriplet layers of the network after the warmup. 
+The labels classifier is then trained alone after the warmup. The models for the alzheimer dataset reach better
+scores using this file. <br/>
+
+Use `train_ae_classifier_holdout.py` to keep training the autoencoder and 
+DANN/revTriplet/invTriplet layers of the network after the warmup.
+The models for the datasets amide (adenocarcinoma) and mice 
+(AgingMice) reach better classification scores using this file.
+
 ## Demo run
 Here are some commands to try the training scripts with only a few epochs. The number of warmup epochs is a tunable 
 hyperparameter, thus for a demo run it can be lowered directly in the training scripts, close to the end of the script.
@@ -29,25 +41,25 @@ epochs is between 10 and 250. For a demo run, it can be lowered to 1 and 10.
 <br/>
 Each command runs multiple should take only a few minutes to run.
 ### Alzheimer dataset
-In the root directory of the project, run the following command:<br/>
-`\src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --embeddings_meta=2 --device=cuda:0 --n_epochs=10
---dataset=alzheimer --n_trials=20 --n_repeats=5 --exp_id=test_alzheimer1 --path=data/Alzheimer/`
-`\src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --embeddings_meta=2 --device=cuda:0 --n_epochs=10
---dataset=alzheimer --n_trials=20 --n_repeats=5 --exp_id=test_alzheimer2 --path=data/Alzheimer/`
+In the root directory of the project, run the following commands:<br/>
+
+`python src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --embeddings_meta=2 --device=cuda:0 --n_epochs=10 --dataset=alzheimer --n_trials=20 --n_repeats=5 --exp_id=test_alzheimer1 --path=data/Alzheimer/`
+
+`python src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --embeddings_meta=2 --device=cuda:0 --n_epochs=10 --dataset=alzheimer --n_trials=20 --n_repeats=5 --exp_id=test_alzheimer2 --path=data/Alzheimer/`
 
 ### Adenocarcinoma dataset
 In the root directory of the project, run the following command:<br/>
-`\src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --device=cuda:0 
---dataset=amide --n_trials=20 --n_repeats=5 --exp_id=test_amide1 --path=data/`
-`\src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 
---dataset=amide --n_trials=20 --n_repeats=5 --exp_id=test_amide2 --path=data/`
+
+`python src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=amide --n_trials=20 --n_repeats=5 --exp_id=test_amide1 --path=data/`
+
+`python src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=amide --n_trials=20 --n_repeats=5 --exp_id=test_amide2 --path=data/`
 
 ### AgingMice dataset
 In the root directory of the project, run the following command:<br/>
-`\src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --device=cuda:0 
---dataset=mice --n_trials=20 --n_repeats=5 --exp_id=test_mice1 --path=data/`
-`\src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 
---dataset=mice --n_trials=20 --n_repeats=5 --exp_id=test_mice2 --path=data/`
+
+`python src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=mice --n_trials=20 --n_repeats=5 --exp_id=test_mice1 --path=data/`
+
+`python src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=mice --n_trials=20 --n_repeats=5 --exp_id=test_mice2 --path=data/`
 
 # Run experiments
 To launch experiments, use the two bash files (launch_train_ae_then_classifier_holdout_experiment.sh or 
@@ -71,27 +83,20 @@ Your dataset must be:
 # Train scripts
 The main scripts for training models are located in src/dl/train. 
 
-Use `train_ae_then_classifier_holdout.py` 
-to train a model that freezes the autoencoder and DANN/revTriplet/invTriplet layers of the network after the warmup. 
-The labels classifier is then trained alone after the warmup. The models for the alzheimer dataset are trianed
-using this file.
-
-Use `train_ae_classifier_holdout.py` to keep the autoencoder and 
-DANN/revTriplet/invTriplet layers of the network after the warmup. The models for the datasets amide (adenocarcinoma) amd mice 
-(AgingMice) are trained using this file.
-
-## Observe results from a server on a local machine 
+# Observe results
+## Observe results from a local machine 
 On local machine terminal:<br/>
 `mlflow ui`
 
 Open in browser:<br/>
 `http://127.0.0.1:5000/`
 
-On server:<br/>
+## Observe results from a server on a local machine 
+On server, use the command:<br/>
 `mlflow server --host=0.0.0.0`
 
 Open in local browser:<br/>
-`http://<ip-adress>:5000/`
+`http://<server-ip-adress>:5000/`
 
 
 ## Parameters
