@@ -1251,7 +1251,7 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [10, 250]},
+        {"name": "warmup", "type": "range", "bounds": [10, 1000]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb

@@ -39,7 +39,7 @@ hyperparameter, thus for a demo run it can be lowered directly in the training s
 Look for the where the class TrainAE is instantiated, the parameters are right after. By default, the number of warmup
 epochs is between 10 and 250. For a demo run, it can be lowered to 1 and 10.
 <br/>
-Each command runs multiple should take only a few minutes to run.
+Each command runs 20 trials of 5 different splits of the data. It might take over an hour to run each demo run.
 ### Alzheimer dataset
 In the root directory of the project, run the following commands:<br/>
 
@@ -67,6 +67,8 @@ launch_train_ae_classifier_holdout_experiment.sh).
 
 It was designed to run on two GPUs of 24 GB each. If not enough GPU RAM available, modify the file to reduce the
 number of models trained simultaneously. The number of GPU can also be modified.
+
+Each experiment might take a few days to run. The results will be saved in the mlflow folder.
 
 ## Custom experiments
 To run with custom data, you need to change the parameter `--dataset` to `custom` and change `--path` to the path 
