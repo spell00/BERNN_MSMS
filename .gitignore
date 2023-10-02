@@ -1,3 +1,6 @@
-/data/bacteria/csv3d/
-/data/bacteria/csv/
-/data/bacteria/csv299x299/
+/.vscode/
+/build/
+/mlruns/
+/logs/
+/src.egg-info/
+/dist/

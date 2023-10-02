@@ -27,7 +27,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice
+from src.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -329,13 +329,11 @@ class TrainAE:
                 self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
                 self.pools = True
 
-            elif self.args.dataset == 'prostate':
-                self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
-
             elif self.args.dataset == 'mice':
                 self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
             else:
-                exit('Wrong dataset name')
+                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
+
             # self.get_amide(self.path, seed=(1 + h) * 10)
             combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                np.unique(self.data['batches']['valid']),
