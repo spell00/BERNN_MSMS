@@ -296,6 +296,7 @@ def make_summary_plot(df, values, group, run, log_path, category='explainer', ml
 
     plt.close(f)
 
+
 def make_force_plot(df, values, features, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.force_plot(df, values, features=features, show=False)
     f = plt.gcf()
@@ -307,6 +308,7 @@ def make_force_plot(df, values, features, group, run, log_path, category='explai
         mlflow.log_figure(f, f'{log_path}/shap/force_{category}/{group}_values.png')
 
     plt.close(f)
+
 
 def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.summary_plot(values, feature_names=df.columns, features=df, show=False)
@@ -396,6 +398,7 @@ def make_heatmap(values, group, run, log_path, category='explainer', mlops='mlfl
         plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
         mlflow.log_figure(f, f'{log_path}/shap/heatmap_{category}/{group}_values.png')
     plt.close(f)
+
 
 def make_heatmap_deep(values, group, run, log_path, category='explainer', mlops='mlflow'):
 
