@@ -392,3 +392,4 @@ def normae(data, batches, orders=None, classes=NULL, par_prior=True, ref_batch=N
         # save(os.path.join(opts.save, 'config.json'))
         # with open(os.path.join(opts.save, 'early_stop_info.json'), 'w') as f:
         #     json.dump(early_stop_objs, f)
+
