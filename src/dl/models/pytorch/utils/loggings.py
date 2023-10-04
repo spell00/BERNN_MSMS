@@ -957,6 +957,9 @@ def log_ORD(ordin, logger, data, uniques, mlops, epoch, transductive=False):
             logger[f'{ordin["name"]}/{name}'].upload(fig)
         elif mlops == "mlflow":
             mlflow.log_figure(fig, f'{ordin["name"]}/{name}.png')
+        else:
+            plt.show()
+
         plt.close(fig)
 
 
