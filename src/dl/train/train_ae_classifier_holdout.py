@@ -27,7 +27,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.ml.train.params_gp import *
-from src.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_data
+from src.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from src.dl.models.pytorch.aedann import ReverseLayerF
 from src.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from src.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -343,22 +343,16 @@ class TrainAE:
             if self.args.dataset == 'alzheimer':
                 self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
                 self.pools = True
-            elif self.args.dataset == 'amide':
+            elif self.args.dataset in ['amide', 'adenocarcinoma']:
                 self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
                 self.pools = True
-
-            elif self.args.dataset == 'prostate':
-                # This seed split the data to have n_samples in train: 96, valid:52, test: 23
-                self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
 
             elif self.args.dataset == 'mice':
                 # This seed split the data to have n_samples in train: 96, valid:52, test: 23
                 self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
-            elif self.args.dataset == 'custom':
-                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
             else:
-                exit('Wrong dataset name')
-
+                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
+                self.pools = self.args.pool
 
             combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                np.unique(self.data['batches']['valid']),
@@ -396,7 +390,7 @@ class TrainAE:
                 # Gets all the pytorch dataloaders to train the models
                 if self.pools:
                     loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                          None, bs=self.args.bs)
+                                        None, bs=64)
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
@@ -1325,6 +1319,8 @@ if __name__ == "__main__":
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
+    parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
 
     args = parser.parse_args()
     try:

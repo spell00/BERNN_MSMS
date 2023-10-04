@@ -423,7 +423,6 @@ class TrainAE:
 
             values, best_values, _, best_traces = get_empty_dicts()
 
-            early_stop_counter = 0
             best_vals = values
             if h > 1:  # or warmup_counter == 100:
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
@@ -431,10 +430,10 @@ class TrainAE:
             # while new_combinations:
             if h == 1:
                 for epoch in range(0, self.args.warmup):
-                    if early_stop_counter == self.args.early_warmup_stop:
-                        if self.verbose > 0:
-                            print('EARLY STOPPING.', epoch)
-                        break
+                    # if early_stop_counter == self.args.early_warmup_stop:
+                    #     if self.verbose > 0:
+                    #         print('EARLY STOPPING.', epoch)
+                    #     break
                     lists, traces = get_empty_traces()
                     ae.train()
 
@@ -549,7 +548,7 @@ class TrainAE:
                             f"Domain Losses: {np.mean(traces['dom_loss'])}, "
                             f"Domain Accuracy: {np.mean(traces['dom_acc'])}")
                         warmup_counter = 0
-                        early_stop_counter = 0
+                        # early_stop_counter = 0
                         best_loss = np.mean(traces['rec_loss'])
                         dom_loss = np.mean(traces['dom_loss'])
                         dom_acc = np.mean(traces['dom_acc'])
@@ -608,8 +607,9 @@ class TrainAE:
                 ae.eval()
                 ae.classifier.train()
 
+            early_stop_counter = 0
             for epoch in range(0, self.args.n_epochs):
-                if early_stop_counter == self.args.early_warmup_stop:
+                if early_stop_counter == self.args.early_stop:
                     if self.verbose > 0:
                         print('EARLY STOPPING.', epoch)
                     break
@@ -1222,10 +1222,11 @@ if __name__ == "__main__":
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
-    parser.add_argument('--strategy', type=str, default='CU_DEM')
+    parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
     parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
 
     args = parser.parse_args()
 

@@ -19,112 +19,62 @@ def get_alzheimer(path, args, seed=42):
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
-    for group in ['train', 'test', 'valid']:
-        if group == 'test':
+    for group in ['train', 'valid']:
+        if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
-                                                   data['batches']['train']).__next__()
+                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
+                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+                train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
+                                                   data['batches']['train_pool'])
+
             else:
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds]
-            data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds]
-            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds]
-            data['names']['train'], data['names']['valid'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds]
-            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds]
-            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds]
-            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds]
-
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train_pool'],
-                                                   data['batches']['train_pool']).__next__()
-            else:
+                splitter = skf.split(train_nums, data['labels']['train']).__next__()
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train_pool']).__next__()
-            data['inputs']['train_pool'], data['inputs']['valid_pool'] = data['inputs']['train_pool'].iloc[
-                train_inds], \
-                data['inputs']['train_pool'].iloc[
-                    valid_inds]
-            data['meta']['train_pool'], data['meta']['valid_pool'] = data['meta']['train_pool'].iloc[
-                train_inds], \
-                data['meta']['train_pool'].iloc[
-                    valid_inds]
-            data['labels']['train_pool'], data['labels']['valid_pool'] = data['labels']['train_pool'][train_inds], \
-                data['labels']['train_pool'][valid_inds]
-            data['names']['train_pool'], data['names']['valid_pool'] = data['names']['train_pool'][train_inds], \
-                data['names']['train_pool'][valid_inds]
-            data['orders']['train_pool'], data['orders']['valid_pool'] = data['orders']['train_pool'][train_inds], \
-                data['orders']['train_pool'][valid_inds]
-            data['batches']['train_pool'], data['batches']['valid_pool'] = data['batches']['train_pool'][
-                train_inds], \
-                data['batches']['train_pool'][valid_inds]
-            data['cats']['train_pool'], data['cats']['valid_pool'] = data['cats']['train_pool'][train_inds], \
-                data['cats']['train_pool'][
-                    valid_inds]
+                train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
 
-        elif group == 'valid':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train'],
-                                                  data['batches']['train']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[test_inds]
-            data['names']['train'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[test_inds]
-            data['orders']['train'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][test_inds]
-            data['labels']['train'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][test_inds]
-            data['batches']['train'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][test_inds]
-            data['cats']['train'], data['cats']['test'] = \
-                data['cats']['train'][train_inds], data['cats']['train'][test_inds]
+            _, valid_inds = splitter.__next__()
+            _, test_inds = splitter.__next__()
+            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
 
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train_pool'],
-                                                  data['batches']['train_pool']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train_pool']).__next__()
-            data['inputs']['train_pool'], data['inputs']['test_pool'] = data['inputs']['train_pool'].iloc[
-                train_inds], \
-                data['inputs']['train_pool'].iloc[test_inds]
-            data['meta']['train_pool'], data['meta']['test_pool'] = data['meta']['train_pool'].iloc[train_inds], \
-                data['meta']['train_pool'].iloc[test_inds]
-            data['names']['train_pool'], data['names']['test_pool'] = data['names']['train_pool'][train_inds], \
-                data['names']['train_pool'][test_inds]
-            data['orders']['train_pool'], data['orders']['test_pool'] = data['orders']['train_pool'][train_inds], \
-                data['orders']['train_pool'][test_inds]
-            data['labels']['train_pool'], data['labels']['test_pool'] = data['labels']['train_pool'][train_inds], \
-                data['labels']['train_pool'][test_inds]
-            data['batches']['train_pool'], data['batches']['test_pool'] = data['batches']['train_pool'][train_inds], \
-                data['batches']['train_pool'][test_inds]
-            data['cats']['train_pool'], data['cats']['test_pool'] = \
-                data['cats']['train_pool'][train_inds], data['cats']['train_pool'][test_inds]
+            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
+                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
+            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
+                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
+            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
+            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
+                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
+            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
+            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
+            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds], data['cats']['train'][test_inds]
+
+            _, valid_inds = pool_splitter.__next__()
+            _, test_inds = pool_splitter.__next__()
+            train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
+            data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
+                data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
+            data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
+                data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
+            data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
+                data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
+            data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
+                data['names']['train_pool'][valid_inds], data['names']['train_pool'][test_inds]
+            data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'][train_inds], \
+                data['orders']['train_pool'][valid_inds], data['orders']['train_pool'][test_inds]
+            data['batches']['train_pool'], data['batches']['valid_pool'], data['batches']['test_pool'], = data['batches']['train_pool'][train_inds], \
+                data['batches']['train_pool'][valid_inds], data['batches']['train_pool'][test_inds]
+            data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
+                valid_inds], data['cats']['train_pool'][test_inds]
 
         else:
             meta = pd.read_csv(
@@ -276,113 +226,62 @@ def get_amide(path, args, seed=42):
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
-    for group in ['train', 'test', 'valid']:
+    for group in ['train', 'valid']:
         if group == 'valid':
             if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
-                                                   data['batches']['train']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds]
-            data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds]
-            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds]
-            data['names']['train'], data['names']['valid'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds]
-            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds]
-            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds]
-            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds]
+                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
+                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
+                                                   data['batches']['train_pool'])
 
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train_pool'],
-                                                   data['batches']['train_pool']).__next__()
             else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train_pool']).__next__()
-            data['inputs']['train_pool'], data['inputs']['valid_pool'] = data['inputs']['train_pool'].iloc[
-                train_inds], \
-                data['inputs']['train_pool'].iloc[
-                    valid_inds]
-            data['meta']['train_pool'], data['meta']['valid_pool'] = data['meta']['train_pool'].iloc[
-                train_inds], \
-                data['meta']['train_pool'].iloc[
-                    valid_inds]
-            data['labels']['train_pool'], data['labels']['valid_pool'] = data['labels']['train_pool'][train_inds], \
-                data['labels']['train_pool'][valid_inds]
-            data['names']['train_pool'], data['names']['valid_pool'] = data['names']['train_pool'][train_inds], \
-                data['names']['train_pool'][valid_inds]
-            data['batches']['train_pool'], data['batches']['valid_pool'] = data['batches']['train_pool'][
-                train_inds], \
-                data['batches']['train_pool'][valid_inds]
-            data['orders']['train_pool'], data['orders']['valid_pool'] = data['orders']['train_pool'][
-                train_inds], \
-                data['orders']['train_pool'][valid_inds]
-            data['cats']['train_pool'], data['cats']['valid_pool'] = data['cats']['train_pool'][train_inds], \
-                data['cats']['train_pool'][
-                    valid_inds]
-
-        elif group == 'test':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
+                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train'],
-                                                  data['batches']['train']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[test_inds]
-            data['names']['train'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][test_inds]
-            data['batches']['train'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][test_inds]
-            data['orders']['train'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][test_inds]
-            data['cats']['train'], data['cats']['test'] = \
-                data['cats']['train'][train_inds], data['cats']['train'][test_inds]
+                splitter = skf.split(train_nums, data['labels']['train']).__next__()
+                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
 
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train_pool'],
-                                                  data['batches']['train_pool']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train_pool']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train_pool']).__next__()
-            data['inputs']['train_pool'], data['inputs']['test_pool'] = data['inputs']['train_pool'].iloc[
-                train_inds], \
-                data['inputs']['train_pool'].iloc[test_inds]
-            data['meta']['train_pool'], data['meta']['test_pool'] = data['meta']['train_pool'].iloc[train_inds], \
-                data['meta']['train_pool'].iloc[test_inds]
-            data['names']['train_pool'], data['names']['test_pool'] = data['names']['train_pool'][train_inds], \
-                data['names']['train_pool'][test_inds]
-            data['orders']['train_pool'], data['orders']['test_pool'] = data['orders']['train_pool'][train_inds], \
-                data['orders']['train_pool'][test_inds]
-            data['labels']['train_pool'], data['labels']['test_pool'] = data['labels']['train_pool'][train_inds], \
-                data['labels']['train_pool'][test_inds]
-            data['batches']['train_pool'], data['batches']['test_pool'] = data['batches']['train_pool'][train_inds], \
-                data['batches']['train_pool'][test_inds]
-            data['cats']['train_pool'], data['cats']['test_pool'] = \
-                data['cats']['train_pool'][train_inds], data['cats']['train_pool'][test_inds]
+            _, valid_inds = splitter.__next__()
+            _, test_inds = splitter.__next__()
+            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
+
+            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
+                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
+            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
+                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
+            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
+            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
+                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
+            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
+            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
+            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds], data['cats']['train'][test_inds]
+
+            _, valid_inds = pool_splitter.__next__()
+            _, test_inds = pool_splitter.__next__()
+            train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
+            data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
+                data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
+            data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
+                data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
+            data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
+                data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
+            data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
+                data['names']['train_pool'][valid_inds], data['names']['train_pool'][test_inds]
+            data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'][train_inds], \
+                data['orders']['train_pool'][valid_inds], data['orders']['train_pool'][test_inds]
+            data['batches']['train_pool'], data['batches']['valid_pool'], data['batches']['test_pool'], = data['batches']['train_pool'][train_inds], \
+                data['batches']['train_pool'][valid_inds], data['batches']['train_pool'][test_inds]
+            data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
+                valid_inds], data['cats']['train_pool'][test_inds]
 
         else:
             matrix = pd.read_csv(
@@ -436,7 +335,7 @@ def get_amide(path, args, seed=42):
             unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
             data['cats'][group] = np.array(
                 [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-    for key in list(data['sets'].keys()):
+    for key in list(data['names'].keys()):
         data['sets'][key] = np.array([key for _ in data['names'][key]])
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
@@ -478,57 +377,38 @@ def get_mice(path, args, seed=42):
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
-    for group in ['train', 'valid', 'test']:
+    for group in ['train', 'valid']:
         if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
-                                                   data['batches']['train']).__next__()
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds]
-            data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds]
-            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds]
-            data['names']['train'], data['names']['valid'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds]
-            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds]
-            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds]
-            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds]
-
-        elif group == 'test':
-            if args.groupkfold:
+                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train'],
-                                                  data['batches']['train']).__next__()
             else:
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[test_inds]
-            data['names']['train'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][test_inds]
-            data['batches']['train'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][test_inds]
-            data['orders']['train'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][test_inds]
-            data['cats']['train'], data['cats']['test'] = \
-                data['cats']['train'][train_inds], data['cats']['train'][test_inds]
+                splitter = skf.split(train_nums, data['labels']['train']).__next__()
+                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+
+            _, valid_inds = splitter.__next__()
+            _, test_inds = splitter.__next__()
+            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
+
+            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
+                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
+            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
+                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
+            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
+            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
+                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
+            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
+            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
+            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds], data['cats']['train'][test_inds]
 
         else:
             meta = pd.read_csv(
@@ -575,9 +455,8 @@ def get_mice(path, args, seed=42):
             data['cats'][group] = np.array(
                 [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
 
-    for key in list(data['sets'].keys()):
+    for key in list(data['names'].keys()):
         data['sets'][key] = np.array([key for _ in data['names'][key]])
-
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
@@ -618,53 +497,63 @@ def get_data(path, args, seed=42):
                 skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train'],
-                                                   data['batches']['train']).__next__()
+                                                   data['batches']['train_pool'])
+
             else:
                 skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds]
-            data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds]
-            data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds]
-            data['names']['train'], data['names']['valid'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds]
-            data['batches']['train'], data['batches']['valid'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds]
-            data['orders']['train'], data['orders']['valid'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds]
-            data['cats']['train'], data['cats']['valid'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds]
+                splitter = skf.split(train_nums, data['labels']['train']).__next__()
 
-        elif group == 'test':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train'],
-                                                  data['batches']['train']).__next__()
+            _, valid_inds = splitter.__next__()
+            _, test_inds = splitter.__next__()
+            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
+
+            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
+                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
+            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
+                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
+            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
+                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
+            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
+                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
+            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
+                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
+            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
+                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
+            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
+                valid_inds], data['cats']['train'][test_inds]
+
+            if args.pools:
+                if args.groupkfold:
+                    skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                    train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                    pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
+                                                    data['batches']['train_pool'])
+
+                else:
+                    skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                    train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
+                    pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
+
+                _, valid_inds = pool_splitter.__next__()
+                _, test_inds = pool_splitter.__next__()
+                train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
+                data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
+                    data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
+                data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
+                    data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
+                data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
+                    data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
+                data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
+                    data['names']['train_pool'][valid_inds], data['names']['train_pool'][test_inds]
+                data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'][train_inds], \
+                    data['orders']['train_pool'][valid_inds], data['orders']['train_pool'][test_inds]
+                data['batches']['train_pool'], data['batches']['valid_pool'], data['batches']['test_pool'], = data['batches']['train_pool'][train_inds], \
+                    data['batches']['train_pool'][valid_inds], data['batches']['train_pool'][test_inds]
+                data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
+                    valid_inds], data['cats']['train_pool'][test_inds]
+
             else:
-                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                train_inds, test_inds = skf.split(train_nums, data['labels']['train']).__next__()
-            data['inputs']['train'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[test_inds]
-            data['names']['train'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][test_inds]
-            data['batches']['train'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][test_inds]
-            data['orders']['train'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][test_inds]
-            data['cats']['train'], data['cats']['test'] = \
-                data['cats']['train'][train_inds], data['cats']['train'][test_inds]
-
-        else:
             matrix = pd.read_csv(
                 f"{path}/{args.csv_file}", sep=","
             )
@@ -693,6 +582,8 @@ def get_data(path, args, seed=42):
             # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
             unique_labels = get_unique_labels(data['labels'][group])
             data['cats'][group] = data['labels'][group]
+    for key in list(data['names'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
     for key in list(data.keys()):
         if key in ['inputs', 'meta']:
             data[key]['all'] = pd.concat((
