@@ -384,12 +384,10 @@ def get_mice(path, args, seed=42):
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
                 splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
             else:
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 splitter = skf.split(train_nums, data['labels']['train']).__next__()
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
             _, valid_inds = splitter.__next__()
             _, test_inds = splitter.__next__()
@@ -494,10 +492,10 @@ def get_data(path, args, seed=42):
     for group in ['train', 'test', 'valid']:
         if group == 'valid':
             if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
-                                                   data['batches']['train_pool'])
+                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
 
             else:
                 skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
@@ -553,7 +551,7 @@ def get_data(path, args, seed=42):
                 data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
                     valid_inds], data['cats']['train_pool'][test_inds]
 
-            else:
+        else:
             matrix = pd.read_csv(
                 f"{path}/{args.csv_file}", sep=","
             )
