@@ -393,3 +393,44 @@ def normae(data, batches, orders=None, classes=NULL, par_prior=True, ref_batch=N
         # with open(os.path.join(opts.save, 'early_stop_info.json'), 'w') as f:
         #     json.dump(early_stop_objs, f)
 
+
+def rLISI(data, meta_data, perplexity=10):
+    import rpy2.robjects as robjects
+    from rpy2.robjects import pandas2ri
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects.conversion import localconverter
+    lisi = importr('lisi')
+    # all_batches_r = robjects.IntVector(all_batches[all_ranks])
+    # all_data_r.colnames = robjects.StrVector([str(x) for x in range(df.shape[1])])
+    # labels = ['label1', 'label2']
+    labels = robjects.StrVector(['label1'])
+    new_meta_data = robjects.r.matrix(robjects.IntVector(meta_data), nrow=data.shape[0])
+    newdata = robjects.r.matrix(robjects.FloatVector(data.values.reshape(-1)), nrow=data.shape[0])
+
+    new_meta_data.colnames = labels
+    results = lisi.compute_lisi(newdata, new_meta_data, labels, perplexity)
+    with localconverter(robjects.default_converter + pandas2ri.converter):
+        results = np.array(robjects.conversion.rpy2py(results))
+    mean = np.mean(results)
+    return mean  # , np.std(results), results
+
+
+def rKBET(inputs, cats):
+    kbet = importr('kBET')
+    # all_batches_r = robjects.IntVector(all_batches[all_ranks])
+    # all_data_r.colnames = robjects.StrVector([str(x) for x in range(df.shape[1])])
+    # labels = ['label1', 'label2']
+    labels = robjects.StrVector(['label1'])
+    new_meta_data = robjects.IntVector(cats)
+    newdata = robjects.r.matrix(robjects.FloatVector(inputs.values.reshape(-1)), nrow=inputs.shape[0])
+
+    new_meta_data.colnames = labels
+    results = kbet.kBET(newdata, new_meta_data, do_pca=False, plot=False)
+    with localconverter(robjects.default_converter + pandas2ri.converter):
+        results = robjects.conversion.rpy2py(results[0])
+    try:
+        mean = results['kBET.signif'][0]
+    except:
+        mean = 0
+
+    return mean

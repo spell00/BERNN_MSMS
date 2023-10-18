@@ -1,4 +1,4 @@
-# BERNN-MSMS: Batch Effect Removal Neural Networks for Tandem Mass Spectrometry
+# BERNN-MSMS: Batch Effect Removal Neural Networks for Tandem Mass Spectrometry. 
 
 ## Author
 
@@ -8,7 +8,7 @@
 All install steps should be done in the root directory of the project. <br/>
 Everything should take only a few minutes to install,
 though it could be longer depending on your internet connection. <br/>
-The package was tested on Windows 10 and Ubuntu 20.04.4 LTS with Python 3.10.11 and R 4.2.2.
+The package was tested on Windows 10 and Ubuntu 20.04.4 LTS with Python 3.10.11 and R 4.2.2. 
 
 ## Install python dependencies
 `pip install -r requirements.txt`
@@ -20,6 +20,11 @@ The package was tested on Windows 10 and Ubuntu 20.04.4 LTS with Python 3.10.11 
 
 ## Install package
 `pip install -e .`
+
+## Other requirements
+The scripts should be run on a machine with a GPU that supports CUDA (which should be installed). <br/>
+To verify that CUDA is installed, run the command `nvidia-smi` on a terminal. If it is installed, the CUDA version shoud appear. </br>
+To verify that pyTorch is properly installed with CUDA support, run the 
 
 ## Training scripts
 The main scripts for training models are located in src/dl/train. <br/>
@@ -39,7 +44,12 @@ hyperparameter, thus for a demo run it can be lowered directly in the training s
 Look for the where the class TrainAE is instantiated, the parameters are right after. By default, the number of warmup
 epochs is between 10 and 250. For a demo run, it can be lowered to 1 and 10.
 <br/>
-Each command runs 20 trials of 5 different splits of the data. It might take over an hour to run each demo run.
+Each command runs 20 trials of 5 different splits of the data.
+<br/>
+
+These are minimal examples. For more complete descriptions of the available arguments, see the section [Arguments](##Arguments) below.
+
+
 ### Alzheimer dataset
 In the root directory of the project, run the following commands:<br/>
 
@@ -61,14 +71,24 @@ In the root directory of the project, run the following command:<br/>
 
 `python src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=mice --n_trials=20 --n_repeats=5 --exp_id=test_mice2 --path=data/`
 
-# Run experiments
-To launch experiments, use the two bash files (launch_train_ae_then_classifier_holdout_experiment.sh or 
-launch_train_ae_classifier_holdout_experiment.sh).
+### Custom dataset
+In the root directory of the project, run the following command:<br/>
 
-It was designed to run on two GPUs of 24 GB each. If not enough GPU RAM available, modify the file to reduce the
+`python src\dl\train\train_ae_then_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=<NameOfExperiment> --path=<path/to/folderContainingCsvFile> --csv_name<csvFileName>`
+
+`python src\dl\train\train_ae_classifier_holdout.py --groupkfold=1 --device=cuda:0 --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=<NameOfExperiment> --path=<path/to/folderContainingCsvFile> --csv_name<csvFileName>`
+
+
+# Run experiments
+To reproduce the 3 experiments from the [BERNN paper](https://pubmed.ncbi.nlm.nih.gov/37461653/), use the two bash files (`launch_train_ae_then_classifier_holdout_experiment.sh` or 
+`launch_train_ae_classifier_holdout_experiment.sh`). These files can only be run on Linux. The first script was used to train the models for the Alzheimer dataset and the second for the adenocarcinoma and AgingMice datasets. <br/>
+
+These files can also be modified to run on any other csv files, given they follow the structure described in the next subsection () of this README file.
+
+It was designed to run on two NVIDIA RTX 3090 GPUs of 24 GB each. If not enough GPU RAM available, modify the file to reduce the
 number of models trained simultaneously. The number of GPU can also be modified.
 
-Each experiment might take a few days to run. The results will be saved in the mlflow folder.
+Each experiment might take a few days to run, depending on the size of the dataset. The results will be saved in the `mlflow` folder.
 
 ## Custom experiments
 To run with custom data, you need to change the parameter `--dataset` to `custom` and change `--path` to the path 
@@ -100,9 +120,21 @@ On server, use the command:<br/>
 Open in local browser:<br/>
 `http://<server-ip-adress>:5000/`
 
+Example of a mlflow user interface: <br/>
 
-## Parameters
-    --dataset (str): ['alzheimer', 'amide', 'mice']
+## Logs
+All results are also logged in the `logs` folder, which is automatically created when the first results are generated. All results are stored either in `logs/ae_classifier_holdout` or `logs/ae_then_classifier_holdout`, depending on the training scenario. The ids of the files in which each run is stored can be found in `mlflow`. To find it, first click on the experiment's name , then on the run's name (see 1st image of the example of the mlflow user interface). The run id can be found on the top of the page (see example 2nd image). 
+
+All runs logs can be accessed this way, be more conveniently, the results of the best run of each of BERNN's models are found in the `logs/best_models` folder (see the image below).  
+
+images/best_logs.png ![best_logs](images/best_logs.png)
+
+## Get best results and all batch correction metrics
+To make a summary of the results obtained in an experiment, use the command: <br\>
+
+
+## Arguments
+    --dataset (str): ['custom', 'alzheimer', 'amide', 'mice']
     --n_trials (int): Number of trials for the baeysian optimization of hyperparameters
     --n_repeats (int): Number of repeats in the repetitive holdout
     --exp_id (str): Name of the mlflow experiment
@@ -110,10 +142,19 @@ Open in local browser:<br/>
     --use_mapping (bool): Use mapping of the batch ID into the decoder
     --rec_loss (str): Reconstruction loss type ['l1', 'mse']
     --variational (boolean): Use a variational autoencoder?
-    --groupkfold (boolean): Use group k-fold? With this command, all the samples from the same batch will be in the same set. E.g. All samples from batch 1 will all be either in the training, validation or test set (https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html)
+    --groupkfold (boolean): Use group k-fold? With this command, all the 
+        samples from the same batch will be in the same set. E.g. All  samples from batch 1 will all be either in the training, validation or test set (https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html)
     --tied_weights (boolean): Use Autoencoders with tied weights?
     --train_after_warmup (boolean): Train the autoencoder after warmup? ()
     --dloss (str): Domain loss ['no', 'revTriplet', 'invTriplet', 'DANN', 'normae']
+    --early_stop (int):
+    --n_epochs (int):
+    --rec_loss (str): ['l1', 'mse']
+    --use_mapping (boolean): 
+    --csv_file (str): 
+    --train_after_warmup (boolean):
+    --remove_zeros (boolean):
+
 
 ## Hyperparameters
 

@@ -28,7 +28,12 @@ from src.dl.models.pytorch.utils.utils import log_confusion_matrix, save_roc_cur
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
-from umap import UMAP
+
+# try:
+#     from umap import UMAP
+# except:
+from umap.umap_ import UMAP
+
 from sklearn.manifold import TSNE
 from src.utils.metrics import calculate_aic, calculate_bic
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
