@@ -1200,7 +1200,7 @@ if __name__ == "__main__":
     parser.add_argument('--tied_weights', type=int, default=0)
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
-    parser.add_argument('--zinb', type=int, default=0)  # TODO resolve problems, do not use
+    parser.add_argument('--zinb', type=int, default=0) # TODO resolve problems, do not use
     # parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
     # parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
@@ -1218,7 +1218,7 @@ if __name__ == "__main__":
     parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
-    parser.add_argument('--dataset', type=str, default='prostate')
+    parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
@@ -1254,8 +1254,8 @@ if __name__ == "__main__":
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
-        {"name": "layer2", "type": "range", "bounds": [32, 1024]},
-        {"name": "layer1", "type": "range", "bounds": [512, 2048]},
+        {"name": "layer2", "type": "range", "bounds": [32, 512]},
+        {"name": "layer1", "type": "range", "bounds": [512, 1024]},
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()

@@ -1312,7 +1312,7 @@ if __name__ == "__main__":
     parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
-    parser.add_argument('--dataset', type=str, default='prostate')
+    parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--path', type=str, default='./data/')
     parser.add_argument('--exp_id', type=str, default='default_ae_classifier')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
@@ -1347,7 +1347,7 @@ if __name__ == "__main__":
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 1000]},
+        {"name": "warmup", "type": "range", "bounds": [1, 100]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
@@ -1355,8 +1355,8 @@ if __name__ == "__main__":
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
         # {"name": "layer3", "type": "range", "bounds": [32, 512]},
-        {"name": "layer2", "type": "range", "bounds": [32, 1024]},
-        {"name": "layer1", "type": "range", "bounds": [512, 2048]},
+        {"name": "layer2", "type": "range", "bounds": [32, 512]},
+        {"name": "layer1", "type": "range", "bounds": [512, 1024]},
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
