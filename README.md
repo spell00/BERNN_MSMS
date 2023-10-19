@@ -122,15 +122,48 @@ Open in local browser:<br/>
 
 Example of a mlflow user interface: <br/>
 
+![interface2](images/mlflow_ex2.png)
+
+When clicking on the experiment's run name, a menu where the run id, parameters, metrics and images from multiple analysis can be found.
+
+![interface2](images/PCA_batches.png)
+
 ## Logs
-All results are also logged in the `logs` folder, which is automatically created when the first results are generated. All results are stored either in `logs/ae_classifier_holdout` or `logs/ae_then_classifier_holdout`, depending on the training scenario. The ids of the files in which each run is stored can be found in `mlflow`. To find it, first click on the experiment's name , then on the run's name (see 1st image of the example of the mlflow user interface). The run id can be found on the top of the page (see example 2nd image). 
+All results are also logged in the `logs` folder, which is automatically created when the first results are generated. All results are stored either in `logs/ae_classifier_holdout` or `logs/ae_then_classifier_holdout`, depending on the training scenario. The ids of the files in which each run is stored can be found in `mlflow`. To find it, first click on the experiment's name , then on the run's name (see 1st image of the example of the mlflow user interface). The run id can be found on the top of the page (see example 2nd image).
 
-All runs logs can be accessed this way, be more conveniently, the results of the best run of each of BERNN's models are found in the `logs/best_models` folder (see the image below).  
+All runs logs can be accessed this way, be more conveniently, the results of the best run of each of BERNN's models are found in the `logs/best_models` folder (see the image below).
 
-images/best_logs.png ![best_logs](images/best_logs.png)
+![best_logs](images/best_logs.png)
+
+### shap folder
+
+#### Beeswarm Deep Explainer
+
+#### summary_DeepExplainer
+
+### CSV files
+
+#### encs
+The `encs.csv` file contains the encoded values given by the encoder of the autoencoder. They are the values that are used for the classification neural network. The rows are the samples and the columns are the learned features. (TODO: the batch numbers are present? Classes?)
+
+#### recs
+The `recs.csv` file contains the reconstructed features from the trained model. The rows are the samples and the columns are the initial features. Please note that the features are corrected for batch effects, but might not be as accurate as the encoded values to train a classifier. They could be used for downstream analyses (e.g. for differential analysis), but some biological signal could be lost compared to the encoded features. Rather than using this approach, we recommend using the shap values to get the features importance for the classification task, even if classification is not the end goal of the experiment.
+
+(TODO: the batch numbers are present? Classes?)
+#### shap
+
+The `shap` folder contains the values for the shap analysis. `beeswarmp` contains contains the values used to get the `beeswarm` plot, which contains the importance of each feature for the decision of each individual samples. `OTHER ONE` contains the values for the overall importance of each features.
+
+#### predictions
+train_predictions.csv, etc
+contains the prediction scores for each of the samples. (TODO: Columns need to be defined)
+
+### Models weights
+
+the `.pth` files contain the weights of each of the models trained. `model_i` (where `i` is the i'th model) are each of the final models. `warmup.pth` is the unsupervised model learned during the warmup.
 
 ## Get best results and all batch correction metrics
-To make a summary of the results obtained in an experiment, use the command: <br\>
+To make a summary of the results obtained in an experiment, use the command: `python3 mlflow_eval_runs.py --exp_name <NameOfExperiment>`<br\>
 
 
 ## Arguments
@@ -145,15 +178,12 @@ To make a summary of the results obtained in an experiment, use the command: <br
     --groupkfold (boolean): Use group k-fold? With this command, all the 
         samples from the same batch will be in the same set. E.g. All  samples from batch 1 will all be either in the training, validation or test set (https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html)
     --tied_weights (boolean): Use Autoencoders with tied weights?
-    --train_after_warmup (boolean): Train the autoencoder after warmup? ()
+    --train_after_warmup (boolean): Indicates if the autoencoder is trained after warmup.  
     --dloss (str): Domain loss ['no', 'revTriplet', 'invTriplet', 'DANN', 'normae']
-    --early_stop (int):
-    --n_epochs (int):
-    --rec_loss (str): ['l1', 'mse']
-    --use_mapping (boolean): 
-    --csv_file (str): 
-    --train_after_warmup (boolean):
-    --remove_zeros (boolean):
+    --early_stop (int): How many epochs the classifier is trained without improvement on the classification valid loss
+    --n_epochs (int): The number of epochs the classifier is trained.
+    --rec_loss (str): Which reconstruction loss to use ['l1', 'mse']
+    --csv_file (str): Name of the `.csv` file
 
 
 ## Hyperparameters

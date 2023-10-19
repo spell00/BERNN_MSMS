@@ -22,7 +22,7 @@ do
       	cuda=$((i%2)) # Divide by the number of gpus available
 		python3 src/dl/train/train_ae_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs \
 			--zinb=$zinb --variational=$variational --train_after_warmup=1  --tied_weights=0 --bdisc=1 \
-			--rec_loss=l1 --dloss=$dloss --use_mapping=1 --csv_file=$csv_file --remove_zeros=0 --n_meta=0 \
+			--rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=0 \
 			--groupkfold=1 --embeddings_meta=0 --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
 			--n_repeats=$n_repeats --exp_id=$exp_id &
 		i=$((i+1))
