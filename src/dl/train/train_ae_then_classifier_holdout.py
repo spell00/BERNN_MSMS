@@ -758,7 +758,7 @@ class TrainAE:
         # It should not be necessary. To remove once certain the "Too many files open" error is no longer a problem
         plt.close('all')
 
-        return best_mcc
+        return self.best_mcc
 
     def log_rep(self, best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
@@ -1030,7 +1030,7 @@ class TrainAE:
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
         # from the part where the autoencoder is trained. Only for DANN
-        self.freeze_dlayers(ae)
+        self.freeze_all_but_dlayers(ae)
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
@@ -1101,7 +1101,7 @@ class TrainAE:
 
         return sceloss, celoss, mseloss, triplet_loss
 
-    def freeze_dlayers(self, ae):
+    def freeze_all_but_dlayers(self, ae):
         """
         Freeze all layers except the dann classifier
         Args:
@@ -1191,7 +1191,7 @@ if __name__ == "__main__":
     # parser.add_argument('--balanced_rec_loader', type=int, default=0)
     parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=-1)
-    parser.add_argument('--train_after_warmup', type=int, default=0)
+    parser.add_argument('--train_after_warmup', type=int, default=0, help='Use the warmup loop after warmup')
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)

@@ -471,7 +471,7 @@ class TrainAE:
                                          epoch, optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
                     else:
-                        ae = self.freeze_clayers(ae)
+                        ae = self.freeze_all_but_clayers(ae)
                     closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
                                             loaders['train'], lists, traces, nu=nu)
 
@@ -932,8 +932,6 @@ class TrainAE:
                 # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])
                 w = 1
                 total_loss = w * nu * classif_loss
-                # if self.args.train_after_warmup:
-                #     total_loss += rec_loss
                 try:
                     total_loss.backward()
                 except:
@@ -950,7 +948,6 @@ class TrainAE:
 
         iterator = enumerate(loader)
 
-        # If option train_after_warmup=1, then this loop is only for preprocessing
         for i, all_batch in iterator:
             optimizer_ae.zero_grad()
             inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
@@ -1094,8 +1091,6 @@ class TrainAE:
                 add_to_mlflow(values, epoch)
         ae.train()
 
-        # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
-        # all layers except the classification layers are frozen
 
         if self.args.bdisc:
             self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
@@ -1107,7 +1102,7 @@ class TrainAE:
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
         # from the part where the autoencoder is trained. Only for DANN
-        self.freeze_dlayers(ae)
+        self.freeze_all_but_dlayers(ae)
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
@@ -1177,9 +1172,9 @@ class TrainAE:
 
         return sceloss, celoss, mseloss, triplet_loss
 
-    def freeze_dlayers(self, ae):
+    def freeze_all_but_dlayers(self, ae):
         """
-        Freeze all layers except the classifier
+        Freeze all layers except the dann classifier
         Args:
             ae: AutoEncoder object. It inherits torch.nn.Module
 
@@ -1198,9 +1193,9 @@ class TrainAE:
                 param.requires_grad = True
         return ae
 
-    def freeze_ae(self, ae):
+    def freeze_all_but_ae(self, ae):
         """
-        Freeze all layers of ae
+        Freeze all layers except ae
         Args:
             ae: AutoEncoder object. It inherits torch.nn.Module
 
@@ -1219,7 +1214,7 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
-    def freeze_clayers(self, ae):
+    def freeze_all_but_clayers(self, ae):
         """
         Freeze all layers except the classifier
         Args:
@@ -1287,7 +1282,7 @@ if __name__ == "__main__":
     parser.add_argument('--predict_tests', type=int, default=0)
     parser.add_argument('--early_stop', type=int, default=100)
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
-    parser.add_argument('--train_after_warmup', type=int, default=1)
+    parser.add_argument('--train_after_warmup', type=int, default=1, help='Use the warmup loop after warmup')
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
@@ -1299,7 +1294,7 @@ if __name__ == "__main__":
     parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')
     parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
-    parser.add_argument('--freeze_ae', type=int, default=0)
+    parser.add_argument('--freeze_all_but_ae', type=int, default=0)
     parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
@@ -1374,7 +1369,7 @@ if __name__ == "__main__":
         parameters=parameters,
         evaluation_function=train.train,
         objective_name='closs',
-        minimize=True,
+        minimize=False,
         total_trials=args.n_trials,
         random_seed=41,
 

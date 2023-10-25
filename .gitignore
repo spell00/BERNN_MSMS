@@ -4,3 +4,10 @@
 /logs/
 /src.egg-info/
 /dist/
+/src/__pycache__/
+/src/dl/__pycache__/
+/src/dl/models/__pycache__/
+/src/dl/pytorch/__pycache__/
+/src/dl/pytorch/utils/__pycache__/
+/src/utils/__pycache__/
+
