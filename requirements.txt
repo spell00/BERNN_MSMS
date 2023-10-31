@@ -21,11 +21,6 @@ ax-platform==0.2.10
 # shap
 pycombat
 # PTable
-torch==1.13.1
-torchvision==0.14.1
-tensorboardX==2.5.1
-tensorboard==2.11.0
-tensorflow==2.11.0
 ax-platform==0.2.10
 psutil==5.9.4
 scikit-image
@@ -43,6 +38,13 @@ neptune
 fastapi==0.89.1
 mlflow[extras]==2.2.1
 threadpoolctl==3.1.0
+
+torch==1.13.1
+torchvision==0.14.1
+tensorboardX==2.5.1
+tensorboard==2.11.0
+tensorflow==2.11.0
+
 # R packages:
 # install.packages("harmony")
 # install.packages("sva")
