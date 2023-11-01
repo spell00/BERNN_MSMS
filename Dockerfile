@@ -1,13 +1,14 @@
 FROM ubuntu:20.04
 
 ADD mlflow_eval_runs.py ./
+ADD setup.py ./
 ADD launch_train_ae_classifier_holdout_experiments.sh ./
 ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
 ADD src ./src/
 COPY requirements.txt ./requirements.txt
-ADD data ./data/
-ADD notebooks ./notebooks/
+# ADD data ./data/
+# ADD notebooks ./notebooks/
 RUN chmod +x launch_train_ae_classifier_holdout_experiments.sh
 RUN chmod +x launch_train_ae_then_classifier_holdout_experiments.sh
 
@@ -33,7 +34,9 @@ RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudi
 RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos = NULL, type = 'source')"
 
 RUN python -m pip install -r requirements.txt
-
+RUN python setup.py build
+RUN python setup.py install
+RUN python -m pip install .
 # CMD ./mzdb2train.sh test
 
 
