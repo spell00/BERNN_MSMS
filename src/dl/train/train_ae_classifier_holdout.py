@@ -197,7 +197,7 @@ class TrainAE:
 
         self.args.scaler = scale
         self.args.warmup = params['warmup']
-        self.args.disc_b_warmup = params['disc_b_warmup']
+        # self.args.disc_b_warmup = params['disc_b_warmup']
 
         # ncols = params['ncols']
         # if ncols > self.data['inputs']['all'].shape[1]:

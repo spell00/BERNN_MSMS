@@ -489,7 +489,8 @@ def get_data(path, args, seed=42):
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
-    for group in ['train', 'test', 'valid']:
+    for group in ['train', 'valid']:
+        # print('GROUP:', group)
         if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
@@ -521,7 +522,7 @@ def get_data(path, args, seed=42):
             data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
                 valid_inds], data['cats']['train'][test_inds]
 
-            if args.pools:
+            if args.pool:
                 if args.groupkfold:
                     skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
@@ -580,20 +581,65 @@ def get_data(path, args, seed=42):
             # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
             unique_labels = get_unique_labels(data['labels'][group])
             data['cats'][group] = data['labels'][group]
+
+            if args.pool:
+                pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
+                data['inputs'][f"{group}_pool"] = matrix.iloc[pool_pos]
+                data['names'][f"{group}_pool"] = np.array([f'pool_{i}' for i, _ in enumerate(pool_pos)])
+                data['labels'][f"{group}_pool"] = np.array([f'pool' for _ in pool_pos])
+                data['batches'][f"{group}_pool"] = batches[pool_pos]
+
+                # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
+                data['meta'][f"{group}_pool"] = data['inputs'][f"{group}_pool"].iloc[:, :2]
+                data['orders'][f"{group}_pool"] = orders[pool_pos]
+                data['cats'][f"{group}_pool"] = np.array(
+                    [len(np.unique(data['labels'][group])) for _ in batches[pool_pos]])
+
+                data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
+                unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
+                data['cats'][group] = np.array(
+                    [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+
     for key in list(data['names'].keys()):
         data['sets'][key] = np.array([key for _ in data['names'][key]])
-    for key in list(data.keys()):
-        if key in ['inputs', 'meta']:
-            data[key]['all'] = pd.concat((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
-        else:
-            data[key]['all'] = np.concatenate((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
+        # print(key, data['sets'][key])
+    if not args.pool:
+        for key in list(data.keys()):
+            if key in ['inputs', 'meta']:
+                data[key]['all'] = pd.concat((
+                    data[key]['train'], data[key]['valid'], data[key]['test']
+                ), 0)
+            else:
+                data[key]['all'] = np.concatenate((
+                    data[key]['train'], data[key]['valid'], data[key]['test']
+                ), 0)
 
-    unique_batches = np.unique(data['batches']['all'])
-    for group in ['train', 'valid', 'test', 'all']:
-        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+        unique_batches = np.unique(data['batches']['all'])
+        for group in ['train', 'valid', 'test', 'all']:
+            data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
+    else:
+        # print('POOL!!')
+        for key in list(data.keys()):
+            # print('key', key)
+            if key in ['inputs', 'meta']:
+                data[key]['all'] = pd.concat((
+                    data[key]['train'], data[key]['valid'], data[key]['test'],
+                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
+                ), 0)
+                data[key]['all_pool'] = pd.concat((
+                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
+                ), 0)
+            else:
+                data[key]['all'] = np.concatenate((
+                    data[key]['train'], data[key]['valid'], data[key]['test'],
+                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
+                ), 0)
+                data[key]['all_pool'] = np.concatenate((
+                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
+                ), 0)
+
+        unique_batches = np.unique(data['batches']['all'])
+        for group in ['train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all', 'all_pool']:
+            data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
 
     return data, unique_labels, unique_batches

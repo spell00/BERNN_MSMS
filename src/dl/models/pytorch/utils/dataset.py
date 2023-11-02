@@ -435,7 +435,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                             sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                                                           replacement=True),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -443,47 +443,47 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                            sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
                                                          replacement=False),
                            batch_size=bs,
-                           pin_memory=False,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=False),
 
         'train_pool': DataLoader(train_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
-                                 pin_memory=False,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test_pool': DataLoader(test_pool_set,
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=False),
         'valid_pool': DataLoader(valid_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
-                                 pin_memory=False,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test2': DataLoader(test_set2,
                             num_workers=0,
                             shuffle=True,
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
-                             pin_memory=False,
+                             pin_memory=True,
                              drop_last=True)
     }
 
@@ -530,13 +530,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                        num_workers=0,
                                        shuffle=True,
                                        batch_size=bs,
-                                       pin_memory=False,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
-                                      pin_memory=False,
+                                      pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
@@ -558,13 +558,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=True)
     loaders['all_pool'] = DataLoader(all_set_pool,
                                      num_workers=0,
                                      shuffle=False,
                                      batch_size=bs,
-                                     pin_memory=False,
+                                     pin_memory=True,
                                      drop_last=False)
 
     return loaders
@@ -636,7 +636,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                             sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                                                           replacement=True),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -644,47 +644,47 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                            sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
                                                          replacement=False),
                            batch_size=bs,
-                           pin_memory=False,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=False),
 
         'train_pool': DataLoader(train_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
-                                 pin_memory=False,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test_pool': DataLoader(test_pool_set,
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=False),
         'valid_pool': DataLoader(valid_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
-                                 pin_memory=False,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test2': DataLoader(test_set2,
                             num_workers=0,
                             shuffle=True,
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
-                             pin_memory=False,
+                             pin_memory=True,
                              drop_last=True)
     }
 
@@ -731,13 +731,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                        num_workers=0,
                                        shuffle=True,
                                        batch_size=bs,
-                                       pin_memory=False,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
-                                      pin_memory=False,
+                                      pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
@@ -758,13 +758,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=True)
     loaders['all_pool'] = DataLoader(all_set_pool,
                                      num_workers=0,
                                      shuffle=False,
                                      batch_size=bs,
-                                     pin_memory=False,
+                                     pin_memory=True,
                                      drop_last=False)
 
     return loaders
@@ -863,7 +863,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                             # sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                             #                               replacement=True),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -871,27 +871,27 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                            # sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
                            #                               replacement=False),
                            batch_size=bs,
-                           pin_memory=False,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             # sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                             #                               replacement=False),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=False),
 
         'test2': DataLoader(test_set2,
                             num_workers=0,
                             shuffle=True,
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
-                             pin_memory=False,
+                             pin_memory=True,
                              drop_last=True)
     }
 
@@ -942,13 +942,13 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                                        num_workers=0,
                                        shuffle=True,
                                        batch_size=bs,
-                                       pin_memory=False,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
-                                      pin_memory=False,
+                                      pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
@@ -969,7 +969,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=True)
 
     return loaders
@@ -1015,7 +1015,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                             sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                                                           replacement=True),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -1023,27 +1023,27 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                            sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
                                                          replacement=False),
                            batch_size=bs,
-                           pin_memory=False,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=False),
 
         'test2': DataLoader(test_set2,
                             num_workers=0,
                             shuffle=True,
                             batch_size=bs,
-                            pin_memory=False,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
-                             pin_memory=False,
+                             pin_memory=True,
                              drop_last=True)
     }
 
@@ -1090,13 +1090,13 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                        num_workers=0,
                                        shuffle=True,
                                        batch_size=bs,
-                                       pin_memory=False,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
-                                      pin_memory=False,
+                                      pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
             (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
@@ -1115,7 +1115,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                 num_workers=0,
                                 shuffle=True,
                                 batch_size=bs,
-                                pin_memory=False,
+                                pin_memory=True,
                                 drop_last=True)
 
     return loaders
