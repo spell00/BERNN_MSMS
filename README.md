@@ -7,18 +7,19 @@
 # Quickstart
 Due to BERNN has a lot of dependencies, so the easiest way to use it with your data is to use the Docker image using `singularity`. To do so, follow these steps:
 
-First, get the Docker image
+First, get the Docker image (should take ~5 to 10 minutes)
 `docker pull spel00/bernn:latest`
 
 Finally, use the Docker image with singularity. For example, 
-`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=100 --n_repeats=5 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
 
 or
 
-`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=100 --n_repeats=5 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
 
+The example above should take ~10 minutes per repetition to run. Here their is 3 repeats per trial, so ~30 minutes per trial (each trial is to test a new hyperparameters combination). Thus, for 20 trials it should take ~10 hours. The dataset is made of 642 samples of 6461 features each. The training time is highly dependent on the size of the dataset.
 
-and replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=adenocarcinoma_data.csv` with the name of the csv containing the data and replace `--dataset=custom` with another name.
+To use BERNN with your own dataset, replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=adenocarcinoma_data.csv` with the name of the csv containing the data and replace `--dataset=custom` with another name.
 
 The csv format is specified in the section `Custom experiments` below.
 
