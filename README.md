@@ -10,11 +10,13 @@ Due to BERNN has a lot of dependencies, so the easiest way to use it with your d
 First, get the Docker image
 `docker pull spel00/bernn:latest`
 
-Second, make a shell with the following command
-`singularity shell docker://spel00/bernn:latest`
-
 Finally, use the Docker image with singularity. For example, 
-`singularity exec docker://spel00/bernn:latest python src\dl\train\train_ae_then_classifier_holdout.py --device=cuda:0 --dataset=custom --n_trials=100 --n_repeats=5 --exp_id=adeno --path=data --csv_name=adenocarcinoma_data.csv`
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=100 --n_repeats=5 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+
+or
+
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=100 --n_repeats=5 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+
 
 and replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=adenocarcinoma_data.csv` with the name of the csv containing the data and replace `--dataset=custom` with another name.
 

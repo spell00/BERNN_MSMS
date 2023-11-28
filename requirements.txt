@@ -33,7 +33,7 @@ numba==0.57.1
 rpy2==3.5.7
 openpyxl==3.0.10
 xgboost==1.0.0
-torch-geometric
+#torch-geometric
 neptune
 fastapi==0.89.1
 mlflow[extras]==2.2.1
@@ -41,10 +41,12 @@ threadpoolctl==3.1.0
 
 torch==1.13.1
 torchvision==0.14.1
-tensorboardX==2.5.1
-tensorboard==2.11.0
-tensorflow==2.11.0
-
+tensorboardX==2.0
+tensorboard==2.12.0
+tensorflow==2.12.0
+protobuf==3.20.1
+typing_extensions==4.5.0
+typeguard==4.0.0
 # R packages:
 # install.packages("harmony")
 # install.packages("sva")
