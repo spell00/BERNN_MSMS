@@ -14,7 +14,7 @@ strategy='CU_DEM-AD'  # This variable is only used for the alzheimer dataset. Fo
 i=0
 for variational in 0 1
 do
-	for zinb in 0
+	for zinb in 1
 	do
 		for dloss in no revTriplet inverseTriplet DANN normae
 		do

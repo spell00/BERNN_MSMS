@@ -10,10 +10,10 @@ from setuptools import setup
 
 
 setup(
-    name='src',
+    name='bernn',
     version='0.1',
-    packages=['src', 'src.utils', 'src.dl.models.pytorch.utils', 'src.dl', 'src.dl.models', 'src.dl.models.pytorch',
-              'src.dl.train',  "src.ml", "src.ml.train"],
+    packages=['bernn', 'bernn.utils', 'bernn.dl.models.pytorch.utils', 'bernn.dl', 'bernn.dl.models', 'bernn.dl.models.pytorch',
+              'bernn.dl.train',  "bernn.ml", "bernn.ml.train"],
     url='',
     license='',
     author='simon pelletier',
