@@ -10,7 +10,7 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='alzheimer_ae_then_classifier_20', help='Name of the experiment to evaluate')
+    parser.add_argument('--exp_name', type=str, default='reviewer_response', help='Name of the experiment to evaluate')
     args = parser.parse_args()
 
     # get runs

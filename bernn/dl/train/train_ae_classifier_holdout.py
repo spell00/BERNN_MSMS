@@ -2017,6 +2017,8 @@ if __name__ == "__main__":
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
+    parser.add_argument('--log_plots', type=int, default=0, help='')
+    parser.add_argument('--log_metrics', type=int, default=0, help='')
 
     args = parser.parse_args()
     try:
@@ -2030,8 +2032,8 @@ if __name__ == "__main__":
 
     args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
 
-    train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
-                    log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
+    train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=args.log_metrics, keep_models=False,
+                    log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,
                     log_mlflow=True, groupkfold=args.groupkfold)
 
     # train.train()
