@@ -759,7 +759,7 @@ class TrainAE:
         # It should not be necessary. To remove once certain the "Too many files open" error is no longer a problem
         plt.close('all')
 
-        return best_mcc
+        return self.best_mcc
 
     def log_rep(self, best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae, shap_ae, h,
                 epoch):

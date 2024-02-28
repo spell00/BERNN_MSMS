@@ -4,6 +4,25 @@
 
 * Simon Pelletier
 
+# Quickstart
+Due to BERNN has a lot of dependencies, so the easiest way to use it with your data is to use the Docker image using `singularity`. To do so, follow these steps:
+
+First, get the Docker image (should take ~5 to 10 minutes)
+`docker pull spel00/bernn:latest`
+
+Finally, use the Docker image with singularity. For example, 
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+
+or
+
+`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+
+The example above should take ~10 minutes per repetition to run. Here their is 3 repeats per trial, so ~30 minutes per trial (each trial is to test a new hyperparameters combination). Thus, for 20 trials it should take ~10 hours. The dataset is made of 642 samples of 6461 features each. The training time is highly dependent on the size of the dataset.
+
+To use BERNN with your own dataset, replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=adenocarcinoma_data.csv` with the name of the csv containing the data and replace `--dataset=custom` with another name.
+
+The csv format is specified in the section `Custom experiments` below.
+
 # Install
 All install steps should be done in the root directory of the project. <br/>
 Everything should take only a few minutes to install,
@@ -143,13 +162,17 @@ All runs logs can be accessed this way, be more conveniently, the results of the
 
 ### CSV files
 
-#### encs
-The `encs.csv` file contains the encoded values given by the encoder of the autoencoder. They are the values that are used for the classification neural network. The rows are the samples and the columns are the learned features. (TODO: the batch numbers are present? Classes?)
+#### Encoded representations
+The `encs.csv` file contains the encoded values given by the encoder of the autoencoder. They are the values that are used for the classification neural network. 
 
-#### recs
-The `recs.csv` file contains the reconstructed features from the trained model. The rows are the samples and the columns are the initial features. Please note that the features are corrected for batch effects, but might not be as accurate as the encoded values to train a classifier. They could be used for downstream analyses (e.g. for differential analysis), but some biological signal could be lost compared to the encoded features. Rather than using this approach, we recommend using the shap values to get the features importance for the classification task, even if classification is not the end goal of the experiment.
+The rows are the samples and the columns are the learned features. Each row contains the results of a sample and the columns are the features, except for the first column which contains the samples names, the second column contains the batch numbers and the third contains the labels.
 
-(TODO: the batch numbers are present? Classes?)
+#### Reconstructed representations
+The `recs.csv` file contains the reconstructed features from the trained model. The rows are the samples and the columns are the initial features. Please note that the features are corrected for batch effects, but might not be as accurate as the encoded values to train a classifier. They could be used for downstream analyses (e.g. for differential analysis), but some biological signal could be lost compared to the encoded features. Rather than using this approach, we recommend using the shap values to get the features importance for the classification task, even if classification is not the end goal of the experiment. 
+
+The rows are the samples and the columns are the learned features. Each row contains the results of a sample and the columns are the features, except for the first column which contains the samples names, the second column contains the batch numbers and the third contains the labels.
+
+
 #### shap
 
 The `shap` folder contains the values for the shap analysis. `beeswarmp` contains contains the values used to get the `beeswarm` plot, which contains the importance of each feature for the decision of each individual samples. `OTHER ONE` contains the values for the overall importance of each features.

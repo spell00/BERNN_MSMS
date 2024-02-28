@@ -16,3 +16,6 @@ bernn.egg-info/
 /bernn/dl/__pycache__/
 /bernn/dl/models/__pycache__/
 /bernn/utils/__pycache__/
+/data/PXD015912/Mapping_file_PXD015912.xlsx
+/data/PXD015912/Peptide_intensity_matrix_b9369842-f3cf-4383-9e5c-6734dadcfbc9.csv
+/data/PXD015912/matrix.csv

@@ -33,492 +33,15 @@ from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, \
     add_to_mlflow
-from bernn.dl.models.pytorch.utils.loggings import make_data
-import neptune.new as neptune
 import mlflow
 import warnings
 from datetime import datetime
-
-
-def make_summary_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.summary_plot(values, df, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/summary_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/summary_{category}/{group}_values.png')
-
-    plt.close(f)
-
-
-def make_force_plot(df, values, features, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.force_plot(df, values, features=features, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/force_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/force_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/force_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/force_{category}/{group}_values.png')
-
-    plt.close(f)
-
-
-def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.summary_plot(values, feature_names=df.columns, features=df, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/beeswarm_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
-
-    plt.close(f)
-
-
-def make_decision_plot(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/decision_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_decision_deep(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/decision_{category}/{group}_values.png')
-    plt.close(f)
-
-def make_multioutput_decision_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.multioutput_decision_plot(values, df, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/multioutput_decision_{category}/{group}_values'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/multioutput_decision_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/multioutput_decision_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/multioutput_decision_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_group_difference_plot(values, mask, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.group_difference_plot(values, mask, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/gdiff_{category}/{group}'].upload(f)
-        run[f'shap/gdiff_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/gdiff_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/gdiff_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/gdiff_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_beeswarm_plot(values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.plots.beeswarm(values, max_display=20, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/beeswarm_{category}/{group}'].upload(f)
-        run[f'shap/beeswarm_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_heatmap(values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.plots.heatmap(values, instance_order=values.values.sum(1).argsort(), max_display=20, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/heatmap_{category}/{group}'].upload(f)
-        run[f'shap/heatmap_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/heatmap_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_heatmap_deep(values, group, run, log_path, category='explainer', mlops='mlflow'):
-
-    shap.plots.heatmap(pd.DataFrame(values), instance_order=values.sum(1).argsort(), max_display=20, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/heatmap_{category}/{group}'].upload(f)
-        run[f'shap/heatmap_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/heatmap_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_barplot(df, y, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    clustering = shap.utils.hclust(df, y, metric='correlation')  # cluster_threshold=0.9
-    # shap.plots.bar(values, max_display=20, show=False, clustering=clustering)
-    shap.plots.bar(values, max_display=20, show=False, clustering=clustering, clustering_cutoff=0.5)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/bar_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/bar_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/bar_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/bar_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_bar_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.bar_plot(values, max_display=40, feature_names=df.columns, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/barold_{category}/{group}'].upload(f)
-        run[f'shap/barold_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/barold_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/barold_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/barold_{category}/{group}_values.png')
-    plt.close(f)
-
-
-def make_dependence_plot(df, values, var, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.dependence_plot(var, values[1], df, show=False)
-    f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/dependence_{category}/{group}'].upload(f)
-    if mlops == 'mlflow':
-        os.makedirs(f'{log_path}/shap/dependence_{category}', exist_ok=True)
-        plt.savefig(f'{log_path}/shap/dependence_{category}/{group}_values.png')
-        mlflow.log_figure(f, f'{log_path}/shap/dependence_{category}/{group}_values.png')
-    plt.close(f)
-
-
-
-import shap
-def log_explainer(model, x_df, labels, group, run, cats, log_path, device):
-    unique_labels = np.unique(labels)
-    # The explainer doesn't like tensors, hence the f function
-    explainer = shap.Explainer(model.to(device), x_df, max_evals=2 * x_df.shape[1] + 1)
-
-    # Get the shap values from my test data
-    shap_values = explainer(x_df)
-
-    for i, label in enumerate(unique_labels):
-        if i == len(shap_values):
-            break
-        shap_values_df = pd.DataFrame(shap_values[i].data.reshape(1, -1), columns=x_df.columns)
-        try:
-            shap_values_df.to_csv(f"{log_path}/{group}_permutation_shap_{label}.csv")
-        except:
-            pass
-
-    make_barplot(x_df, labels, shap_values[:, :, 0], group, run, 'Kernel')
-
-    # Summary plot
-    make_summary_plot(x_df, shap_values[:, :, 0], group, run, 'PermutExplainer')
-
-    make_beeswarm_plot(shap_values[:, :, 0], group, run, 'PermutExplainer')
-    make_heatmap(shap_values[:, :, 0], group, run, 'PermutExplainer')
-
-    mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
-    make_group_difference_plot(x_df.sum(1).to_numpy(), mask, group, run, 'PermutExplainer')
-
-def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log_path, mlops, device):
-    unique_labels = np.unique(labels)
-    # The explainer doesn't like tensors, hence the f function
-    explainer = shap.DeepExplainer(model.to(device), torch.Tensor(x_df.values).to(device))
-
-    # Get the shap values from my test data
-    shap_values = explainer.shap_values(torch.Tensor(x_df.values).to(device))
-
-    # Summary plot
-    make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
-    make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
-    make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
-
-    for i, label in enumerate(unique_labels):
-        if i == len(shap_values):
-            break
-        shap_values_df = pd.DataFrame(shap_values[i], columns=x_df.columns, index=x_df.index)
-        try:
-            shap_values_df.to_csv(f"{log_path}/{group}_deep_shap_{label}.csv")
-        except:
-            pass
-
-    try:
-        make_dependence_plot(x_df, shap_values, 'APOE', group, run, log_path, 'DeepExplainer', mlops)
-    except:
-        pass
-
-    # mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
-    # make_group_difference_plot(x_df, mask, group, run, 'DeepExplainer')
-
-
-def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, log_path):
-    unique_labels = np.unique(labels)
-
-    f = lambda x: model.to('cpu')(torch.from_numpy(x)).detach().cpu().numpy()
-
-    # Convert my pandas dataframe to numpy
-    data = x_df.to_numpy(dtype=np.float32)
-
-    # The explainer doesn't like tensors, hence the f function
-    explainer = shap.KernelExplainer(f, data)
-
-    # Get the shap values from my test data
-    df = pd.DataFrame(data, columns=x_df.columns)
-    shap_values = explainer.shap_values(df)
-    # shap_interaction = explainer.shap_interaction_values(X_test)
-    shap_values_df = pd.DataFrame(np.concatenate(shap_values), columns=x_df.columns)
-    for i, label in enumerate(unique_labels):
-        if i == len(shap_values):
-            break
-        shap_values_df.iloc[i].to_csv(f"{log_path}/{group}_kernel_shap_{label}.csv")
-    # shap_values = pd.DataFrame(np.concatenate(s))
-    # Summary plot
-    make_summary_plot(x_df, shap_values, group, run, 'Kernel')
-
-    make_bar_plot(x_df, shap_values_df.iloc[1], group, run, 'localKernel')
-
-    make_decision_plot(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'Kernel')
-
-    mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
-    make_group_difference_plot(x_df.sum(1).to_numpy(), mask, group, run, 'Kernel')
-
-
-def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_deep_only=True):
-    # explain all the predictions in the test set
-    # explainer = shap.KernelExplainer(svc_linear.predict_proba, X_train[:100])
-    os.makedirs(log_path, exist_ok=True)
-    for group in ['valid', 'test']:
-        if n_meta > 0:
-            X = np.concatenate((
-                np.concatenate(best_lists[group]['inputs']),
-                np.concatenate(best_lists[group]['age']).reshape(-1, 1),
-                np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
-            ), 1)
-            X_test = torch.Tensor(X).to(device)
-            X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
-        else:
-            X = np.concatenate(best_lists[group]['inputs'])
-            X_test = torch.Tensor(X).to(device)
-            X_test_df = pd.DataFrame(X, columns=list(cols))
-
-        # explainer = shap.DeepExplainer(ae, X_test)
-        # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
-        # explanation.values = explanation.values.detach().cpu().numpy()
-        misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
-                                                              np.concatenate(best_lists[group]['cats']).argmax(1))]
-        log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
-                           group, run, best_lists[group]['cats'], log_path, mlops, device
-                           )
-        if not log_deep_only:
-            # TODO Problem with not enough memory...
-            log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
-                          group, run, best_lists[group]['cats'], log_path, device
-                          )
-            log_kernel_explainer(ae, X_test_df,
-                                 misclassified,
-                                 np.concatenate(best_lists[group]['labels']),
-                                 group, run, best_lists[group]['cats'], log_path
-                                 )
-
-
-
-def get_data(path, args, seed=42):
-    """
-
-    Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
-
-    Returns:
-        data
-    """
-    data = {}
-    # batch_cols = args.batch_columns
-    unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
-        data[info] = {}
-        for group in ['all', 'train', 'test', 'valid']:
-            data[info][group] = np.array([])
-    for group in ['train', 'valid']:
-        # print('GROUP:', group)
-        if group == 'valid':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                # Remove samples from unwanted batches
-                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
-
-            else:
-                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                splitter = skf.split(train_nums, data['labels']['train'])
-
-            _, valid_inds = splitter.__next__()
-            _, test_inds = splitter.__next__()
-            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
-
-            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
-            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
-            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
-            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
-            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds], data['cats']['train'][test_inds]
-
-            if args.pool:
-                if args.groupkfold:
-                    skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                    train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
-                    pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
-                                                    data['batches']['train_pool'])
-
-                else:
-                    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-                    train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
-                    pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
-
-                _, valid_inds = pool_splitter.__next__()
-                _, test_inds = pool_splitter.__next__()
-                train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
-                data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
-                    data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
-                data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
-                    data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
-                data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
-                    data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
-                data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
-                    data['names']['train_pool'][valid_inds], data['names']['train_pool'][test_inds]
-                data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'][train_inds], \
-                    data['orders']['train_pool'][valid_inds], data['orders']['train_pool'][test_inds]
-                data['batches']['train_pool'], data['batches']['valid_pool'], data['batches']['test_pool'], = data['batches']['train_pool'][train_inds], \
-                    data['batches']['train_pool'][valid_inds], data['batches']['train_pool'][test_inds]
-                data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
-                    valid_inds], data['cats']['train_pool'][test_inds]
-
-        else:
-            matrix = pd.read_csv(
-                f"{path}/{args.csv_file}", sep=","
-            )
-            names = matrix.iloc[:, 0]
-            labels = matrix.iloc[:, 1]
-            batches = matrix.iloc[:, 2]
-            unique_batches = batches.unique()
-            batches = np.stack([np.argwhere(x == unique_batches).squeeze() for x in batches])
-            orders = np.array([0 for _ in batches])
-            matrix = matrix.iloc[:, 3:].fillna(0)
-            if args.remove_zeros:
-                mask1 = (matrix == 0).mean(axis=0) < 0.1
-                matrix = matrix.loc[:, mask1]
-            if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
-            # pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-            pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
-            data['inputs'][group] = matrix.iloc[pos]
-            data['names'][group] = names
-            data['labels'][group] = labels.to_numpy()[pos]
-            data['batches'][group] = batches[pos]
-            # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-            data['meta'][group] = data['inputs'][group].iloc[:, :2]
-            data['orders'][group] = orders[pos]
-
-            # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-            unique_labels = get_unique_labels(data['labels'][group])
-            data['cats'][group] = data['labels'][group]
-
-            if args.pool:
-                pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-                data['inputs'][f"{group}_pool"] = matrix.iloc[pool_pos]
-                data['names'][f"{group}_pool"] = np.array([f'pool_{i}' for i, _ in enumerate(pool_pos)])
-                data['labels'][f"{group}_pool"] = np.array([f'pool' for _ in pool_pos])
-                data['batches'][f"{group}_pool"] = batches[pool_pos]
-
-                # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-                data['meta'][f"{group}_pool"] = data['inputs'][f"{group}_pool"].iloc[:, :2]
-                data['orders'][f"{group}_pool"] = orders[pool_pos]
-                data['cats'][f"{group}_pool"] = np.array(
-                    [len(np.unique(data['labels'][group])) for _ in batches[pool_pos]])
-
-                data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-                unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
-            data['cats'][group] = np.array(
-                [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-
-    for key in list(data['names'].keys()):
-        data['sets'][key] = np.array([key for _ in data['names'][key]])
-        # print(key, data['sets'][key])
-    if not args.pool:
-        for key in list(data.keys()):
-            if key in ['inputs', 'meta']:
-                data[key]['all'] = pd.concat((
-                    data[key]['train'], data[key]['valid'], data[key]['test']
-                ), 0)
-            else:
-                data[key]['all'] = np.concatenate((
-                    data[key]['train'], data[key]['valid'], data[key]['test']
-                ), 0)
-        
-        unique_batches = np.unique(data['batches']['all'])
-        for group in ['train', 'valid', 'test', 'all']:
-            data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
-    else:
-        # print('POOL!!')
-        for key in list(data.keys()):
-            # print('key', key)
-            if key in ['inputs', 'meta']:
-                data[key]['all'] = pd.concat((
-                    data[key]['train'], data[key]['valid'], data[key]['test'],
-                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
-                ), 0)
-                data[key]['all_pool'] = pd.concat((
-                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
-                ), 0)
-            else:
-                data[key]['all'] = np.concatenate((
-                    data[key]['train'], data[key]['valid'], data[key]['test'],
-                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
-                ), 0)
-                data[key]['all_pool'] = np.concatenate((
-                    data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
-                ), 0)
-
-        unique_batches = np.unique(data['batches']['all'])
-        for group in ['train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all', 'all_pool']:
-            data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
-
-    return data, unique_labels, unique_batches
 
 
 # import StratifiedGroupKFold
@@ -955,7 +478,7 @@ class TrainAE:
                     lists, traces = get_empty_traces()
 
                     if not self.args.train_after_warmup:
-                        ae = self.freeze_clayers(ae)
+                        ae = self.freeze_all_but_clayers(ae)
                     closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
                                             loaders['train'], lists, traces, nu=nu)
 
@@ -1597,7 +1120,7 @@ class TrainAE:
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
         # from the part where the autoencoder is trained. Only for DANN
-        self.freeze_dlayers(ae)
+        self.freeze_all_but_dlayers(ae)
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
@@ -1667,7 +1190,7 @@ class TrainAE:
 
         return sceloss, celoss, mseloss, triplet_loss
 
-    def freeze_dlayers(self, ae):
+    def freeze_all_but_dlayers(self, ae):
         """
         Freeze all layers except the classifier
         Args:
@@ -1709,7 +1232,7 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
-    def freeze_clayers(self, ae):
+    def freeze_all_but_clayers(self, ae):
         """
         Freeze all layers except the classifier
         Args:
@@ -1778,7 +1301,7 @@ if __name__ == "__main__":
     parser.add_argument('--predict_tests', type=int, default=0)
     parser.add_argument('--early_stop', type=int, default=100)
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
-    parser.add_argument('--train_after_warmup', type=int, default=1)
+    parser.add_argument('--train_after_warmup', type=int, default=1, help="Train autoencoder after warmup")
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)

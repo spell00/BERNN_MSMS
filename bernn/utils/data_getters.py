@@ -484,7 +484,7 @@ def get_data(path, args, seed=42):
         data
     """
     data = {}
-    batch_cols = args.batch_columns
+    # batch_cols = args.batch_columns
     unique_labels = np.array([])
     for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
@@ -500,7 +500,7 @@ def get_data(path, args, seed=42):
                 splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
 
             else:
-                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 splitter = skf.split(train_nums, data['labels']['train'])
 
@@ -525,13 +525,13 @@ def get_data(path, args, seed=42):
 
             if args.pool:
                 if args.groupkfold:
-                    skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                    skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
                     pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
                                                     data['batches']['train_pool'])
 
                 else:
-                    skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
                     pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
 
