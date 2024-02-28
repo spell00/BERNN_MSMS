@@ -640,6 +640,10 @@ def log_PAD(lists, values, model):
 
 def get_metrics(lists, values, model):
     # sets are grouped togheter for a single metric
+    from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
+    from bernn.dl.models.pytorch.utils.metrics import rKBET, rLISI
+    from sklearn.neighbors import KNeighborsClassifier
+    
     knns = {info: {repres: KNeighborsClassifier(n_neighbors=20) for repres in ['set', 'domains', 'labels', 'times']} for
             info in ['enc', 'rec', 'inputs']}
     # classes = []
@@ -757,17 +761,18 @@ def get_metrics(lists, values, model):
 
 
                 try:
+                    lists[group]['domain_preds'] = knns['enc']['domains'].predict(
+                        np.concatenate(lists[group]['encoded_values']),
+                    )
+                except:
+                    pass
+
+                try:
                     values[group][metric]['enc']['domains'] = [funct(np.concatenate(lists[group]['domains']),
                                                                      lists[group]['domain_preds'])]
                 except:
                     pass
 
-                try:
-                    lists[group]['domain_preds'] = knns['enc']['labels'].predict(
-                        np.concatenate(lists[group]['encoded_values']),
-                    )
-                except:
-                    pass
 
                 try:
                     values[group][metric]['enc']['labels'] = [funct(np.concatenate(lists[group]['domains']),
@@ -783,17 +788,17 @@ def get_metrics(lists, values, model):
 
 
                 try:
-                    values[group][metric]['rec']['domains'] = [funct(np.concatenate(lists[group]['domains']),
-                                                                     lists[group]['domain_preds'])]
-                except:
-                    pass
-
-                try:
                     lists[group]['domain_preds'] = knns['rec']['labels'].predict(
                         np.concatenate(lists[group]['rec_values']),
                     )
                 except:
                     pass
+                try:
+                    values[group][metric]['rec']['domains'] = [funct(np.concatenate(lists[group]['domains']),
+                                                                     lists[group]['domain_preds'])]
+                except:
+                    pass
+
                 try:
                     values[group][metric]['rec']['labels'] = [funct(np.concatenate(lists[group]['labels']),
                                                                     lists[group]['domain_preds'])]
@@ -1136,6 +1141,8 @@ def log_CCA(ordin, logger, data, uniques, mlops, epoch):
 
 
 def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epoch, mlops, metrics, n_meta_emb=0, device='cuda'):
+    from bernn.dl.models.pytorch.utils.metrics import batch_f1_score
+    
     if len(unique_labels) > 2:
         bout = 0
     else:

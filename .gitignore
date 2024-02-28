@@ -4,3 +4,15 @@
 /logs/
 /src.egg-info/
 /dist/
+/results/
+/notebooks/.ipynb_checkpoints/
+metrics_mlflow_*
+best_metrics_mlflow_*
+bernn.egg-info/
+/DeepExplainer/
+MSstats*
+bernn.egg-info/
+/bernn/__pycache__/
+/bernn/dl/__pycache__/
+/bernn/dl/models/__pycache__/
+/bernn/utils/__pycache__/

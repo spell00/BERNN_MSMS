@@ -502,7 +502,7 @@ def get_data(path, args, seed=42):
             else:
                 skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                splitter = skf.split(train_nums, data['labels']['train']).__next__()
+                splitter = skf.split(train_nums, data['labels']['train'])
 
             _, valid_inds = splitter.__next__()
             _, test_inds = splitter.__next__()
@@ -598,8 +598,8 @@ def get_data(path, args, seed=42):
 
                 data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
                 unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
-                data['cats'][group] = np.array(
-                    [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+            data['cats'][group] = np.array(
+                [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
 
     for key in list(data['names'].keys()):
         data['sets'][key] = np.array([key for _ in data['names'][key]])
@@ -644,3 +644,4 @@ def get_data(path, args, seed=42):
             data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
 
     return data, unique_labels, unique_batches
+

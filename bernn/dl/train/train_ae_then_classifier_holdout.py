@@ -335,17 +335,16 @@ class TrainAE:
             else:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
                 self.pools = self.args.pool
-
-            # self.get_amide(self.path, seed=(1 + h) * 10)
-            combination = list(np.concatenate((np.unique(self.data['batches']['train']),
-                                               np.unique(self.data['batches']['valid']),
-                                               np.unique(self.data['batches']['test']))))
-            seed += 1
-            if combination not in combinations:
-                combinations += [combination]
-                h += 1
-            else:
-                continue
+            if self.args.groupkfold:
+                combination = list(np.concatenate((np.unique(self.data['batches']['train']),
+                                                np.unique(self.data['batches']['valid']),
+                                                np.unique(self.data['batches']['test']))))
+                seed += 1
+                if combination not in combinations:
+                    combinations += [combination]
+                else:
+                    continue
+            h += 1
             # print(combinations)
             self.columns = self.data['inputs']['all'].columns
             self.make_samples_weights()

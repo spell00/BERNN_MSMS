@@ -45,6 +45,7 @@ import mlflow
 import warnings
 from datetime import datetime
 
+
 def make_summary_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.summary_plot(values, df, show=False)
     f = plt.gcf()
@@ -358,7 +359,7 @@ def get_data(path, args, seed=42):
         data
     """
     data = {}
-    batch_cols = args.batch_columns
+    # batch_cols = args.batch_columns
     unique_labels = np.array([])
     for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
@@ -374,9 +375,9 @@ def get_data(path, args, seed=42):
                 splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
 
             else:
-                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
-                splitter = skf.split(train_nums, data['labels']['train']).__next__()
+                splitter = skf.split(train_nums, data['labels']['train'])
 
             _, valid_inds = splitter.__next__()
             _, test_inds = splitter.__next__()
@@ -399,13 +400,13 @@ def get_data(path, args, seed=42):
 
             if args.pool:
                 if args.groupkfold:
-                    skf = StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed)
+                    skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
                     pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
                                                     data['batches']['train_pool'])
 
                 else:
-                    skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+                    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
                     pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'])
 
@@ -472,8 +473,8 @@ def get_data(path, args, seed=42):
 
                 data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
                 unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
-                data['cats'][group] = np.array(
-                    [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
+            data['cats'][group] = np.array(
+                [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
 
     for key in list(data['names'].keys()):
         data['sets'][key] = np.array([key for _ in data['names'][key]])
@@ -523,220 +524,6 @@ def get_data(path, args, seed=42):
 # import StratifiedGroupKFold
 from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
 from bernn.utils.utils import get_unique_labels
-
-def get_data2(path, args, seed=42):
-    """
-
-    Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
-
-    Returns:
-        data
-    """
-    data = {}
-    batch_cols = args.batch_columns
-    unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
-        data[info] = {}
-        for group in ['all', 'train', 'test', 'valid']:
-            data[info][group] = np.array([])
-    for group in ['train', 'valid']:
-        # print('GROUP:', group)
-        if group == 'valid':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                # Remove samples from unwanted batches
-                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
-
-            else:
-                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                splitter = skf.split(train_nums, data['labels']['train']).__next__()
-
-            _, valid_inds = splitter.__next__()
-            _, test_inds = splitter.__next__()
-            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
-
-            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
-            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
-            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
-            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
-            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds], data['cats']['train'][test_inds]
-
-        else:
-            matrix = pd.read_csv(
-                f"{path}/{args.csv_file}", sep=","
-            )
-            names = matrix.iloc[:, 0]
-            labels = matrix.iloc[:, 1]
-            batches = matrix.iloc[:, args.batch_columns]
-            unique_batches = {b: get_unique_labels(batches[b]) for b in batches}
-            new_batches = {b: [] for b in batches}
-            for b in batches:
-                new_batches[b] = np.stack([np.argwhere(x == unique_batches[b]).squeeze() for x in batches[b]])
-            unique_batches = {b: get_unique_labels(new_batches[b]) for b in new_batches}
-            batches = np.concatenate([new_batches[x].reshape([-1, 1]) for x in new_batches], 1)
-            batches = np.array(['_'.join([str(x) for x in b]) for b in batches])
-            # unique_batches = get_unique_labels(batches)
-            # batches = np.stack([np.argwhere(x == unique_batches).squeeze() for x in batches])
-            orders = np.array([0 for _ in batches])
-            matrix = matrix.iloc[:, 2+len(batches):].fillna(0)
-            if args.remove_zeros:
-                mask1 = (matrix == 0).mean(axis=0) < 0.1
-                matrix = matrix.loc[:, mask1]
-            if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
-            # pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-            pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
-            data['inputs'][group] = matrix.iloc[pos]
-            data['names'][group] = names
-            data['labels'][group] = labels.to_numpy()[pos]
-            data['batches'][group] = batches[pos]
-            # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-            data['meta'][group] = data['inputs'][group].iloc[:, :2]
-            data['orders'][group] = orders[pos]
-
-            # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-            unique_labels = get_unique_labels(data['labels'][group])
-            data['cats'][group] = data['labels'][group]
-
-    for key in list(data['names'].keys()):
-        data['sets'][key] = np.array([key for _ in data['names'][key]])
-        # print(key, data['sets'][key])
-    for key in list(data.keys()):
-        if key in ['inputs', 'meta']:
-            data[key]['all'] = pd.concat((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
-        else:
-            data[key]['all'] = np.concatenate((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
-    
-    # for group in ['train', 'valid', 'test', 'all']:
-    #     data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
-
-    return data, unique_labels, unique_batches
-
-def get_data3(path, args, seed=42):
-    """
-
-    Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
-
-    Returns:
-        data
-    """
-    data = {}
-    batch_cols = args.batch_columns
-    unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
-        data[info] = {}
-        for group in ['all', 'train', 'test', 'valid']:
-            data[info][group] = np.array([])
-    for group in ['train', 'valid']:
-        # print('GROUP:', group)
-        if group == 'valid':
-            if args.groupkfold:
-                skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                # Remove samples from unwanted batches
-                splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
-
-            else:
-                skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
-                train_nums = np.arange(0, len(data['labels']['train']))
-                splitter = skf.split(train_nums, data['labels']['train']).__next__()
-
-            _, valid_inds = splitter.__next__()
-            _, test_inds = splitter.__next__()
-            train_inds = [x for x in train_nums if x not in np.concatenate((valid_inds, test_inds))]
-
-            data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
-                data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
-            data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
-                data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
-            data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
-                data['names']['train'].iloc[valid_inds], data['names']['train'].iloc[test_inds]
-            data['orders']['train'], data['orders']['valid'], data['orders']['test'] = data['orders']['train'][train_inds], \
-                data['orders']['train'][valid_inds], data['orders']['train'][test_inds]
-            data['batches']['train'], data['batches']['valid'], data['batches']['test'] = data['batches']['train'][train_inds], \
-                data['batches']['train'][valid_inds], data['batches']['train'][test_inds]
-            data['cats']['train'], data['cats']['valid'], data['cats']['test'] = data['cats']['train'][train_inds], data['cats']['train'][
-                valid_inds], data['cats']['train'][test_inds]
-
-        else:
-            matrix = pd.read_csv(
-                f"{path}/{args.csv_file}", sep=","
-            )
-            names = matrix.iloc[:, 0]
-            labels = matrix.iloc[:, 1]
-            batches = matrix.iloc[:, args.batch_columns]
-            unique_batches = {b: get_unique_labels(batches[b]) for b in batches}
-            new_batches = {b: [] for b in batches}
-            for b in batches:
-                new_batches[b] = np.stack([np.argwhere(x == unique_batches[b]).squeeze() for x in batches[b]])
-            unique_batches = {b: get_unique_labels(new_batches[b]) for b in new_batches}
-            batches = np.concatenate([new_batches[x].reshape([-1, 1]) for x in new_batches], 1)
-            batches = np.array(['_'.join([str(x) for x in b]) for b in batches])
-            unique_batches = get_unique_labels(batches)
-            batches = np.stack([np.argwhere(x == unique_batches).squeeze() for x in batches])
-
-            orders = np.array([0 for _ in batches])
-            matrix = matrix.iloc[:, 2+len(batches):].fillna(0)
-            if args.remove_zeros:
-                mask1 = (matrix == 0).mean(axis=0) < 0.1
-                matrix = matrix.loc[:, mask1]
-            if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
-            # pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-            pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
-            data['inputs'][group] = matrix.iloc[pos]
-            data['names'][group] = names
-            data['labels'][group] = labels.to_numpy()[pos]
-            data['batches'][group] = batches[pos]
-            # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-            data['meta'][group] = data['inputs'][group].iloc[:, :2]
-            data['orders'][group] = orders[pos]
-
-            # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-            unique_labels = get_unique_labels(data['labels'][group])
-            data['cats'][group] = np.stack([np.argwhere(x == unique_labels).squeeze() for x in data['labels'][group]])
-
-    for key in list(data['names'].keys()):
-        data['sets'][key] = np.array([key for _ in data['names'][key]])
-        # print(key, data['sets'][key])
-    for key in list(data.keys()):
-        if key in ['inputs', 'meta']:
-            data[key]['all'] = pd.concat((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
-        else:
-            data[key]['all'] = np.concatenate((
-                data[key]['train'], data[key]['valid'], data[key]['test']
-            ), 0)
-
-    unique_batches = np.unique(data['batches']['all'])
-    for group in ['train', 'valid', 'test', 'all']:
-        data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
-
-    return data, unique_labels, unique_batches
 
 # from fastapi import BackgroundTasks, FastAPI
 # from threading import Thread
@@ -836,7 +623,6 @@ class TrainAE:
                 1 if label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH'] else 0 for name, label in
                 zip(self.data['names'][group], self.data['labels'][group])] for group in
             ['train', 'valid', 'test']}
-        self.n_cats = len(self.class_weights)  # + 1  # for pool samples
         self.scaler = None
 
     def train(self, params):
@@ -1049,18 +835,20 @@ class TrainAE:
             else:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
                 self.pools = self.args.pool
+            self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
 
-            combination = list(np.concatenate((np.unique(self.data['batches']['train']),
-                                               np.unique(self.data['batches']['valid']),
-                                               np.unique(self.data['batches']['test']))))
-            seed += 1
-            if combination not in combinations:
-                combinations += [combination]
-                h += 1
-            else:
-                continue
+            if self.args.groupkfold:
+                combination = list(np.concatenate((np.unique(self.data['batches']['train']),
+                                                np.unique(self.data['batches']['valid']),
+                                                np.unique(self.data['batches']['test']))))
+                seed += 1
+                if combination not in combinations:
+                    combinations += [combination]
+                else:
+                    continue
             # print(combinations)
             self.columns = self.data['inputs']['all'].columns
+            h += 1
             self.make_samples_weights()
             # event_acc is used to verify if the hparams have already been tested. If they were,
             # the best classification loss is retrieved and we go to the next trial
@@ -1090,7 +878,7 @@ class TrainAE:
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
-
+                print(self.n_batches, self.n_cats)
                 ae = AutoEncoder(data['inputs']['all'].shape[1],
                                  n_batches=self.n_batches,
                                  nb_classes=self.n_cats,
@@ -1160,6 +948,10 @@ class TrainAE:
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
                 for epoch in range(0, self.args.n_epochs):
+                    if early_stop_counter == self.args.early_stop:
+                        if self.verbose > 0:
+                            print('EARLY STOPPING.', epoch)
+                        break
                     lists, traces = get_empty_traces()
 
                     if not self.args.train_after_warmup:
@@ -1202,7 +994,8 @@ class TrainAE:
                               f" valid loss: {values['valid']['closs'][-1]},"
                               f" test loss: {values['test']['closs'][-1]}")
                         self.best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
-                        torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{h}.pth')
+                        torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{h}_state.pth')
+                        torch.save(ae, f'{self.complete_log_path}/model_{h}.pth')
                         best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
                         best_vals = values.copy()
                         best_vals['rec_loss'] = self.best_loss
@@ -1242,9 +1035,9 @@ class TrainAE:
 
                 best_lists, traces = get_empty_traces()
                 # Loading best model that was saved during training
-                ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}.pth'))
+                ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # Need another model because the other cant be use to get shap values
-                shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}.pth'))
+                shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # ae.load_state_dict(sd)
                 ae.eval()
                 shap_ae.eval()
@@ -1255,7 +1048,7 @@ class TrainAE:
                         closs, best_lists, traces = self.loop(group, None, ae, sceloss,
                                                               loaders[group], best_lists, traces, nu=0, mapping=False)
                 if self.log_neptune:
-                    model["model"].upload(f'{self.complete_log_path}/model_{h}.pth')
+                    model["model"].upload(f'{self.complete_log_path}/model_{h}_state.pth')
                     model["validation/closs"].log(self.best_closs)
                 best_closses += [self.best_closs]
                 # logs things in the background. This could be problematic if the logging takes more time than each iteration of repetitive holdout
@@ -1327,7 +1120,7 @@ class TrainAE:
                     # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
-                                          np.unique(self.data['batches']), epoch, mlops="tensorboard",
+                                          np.unique(self.data['batches']['all']), epoch, mlops="tensorboard",
                                           metrics=metrics, n_meta_emb=self.args.embeddings_meta,
                                           device=self.args.device)
                 except BrokenPipeError:
@@ -1336,7 +1129,7 @@ class TrainAE:
                 try:
                     metrics = log_metrics(run, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
-                                          np.unique(self.data['batches']), epoch=epoch, mlops="neptune",
+                                          np.unique(self.data['batches']['all']), epoch=epoch, mlops="neptune",
                                           metrics=metrics, n_meta_emb=self.args.embeddings_meta,
                                           device=self.args.device)
                 except BrokenPipeError:
@@ -1345,7 +1138,7 @@ class TrainAE:
                 try:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
-                                          np.unique(self.data['batches']), epoch, mlops="mlflow",
+                                          np.unique(self.data['batches']['all']), epoch, mlops="mlflow",
                                           metrics=metrics, n_meta_emb=self.args.embeddings_meta,
                                           device=self.args.device)
                 except BrokenPipeError:
@@ -1522,10 +1315,12 @@ class TrainAE:
                 run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
                                                             multi_class='ovr')
             if self.log_mlflow:
-                mlflow.log_metric(f'{group}_AUC',
-                                  metrics.roc_auc_score(y_true=cats[group], y_score=scores[group], multi_class='ovr'),
-                                  step=step)
-
+                try:
+                    mlflow.log_metric(f'{group}_AUC',
+                                    metrics.roc_auc_score(y_true=cats[group], y_score=scores[group], multi_class='ovr'),
+                                    step=step)
+                except:
+                    pass
     def loop(self, group, optimizer_ae, ae, celoss, loader, lists, traces, nu=1, mapping=True):
         """
 
@@ -1978,7 +1773,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_columns', type=str, default='2,3')
+    # parser.add_argument('--batch_columns', type=str, default='2,3')
     parser.add_argument('--random_recs', type=int, default=0)
     parser.add_argument('--predict_tests', type=int, default=0)
     parser.add_argument('--early_stop', type=int, default=100)
@@ -2030,7 +1825,7 @@ if __name__ == "__main__":
     except:
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
 
-    args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
+    # args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
 
     train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=args.log_metrics, keep_models=False,
                     log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,

@@ -10,7 +10,7 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='reviewer_response', help='Name of the experiment to evaluate')
+    parser.add_argument('--exp_name', type=str, default='benchmark_02_15_2024', help='Name of the experiment to evaluate')
     args = parser.parse_args()
 
     # get runs
@@ -23,6 +23,8 @@ if __name__ == '__main__':
         n_per_run = 5
 
     exp_id = mlflow.get_experiment_by_name(exp_name).experiment_id
+
+    print(exp_id)
 
     runs = mlflow.search_runs(exp_id)
     runs.index = runs['run_id']
@@ -93,13 +95,14 @@ if __name__ == '__main__':
     
     # Counter variable used for writing
     # headers to the CSV file
+    some_metric = list(best_metrics.keys())[0]
     count = 0
     for model in best_metrics:
         if best_metrics[model] is not None:
             if count == 0:
                 # Writing headers of CSV file
-                header = [["model", 'run_id']] + [[x for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' in x and x != 'run_id']] +  [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x and x != 'run_id']
-                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x]
+                header = [["model", 'run_id']] + [[x for x in list(best_metrics[some_metric].keys()) if 'param' in x and x != 'run_id']] +  [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics[some_metric].keys()) if 'param' not in x and x != 'run_id']
+                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics[some_metric].keys()) if 'param' not in x]
                 header = list(itertools.chain(*header))
                 csv_writer.writerow(header)
                 count += 1
@@ -137,8 +140,8 @@ if __name__ == '__main__':
         if best_metrics[model] is not None:
             if count == 0:
                 # Writing headers of CSV file
-                header = [["model", 'run_id']] + [[x for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' in x and x != 'run_id']] +  [[x] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x and x != 'run_id']
-                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x]
+                header = [["model", 'run_id']] + [[x for x in list(best_metrics[some_metric].keys()) if 'param' in x and x != 'run_id']] +  [[x] for x in list(best_metrics[some_metric].keys()) if 'param' not in x and x != 'run_id']
+                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics[some_metric].keys()) if 'param' not in x]
                 header = list(itertools.chain(*header))
                 csv_writer.writerow(header)
                 count += 1
@@ -167,7 +170,7 @@ if __name__ == '__main__':
     # create the csv writer object
     csv_writer = csv.writer(data_file)
 
-    ex_id = list(metrics['DANN_vae0_zinb0'].keys())[0]
+    ex_id = list(metrics[some_metric].keys())[0]
 
     # Counter variable used for writing
     # headers to the CSV file
@@ -176,8 +179,8 @@ if __name__ == '__main__':
         if metrics[model] is not None:
             if count == 0:
                 # Writing headers of CSV file
-                header = [["model", 'run_id']] + [[x for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' in x and x != 'run_id']] +  [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x and x != 'run_id']
-                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x]
+                header = [["model", 'run_id']] + [[x for x in list(best_metrics[some_metric].keys()) if 'param' in x and x != 'run_id']] +  [[f"{x}_mean", f"{x}_std"] for x in list(best_metrics[some_metric].keys()) if 'param' not in x and x != 'run_id']
+                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(metrics[some_metric].keys()) if 'param' not in x]
                 header = list(itertools.chain(*header))
                 csv_writer.writerow(header)
                 count += 1
@@ -207,7 +210,7 @@ if __name__ == '__main__':
     # create the csv writer object
     csv_writer = csv.writer(data_file)
 
-    ex_id = list(metrics['DANN_vae0_zinb0'].keys())[0]
+    ex_id = list(metrics[some_metric].keys())[0]
 
     # Counter variable used for writing
     # headers to the CSV file
@@ -216,8 +219,8 @@ if __name__ == '__main__':
         if metrics[model] is not None:
             if count == 0:
                 # Writing headers of CSV file
-                header = [["model", 'run_id']] + [[x for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' in x and x != 'run_id']] +  [[x] for x in list(best_metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x and x != 'run_id']
-                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(metrics['DANN_vae0_zinb0'].keys()) if 'param' not in x]
+                header = [["model", 'run_id']] + [[x for x in list(best_metrics[some_metric].keys()) if 'param' in x and x != 'run_id']] +  [[x] for x in list(best_metrics[some_metric].keys()) if 'param' not in x and x != 'run_id']
+                # header = [["model"]] + [[f"{x}_mean", f"{x}_std"] for x in list(metrics[some_metric].keys()) if 'param' not in x]
                 header = list(itertools.chain(*header))
                 csv_writer.writerow(header)
                 count += 1
