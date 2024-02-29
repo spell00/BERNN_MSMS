@@ -283,11 +283,11 @@ class TrainAE:
             mlflow.set_experiment(
                 self.args.exp_id,
             )
-            # try:
-            mlflow.start_run()
-            # except:
-            #     mlflow.end_run()
-            #     mlflow.start_run()
+            try:
+                mlflow.start_run()
+            except:
+                mlflow.end_run()
+                mlflow.start_run()
             mlflow.log_params({
                 "inputs_type": args.csv_file.split(".csv")[0],
                 "best_unique": args.best_features_file.split(".tsv")[0],

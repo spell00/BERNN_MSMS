@@ -1,11 +1,13 @@
-FROM ubuntu:20.04
-
+FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04 
+RUN apt-get update && \
+    apt-get install -y python3-pip python3-dev && \
+    rm -rf /var/lib/apt/lists/*
 ADD mlflow_eval_runs.py ./
 ADD setup.py ./
 ADD launch_train_ae_classifier_holdout_experiments.sh ./
 ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
-ADD src ./src/
+ADD bernn ./bernn/
 COPY requirements.txt ./requirements.txt
 # ADD data ./data/
 # ADD notebooks ./notebooks/
@@ -18,7 +20,7 @@ RUN apt-get upgrade -y
 ENV TZ=America/Toronto
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt-get install -y r-base r-cran-devtools python3-pip python3-dev \
+RUN apt-get install -y r-base r-cran-devtools python3-pip python3-dev software-properties-common linux-modules-nvidia-525-generic \
   && cd /usr/local/bin \
   && ln -s /usr/bin/python3 python \
   && pip3 install --upgrade pip

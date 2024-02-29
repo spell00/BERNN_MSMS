@@ -11,11 +11,11 @@ First, get the Docker image (should take ~5 to 10 minutes)
 `docker pull spel00/bernn:latest`
 
 Finally, use the Docker image with singularity. For example, 
-`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_classifier_holdout.py --device=cuda --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv`
 
 or
 
-`singularity exec docker://spel00/bernn:latest python src/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=3 --exp_id=adeno --path=data --csv_file=adenocarcinoma_data.csv`
+`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_then_classifier_holdout.py --device=cuda --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv`
 
 The example above should take ~10 minutes per repetition to run. Here their is 3 repeats per trial, so ~30 minutes per trial (each trial is to test a new hyperparameters combination). Thus, for 20 trials it should take ~10 hours. The dataset is made of 642 samples of 6461 features each. The training time is highly dependent on the size of the dataset.
 
