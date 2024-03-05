@@ -11,15 +11,19 @@ First, get the Docker image (should take ~5 to 10 minutes)
 `docker pull spel00/bernn:latest`
 
 Finally, use the Docker image with singularity. For example, 
-`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_classifier_holdout.py --device=cuda --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv`
+`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv --pool=0`
 
 or
 
-`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_then_classifier_holdout.py --device=cuda --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv`
+`singularity exec docker://spel00/bernn:latest python bernn/dl/train/train_ae_then_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv --pool=0`
 
-The example above should take ~10 minutes per repetition to run. Here their is 3 repeats per trial, so ~30 minutes per trial (each trial is to test a new hyperparameters combination). Thus, for 20 trials it should take ~10 hours. The dataset is made of 642 samples of 6461 features each. The training time is highly dependent on the size of the dataset.
+To run the examples above on GPU, you need to install the `nvidia-container-toolkit` on your machine. On Debian/Ubuntu, install using the command `apt-get install -y nvidia-container-toolkit`. You also need to add the option `--nv` the command to the above commands. For example, the first `singularity` command becomes:
 
-To use BERNN with your own dataset, replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=adenocarcinoma_data.csv` with the name of the csv containing the data and replace `--dataset=custom` with another name.
+`singularity exec --nv docker://spel00/bernn:latest python bernn/dl/train/train_ae_classifier_holdout.py --device=cpu --dataset=custom --n_trials=20 --n_repeats=5 --exp_id=benchmark --path=data/benchmark --csv_file=intensities.csv --pool=0`
+
+The example above should take ~20 minutes per repetition to run on an Nvidia A100. Here their is 5 repeats per trial, so ~1h30 hour per trial (each trial is to test a new hyperparameters combination). Thus, for 20 trials it should take at least 1 day. The training time is highly dependent on the size of the dataset.
+
+To use BERNN with your own dataset, replace `--path=data` with the path to the data directory that contains the data, replace `--csv_name=intensities.csv` with the name of the csv containing the data and replace `--exp_id=benchmark` with a name for the experiment.
 
 The csv format is specified in the section `Custom experiments` below.
 
