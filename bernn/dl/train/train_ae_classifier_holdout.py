@@ -59,6 +59,37 @@ random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
 
+def keep_top_features(data, path, args):
+    """
+    Keeps the top features according to the precalculated scores
+    Args:
+        data: The data to be used to keep the top features
+
+    Returns:
+        data: The data with only the top features
+    """
+    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
+    for group in ['all', 'train', 'valid', 'test']:
+        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
+
+    return data
+
+def binarize_labels(data, controls):
+    """
+    Binarizes the labels to be used in the classification loss
+    Args:
+        labels: The labels to be binarized
+        controls: The control labels
+
+    Returns:
+        labels: The binarized labels
+    """
+    for group in ['all', 'train', 'valid', 'test']:
+        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+        data['cats'][group] = data['labels'][group]
+    return data
+
+
 class TrainAE:
 
     def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
@@ -358,8 +389,11 @@ class TrainAE:
             else:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
                 self.pools = self.args.pool
+            self.data = keep_top_features(self.data, self.path, self.args)
+            if self.args.controls != '':
+                self.data = binarize_labels(self.data, self.args.controls)
+                self.unique_labels = np.unique(self.data['labels']['all'])
             self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
-
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                 np.unique(self.data['batches']['valid']),
@@ -403,19 +437,19 @@ class TrainAE:
                                                   None, None, bs=self.args.bs)
                 print(self.n_batches, self.n_cats)
                 ae = AutoEncoder(data['inputs']['all'].shape[1],
-                                 n_batches=self.n_batches,
-                                 nb_classes=self.n_cats,
-                                 mapper=self.args.use_mapping,
-                                 layer1=layer1,
-                                 layer2=layer2,
-                                 n_layers=self.args.n_layers,
-                                 n_meta=self.args.n_meta,
-                                 n_emb=self.args.embeddings_meta,
-                                 dropout=dropout,
-                                 variational=self.args.variational, conditional=False,
-                                 zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                 use_gnn=0,  # TODO to remove
-                                 device=self.args.device).to(self.args.device)
+                                n_batches=self.n_batches,
+                                nb_classes=self.n_cats,
+                                mapper=self.args.use_mapping,
+                                layer1=layer1,
+                                layer2=layer2,
+                                n_layers=self.args.n_layers,
+                                n_meta=self.args.n_meta,
+                                n_emb=self.args.embeddings_meta,
+                                dropout=dropout,
+                                variational=self.args.variational, conditional=False,
+                                zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                use_gnn=0,  # TODO to remove
+                                device=self.args.device).to(self.args.device)
                 ae.mapper.to(self.args.device)
                 ae.dec.to(self.args.device)
                 # if self.args.embeddings_meta > 0:
@@ -1337,6 +1371,8 @@ if __name__ == "__main__":
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
     parser.add_argument('--log_plots', type=int, default=0, help='')
     parser.add_argument('--log_metrics', type=int, default=0, help='')
+    parser.add_argument('--controls', type=str, default='', help='Which samples are the controls. Empty for not binary')
+    parser.add_argument('--n_features', type=int, default=-1, help='')
 
     args = parser.parse_args()
     try:

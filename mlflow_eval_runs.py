@@ -10,14 +10,15 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='benchmark_02_15_2024', help='Name of the experiment to evaluate')
+    parser.add_argument('--exp_name', type=str, default='bactTest', help='Name of the experiment to evaluate')
     args = parser.parse_args()
 
     # get runs
     exp_name = args.exp_name
 
-    # the adenocarcinoma dataset (which I also call amide, but should be changed) has only 3 batches, so there is only 3 splits possible for training
-    if 'amide' in exp_name:
+    # the adenocarcinoma dataset (which I also call amide, but should be changed) has only 3 batches, 
+    # so there is only 3 splits possible for training
+    if 'amide' in exp_name or 'bactTest' in exp_name:
         n_per_run = 3
     else:
         n_per_run = 5

@@ -205,7 +205,7 @@ class Encoder(nn.Module):
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
-            nn.LeakyReLU(),
+            # nn.LeakyReLU(),
         )
         self.random_init()
 
@@ -437,7 +437,7 @@ class SHAPAutoEncoder2(nn.Module):
 
         return kl
 
-    # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
+    # # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
     def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
         eps = 1e-10
         # scale_factor = scale_factor[:, None]

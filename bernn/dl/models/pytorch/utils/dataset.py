@@ -1119,3 +1119,252 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                 drop_last=True)
 
     return loaders
+
+
+class MSCSV:
+    def __init__(self, path, scaler, new_size=32, test=False, resize=True):
+        self.path = path
+        self.resize = resize
+        self.new_size = new_size
+        self.scaler = scaler
+        self.fnames = []
+        if not test:
+            self.fnames.extend(os.listdir(f"{path}"))
+        else:
+            tmp = os.listdir(f"{path}")
+            np.random.shuffle(tmp)
+            self.fnames = tmp[:57]
+
+    def process(self, i):
+        fname = self.fnames[i]
+        b_list = ["kox", "sau", "blk", "pae", "sep"]
+        batch = fname.split('_')[0]
+        label = fname.split('_')[1]
+        plate = fname.split('_')[2]
+        print(f"Processing sample #{i}: {fname}")
+        mat_data = read_csv(f"{self.path}/{fname}")
+        if self.scaler == 'binarize':
+            mat_data[mat_data.values > 0] = 1
+        elif 'efd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif 'ewd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif 'kmd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+
+        elif 'cut' in self.scaler:
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = pd.DataFrame(
+                np.stack([pd.cut(row, n_bins, labels=False, duplicates='drop', include_lowest=True) for row in
+                          mat_data.values.T]).T
+            )
+            mat_data /= mat_data.max()
+        elif 'discretizeq' in self.scaler:
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = pd.DataFrame(
+                np.stack([pd.qcut(row, n_bins, labels=False, duplicates='drop') for row in mat_data.values.T]).T
+            )
+
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif self.scaler == 'l2':
+            mat_data = Normalizer().fit_transform(mat_data)
+        elif self.scaler == 'l1':
+            mat_data = Normalizer('l1').fit_transform(mat_data)
+        elif self.scaler == 'minmax':
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif self.scaler == 'max':
+            mat_data = Normalizer('max').fit_transform(mat_data)
+        elif self.scaler == 'maxmax':
+            mat_data /= mat_data.max().max()
+
+        if self.resize:
+            try:
+                mat_data = transforms.Resize((self.new_size, self.new_size))(
+                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+            except:
+                mat_data = transforms.Resize((self.new_size, self.new_size))(
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+
+        return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
+
+    def __len__(self):
+        return len(self.fnames)
+
+
+class MS2CSV:
+    def __init__(self, path, scaler, new_size=32, test=False, resize=True):
+        self.path = path
+        self.resize = resize
+        self.new_size = new_size
+        self.scaler = scaler
+        self.fnames = []
+        if not test:
+            self.fnames.extend(os.listdir(f"{path}"))
+        else:
+            tmp = os.listdir(f"{path}")
+            np.random.shuffle(tmp)
+            self.fnames = tmp[:57]
+
+    def process(self, i):
+        fname = self.fnames[i]
+        batch = fname.split('_')[0]
+        label = fname.split('_')[1]
+        plate = fname.split('_')[2]
+        print(f"Processing sample #{i}: {fname}")
+        mat_datas = []
+        for f in os.listdir(f"{self.path}/{fname}"):
+            mat_data = read_csv(f"{self.path}/{fname}/{f}")
+            if self.scaler == 'binarize':
+                mat_data[mat_data.values > 0] = 1
+            elif 'efd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif 'ewd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif 'kmd' in self.scaler:
+                from sklearn.preprocessing import KBinsDiscretizer
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit_transform(mat_data)
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+
+            elif 'cut' in self.scaler:
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = pd.DataFrame(
+                    np.stack([pd.cut(row, n_bins, labels=False, duplicates='drop', include_lowest=True) for row in
+                              mat_data.values.T]).T
+                )
+                mat_data /= mat_data.max()
+            elif 'discretizeq' in self.scaler:
+                n_bins = int(self.scaler.split('_')[1])
+                mat_data = pd.DataFrame(
+                    np.stack([pd.qcut(row, n_bins, labels=False, duplicates='drop') for row in mat_data.values.T]).T
+                )
+
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif self.scaler == 'l2':
+                mat_data = Normalizer().fit_transform(mat_data)
+            elif self.scaler == 'l1':
+                mat_data = Normalizer('l1').fit_transform(mat_data)
+            elif self.scaler == 'minmax':
+                mat_data = MinMaxScaler().fit_transform(mat_data)
+            elif self.scaler == 'max':
+                mat_data = Normalizer('max').fit_transform(mat_data)
+            elif self.scaler == 'maxmax':
+                mat_data /= mat_data.max().max()
+
+            if self.resize:
+                try:
+                    mat_data = transforms.Resize((self.new_size, self.new_size))(
+                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                except:
+                    mat_data = transforms.Resize((self.new_size, self.new_size))(
+                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+            mat_datas += [mat_data]
+        # try:
+        mat_data = np.stack(mat_datas, 0)
+        # except:
+        #     pass
+        return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
+
+    def __len__(self):
+        return len(self.fnames)
+
+
+class MSCSV2:
+    def __init__(self, path, scaler, batches, resize=False, test=False):
+        self.batches = batches
+        self.path = path
+        self.resize = resize
+        self.scaler = scaler
+        self.fnames = []
+        if not test:
+            self.fnames.extend(os.listdir(f"{path}"))
+        else:
+            tmp = os.listdir(f"{path}")
+            np.random.shuffle(tmp)
+            self.fnames = tmp[:57]
+        tmp = []
+        for fname in self.fnames:
+            batch = [i for i, b in enumerate(self.batches) if b == fname.split('_')[0]]
+            if len(batch) > 0:
+                tmp += [fname]
+        self.fnames = tmp
+
+    def process(self, i):
+        fname = self.fnames[i]
+        if 'l' in fname.split('_')[2]:
+            low = 1
+        else:
+            low = 0
+
+        batch = [i for i, b in enumerate(self.batches) if b == fname.split('_')[0]][0]
+        label = fname.split('_')[1]
+        print(f"Processing sample #{i}: {fname}")
+        mat_data = read_csv(f"{self.path}/{fname}").values
+        if self.scaler == 'binarize':
+            mat_data[mat_data > 0] = 1
+        elif 'efd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='uniform').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif 'ewd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='quantile').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif 'kmd' in self.scaler:
+            from sklearn.preprocessing import KBinsDiscretizer
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = KBinsDiscretizer(n_bins=n_bins, encode='ordinal', strategy='kmeans').fit_transform(mat_data)
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+
+        elif 'cut' in self.scaler:
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = pd.DataFrame(
+                np.stack([pd.cut(row, n_bins, labels=False, duplicates='drop', include_lowest=True) for row in
+                          mat_data.values.T]).T
+            )
+            mat_data /= mat_data.max()
+        elif 'discretizeq' in self.scaler:
+            n_bins = int(self.scaler.split('_')[1])
+            mat_data = pd.DataFrame(
+                np.stack([pd.qcut(row, n_bins, labels=False, duplicates='drop') for row in mat_data.values.T]).T
+            )
+
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif self.scaler == 'l2':
+            mat_data = Normalizer().fit_transform(mat_data)
+        elif self.scaler == 'l1':
+            mat_data = Normalizer('l1').fit_transform(mat_data)
+        elif self.scaler == 'minmax':
+            mat_data = MinMaxScaler().fit_transform(mat_data)
+        elif self.scaler == 'max':
+            mat_data = Normalizer('max').fit_transform(mat_data)
+        elif self.scaler == 'maxmax':
+            mat_data /= mat_data.max().max()
+
+        if self.resize:
+            mat_data = transforms.Resize((299, 299))(
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+
+        return mat_data.astype('float'), label, low, batch, fname
+
+    def __len__(self):
+        return len(self.fnames)
+
+
