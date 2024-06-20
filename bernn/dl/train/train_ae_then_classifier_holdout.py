@@ -1181,6 +1181,13 @@ class TrainAE:
 
         return traces
 
+    def l1_regularization(self, model, lambda_l1):
+        l1 = 0
+        for p in model.parameters():
+            l1 = l1 + p.abs().sum()
+        return lambda_l1 * l1
+
+
 
 if __name__ == "__main__":
     import argparse

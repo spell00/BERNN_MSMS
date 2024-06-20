@@ -19,6 +19,7 @@ import random
 import json
 import copy
 import torch
+# torch.set_default_dtype(torch.float64)
 from torch import nn
 import os
 
@@ -30,8 +31,6 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
     LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
@@ -58,6 +57,7 @@ warnings.filterwarnings("ignore")
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
+
 
 def keep_top_features(data, path, args):
     """
@@ -205,6 +205,10 @@ class TrainAE:
             params['thres'] = self.fix_thres
         else:
             params['thres'] = 0
+        if not self.args.kan:
+            params['reg_entropy'] = 0
+        if not self.args.use_l1:
+            params['l1'] = 0
 
         # params['dropout'] = 0
         # params['smoothing'] = 0
@@ -224,6 +228,8 @@ class TrainAE:
         wd = params['wd']
         nu = params['nu']
         lr = params['lr']
+        self.l1 = params['l1']
+        self.reg_entropy = params['reg_entropy']
 
         dropout = params['dropout']
         margin = params['margin']
@@ -306,6 +312,7 @@ class TrainAE:
             model["use_mapping"] = run["use_mapping"] = args.use_mapping
             model["dataset_name"] = run["dataset_name"] = args.dataset
             model["n_agg"] = run["n_agg"] = args.n_agg
+            model["kan"] = run["kan"] = args.kan
         else:
             model = None
             run = None
@@ -344,6 +351,21 @@ class TrainAE:
                 "use_mapping": args.use_mapping,
                 "dataset_name": args.dataset,
                 "n_agg": args.n_agg,
+                "kan": args.kan,
+                "lr": lr,
+                "wd": wd,
+                "dropout": dropout,
+                "margin": margin,
+                "smooth": smooth,
+                "layer1": layer1,
+                "layer2": layer2,
+                "gamma": self.gamma,
+                "beta": self.beta,
+                "zeta": self.zeta,
+                "thres": thres,
+                "nu": nu,
+                "l1": self.l1,
+                "reg_entropy": self.reg_entropy,
             })
         else:
             model = None
@@ -389,7 +411,8 @@ class TrainAE:
             else:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
                 self.pools = self.args.pool
-            self.data = keep_top_features(self.data, self.path, self.args)
+            if args.best_features_file != '':
+                self.data = keep_top_features(self.data, self.path, self.args)
             if self.args.controls != '':
                 self.data = binarize_labels(self.data, self.args.controls)
                 self.unique_labels = np.unique(self.data['labels']['all'])
@@ -435,41 +458,46 @@ class TrainAE:
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
-                print(self.n_batches, self.n_cats)
-                ae = AutoEncoder(data['inputs']['all'].shape[1],
-                                n_batches=self.n_batches,
-                                nb_classes=self.n_cats,
-                                mapper=self.args.use_mapping,
-                                layer1=layer1,
-                                layer2=layer2,
-                                n_layers=self.args.n_layers,
-                                n_meta=self.args.n_meta,
-                                n_emb=self.args.embeddings_meta,
-                                dropout=dropout,
-                                variational=self.args.variational, conditional=False,
-                                zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                use_gnn=0,  # TODO to remove
-                                device=self.args.device).to(self.args.device)
-                ae.mapper.to(self.args.device)
-                ae.dec.to(self.args.device)
-                # if self.args.embeddings_meta > 0:
-                #     n_meta = self.n_meta
-                shap_ae = SHAPAutoEncoder(data['inputs']['all'].shape[1],
-                                          n_batches=self.n_batches,
-                                          nb_classes=self.n_cats,
-                                          mapper=self.args.use_mapping,
-                                          layer1=layer1,
-                                          layer2=layer2,
-                                          n_layers=self.args.n_layers,
-                                          n_meta=self.args.n_meta,
-                                          n_emb=self.args.embeddings_meta,
-                                          dropout=dropout,
-                                          variational=self.args.variational, conditional=False,
-                                          zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                          use_gnn=0,  # TODO remove this
-                                          device=self.args.device).to(self.args.device)
-                shap_ae.mapper.to(self.args.device)
-                shap_ae.dec.to(self.args.device)
+
+                if h == 1:
+                    ae = AutoEncoder(data['inputs']['all'].shape[1],
+                                    n_batches=self.n_batches,
+                                    nb_classes=self.n_cats,
+                                    mapper=self.args.use_mapping,
+                                    layer1=layer1,
+                                    layer2=layer2,
+                                    n_layers=self.args.n_layers,
+                                    n_meta=self.args.n_meta,
+                                    n_emb=self.args.embeddings_meta,
+                                    dropout=dropout,
+                                    variational=self.args.variational, conditional=False,
+                                    zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                    use_gnn=0,  # TODO to remove
+                                    device=self.args.device,
+                                    update_grid=self.args.update_grid
+                                    ).to(self.args.device)
+                    ae.mapper.to(self.args.device)
+                    ae.dec.to(self.args.device)
+                    # if self.args.embeddings_meta > 0:
+                    #     n_meta = self.n_meta
+                    shap_ae = SHAPAutoEncoder(data['inputs']['all'].shape[1],
+                                            n_batches=self.n_batches,
+                                            nb_classes=self.n_cats,
+                                            mapper=self.args.use_mapping,
+                                            layer1=layer1,
+                                            layer2=layer2,
+                                            n_layers=self.args.n_layers,
+                                            n_meta=self.args.n_meta,
+                                            n_emb=self.args.embeddings_meta,
+                                            dropout=dropout,
+                                            variational=self.args.variational, conditional=False,
+                                            zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                            use_gnn=0,  # TODO remove this
+                                            device=self.args.device).to(self.args.device)
+                    shap_ae.mapper.to(self.args.device)
+                    shap_ae.dec.to(self.args.device)
+                else:
+                    ae.random_init(nn.init.xavier_uniform_)
                 loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
                 loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
                 sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
@@ -522,6 +550,7 @@ class TrainAE:
                             mlflow.end_run()
                         return self.best_loss
                     ae.eval()
+                    ae.mapper.eval()
 
                     # Below is the loop for all sets
                     with torch.no_grad():
@@ -598,6 +627,8 @@ class TrainAE:
                 # ae.load_state_dict(sd)
                 ae.eval()
                 shap_ae.eval()
+                ae.mapper.eval()
+                shap_ae.mapper.eval()
                 with torch.no_grad():
                     for group in list(data['inputs'].keys()):
                         # if group in ['all', 'all_pool']:
@@ -616,7 +647,6 @@ class TrainAE:
                 # daemon.start()
                 self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae,
                              shap_ae, h, epoch)
-                del ae, shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
         # Too many runs have been made. This will make the notebook so much easier to work with
@@ -974,8 +1004,14 @@ class TrainAE:
             ]
             if group in ['train'] and nu != 0:
                 # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])
+                if not self.args.kan and self.l1 > 0:
+                    l1_loss = self.l1_regularization(ae, self.l1)
+                elif self.l1 > 0:
+                    l1_loss = self.reg_kan(ae, self.l1, self.reg_entropy)
+                else:
+                    l1_loss = torch.zeros(1).to(self.args.device)[0]
                 w = 1
-                total_loss = w * nu * classif_loss
+                total_loss = w * nu * classif_loss + l1_loss
                 # if self.args.train_after_warmup:
                 #     total_loss += rec_loss
                 try:
@@ -986,16 +1022,43 @@ class TrainAE:
                 optimizer_ae.step()
 
         return classif_loss, lists, traces
+    
+    def reg_kan(self, model, l1, reg_entropy):
+        """
+        Regularization for KAN
+        Args:
+            model: Autoencoder model
+            l1: L1 regularization
+            reg_entropy: Entropy regularization
 
+        Returns:
+
+        """
+        l1_loss = sum(
+            layer.regularization_loss(l1, reg_entropy) for layer in [
+                model.enc.linear1[0], model.enc.linear2[0], 
+                model.dec.linear1[0], model.dec.linear2[0], 
+                model.classifier.linear1[0],
+                model.dann_discriminator.linear1[0], model.dann_discriminator.linear2[0]
+                ]
+        )
+        if torch.isnan(l1_loss):
+            # print("NAN in regularization!")
+            l1_loss = torch.zeros(1).to(self.args.device)[0]
+        else:
+            pass
+        return l1_loss
     def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, best_loss, warmup, epoch,
                     optimizer_b, values, loggers, loaders, run, mapping=True):
         lists, traces = get_empty_traces()
         ae.train()
+        ae.mapper.train()
 
         iterator = enumerate(loader)
 
         # If option train_after_warmup=1, then this loop is only for preprocessing
         for i, all_batch in iterator:
+            # print(i)
             optimizer_ae.zero_grad()
             inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
                 neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
@@ -1087,8 +1150,17 @@ class TrainAE:
                     [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
             except:
                 pass
-            (rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss).backward()
-            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
+            if not self.args.kan and self.l1 > 0:
+                l1_loss = self.l1_regularization(ae, self.l1)
+            elif self.args.kan and self.l1 > 0:
+                l1_loss = self.reg_kan(ae, self.l1, self.reg_entropy)
+            else:
+                l1_loss = torch.zeros(1).to(self.args.device)[0]
+            loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss + l1_loss
+            if torch.isnan(loss):
+                print("NAN in loss!")
+            loss.backward()
+            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
             optimizer_ae.step()
 
         if np.mean(traces['rec_loss']) < self.best_loss:
@@ -1140,6 +1212,7 @@ class TrainAE:
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
         ae.train()
+        ae.mapper.train()
 
         # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
         # all layers except the classification layers are frozen
@@ -1279,6 +1352,7 @@ class TrainAE:
         if not self.args.train_after_warmup:
             ae.enc.eval()
             ae.dec.eval()
+            ae.mapper.eval()
             for param in ae.dec.parameters():
                 param.requires_grad = False
             for param in ae.enc.parameters():
@@ -1324,6 +1398,13 @@ class TrainAE:
             traces[group]['mcc'] = MCC(preds, classes)
 
         return traces
+    
+    def l1_regularization(self, model, lambda_l1):
+        l1 = 0
+        for p in model.parameters():
+            l1 = l1 + p.abs().sum()
+        
+        return lambda_l1 * l1
 
 
 if __name__ == "__main__":
@@ -1373,8 +1454,25 @@ if __name__ == "__main__":
     parser.add_argument('--log_metrics', type=int, default=0, help='')
     parser.add_argument('--controls', type=str, default='', help='Which samples are the controls. Empty for not binary')
     parser.add_argument('--n_features', type=int, default=-1, help='')
+    parser.add_argument('--kan', type=int, default=1, help='')
+    parser.add_argument('--update_grid', type=int, default=1, help='')
+    parser.add_argument('--use_l1', type=int, default=1, help='')
+    parser.add_argument('--clip_val', type=float, default=1, help='')
 
     args = parser.parse_args()
+    
+    if not args.kan:
+        from pytorch.aedann import AutoEncoder2 as AutoEncoder
+        from pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+    elif args.kan == 1:
+        from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+        from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+    elif args.kan == 2:
+        # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
+        # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
+        from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
+    
     try:
         mlflow.create_experiment(
             args.exp_id,
@@ -1390,7 +1488,6 @@ if __name__ == "__main__":
                     log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,
                     log_mlflow=True, groupkfold=args.groupkfold)
 
-    # train.train()
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
@@ -1411,9 +1508,12 @@ if __name__ == "__main__":
         # {"name": "layer3", "type": "range", "bounds": [32, 512]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},
+        # {"name": "layer2", "type": "range", "bounds": [32, 64]},
+        # {"name": "layer1", "type": "range", "bounds": [64, 128]},
+        
     ]
 
-    # Some hyperparameters are not always required. They are set to a default value in Train.train()
+    # Some hyperparameters are not always required. 
     if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
         parameters += [{"name": "gamma", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
@@ -1423,6 +1523,11 @@ if __name__ == "__main__":
     if args.zinb:
         # zeta = 0 because useless outside a zinb autoencoder
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
+    if args.kan and args.use_l1:
+        # zeta = 0 because useless outside a zinb autoencoder
+        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
+    if args.use_l1:
+        parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,

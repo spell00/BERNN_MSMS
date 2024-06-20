@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from bernn.utils.utils import get_unique_labels
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
-from src.dl.models.pytorch.utils.dataset import MSCSV, MS2CSV
+from bernn.dl.models.pytorch.utils.dataset import MSCSV, MS2CSV
 
 def get_alzheimer(path, args, seed=42):
     """

@@ -376,21 +376,18 @@ class TrainAE:
             self.warmup_counter = 0
             self.warmup_b_counter = 0
             self.warmup_disc_b = False
-            # best_acc = 0
-            # best_mcc = -1
-            # warmup_counter = 0
-            # warmup_b_counter = 0
+
             if self.args.warmup > 0:
                 warmup = True
             else:
                 warmup = False
+
             if self.args.dataset == 'alzheimer':
                 self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
                 self.pools = True
             elif self.args.dataset in ['amide', 'adenocarcinoma']:
                 self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
                 self.pools = True
-
             elif self.args.dataset == 'mice':
                 # This seed split the data to have n_samples in train: 96, valid:52, test: 23
                 self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
@@ -445,7 +442,9 @@ class TrainAE:
                 # if self.pools:
                 # loaders = get_images_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None, None, bs=64)
                 # else:
-                loaders = get_images_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss, None, None, bs=self.args.bs)
+                loaders = get_images_loaders_no_pool(data, self.args.random_recs, 
+                                                     self.samples_weights, self.args,
+                                                     None, None)
                 print(self.n_batches, self.n_cats)
                 ae = AutoEncoder(data['inputs']['all'].shape[1],
                                 n_batches=self.n_batches,
@@ -521,8 +520,8 @@ class TrainAE:
                     lists, traces = get_empty_traces()
 
                     if not self.args.train_after_warmup:
-                        ae = self.freeze_all_but_clayers(ae)
-                    else:
+                    #    ae = self.freeze_all_but_clayers(ae)
+                    # onpelse:
                         self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
                                          self.best_loss, True, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
@@ -1381,7 +1380,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='bacteria')
     parser.add_argument('--path', type=str, default='./data/PXD015912/')
     parser.add_argument('--exp_id', type=str, default='reviewer_exp')
-    parser.add_argument('--bs', type=int, default=2, help='Batch size')
+    parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=1, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
@@ -1409,6 +1408,10 @@ if __name__ == "__main__":
     if args.new_size == 64:
         AutoEncoder = AutoEncoder64
         SHAPAutoEncoder = SHAPAutoEncoder64
+    if 'triplet' in args.dloss or 'Triplet' in args.dloss:
+        args.triplet_dloss = True
+    else:
+        args.triplet_dloss = False
     # elif args.new_size == 128:
     #     AutoEncoder = AutoEncoder128
 
@@ -1435,7 +1438,7 @@ if __name__ == "__main__":
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         # {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['minmax']},  # scaler whould be no for zinb
+         "values": ['binarize']},  # scaler whould be no for zinb
         # {"name": "layer3", "type": "range", "bounds": [32, 512]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},

@@ -295,114 +295,6 @@ class validation_spliter:
         return partial_dataset
 
 
-# if self.args.strategy == 'As':
-#     data['cats'][group] = np.array(data['meta'][group]['As'])
-#     data['labels'][group] = np.array(['A+' if x == 1 else "A-" for x in data['meta'][group]['As']])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist())
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [len(unique_labels) for _ in data['meta'][f"{group}_pool"]['As']])
-#     data['labels'][f"{group}_pool"] = np.array(['pool' for _ in data['meta'][f"{group}_pool"]['As']])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist() + ['pool'])
-# elif self.args.strategy == 'Ts':
-#     data['cats'][group] = np.array(
-#         [1 if x.split(' ')[1] == 'T+' else 0 for i, x in enumerate(data['labels'][group])])
-#     data['labels'][group] = np.array([x.split(' ')[1] for i, x in enumerate(data['labels'][group])])
-# elif self.args.strategy == 'Ns':
-#     data['cats'][group] = np.array(
-#         [1 if x.split(' ')[2] == 'N+' else 0 for i, x in enumerate(data['labels'][group])])
-#     data['labels'][group] = np.array([x.split(' ')[2] for i, x in enumerate(data['labels'][group])])
-# elif self.args.strategy == 'dementia':
-#     data['labels'][group] = np.array(
-#         ['DEM/MCI' if 'DEM' in x or 'MCI' in x else x for i, x in enumerate(data['labels'][group])])
-#     unique_labels = get_unique_labels(data['labels'][group])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-# elif self.args.strategy == 'none':
-#     data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-#     unique_labels = get_unique_labels(data['labels'][group])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-# elif self.args.strategy in ['no', 'ova']:
-#     unique_labels = get_unique_labels(data['labels'][group])
-#     unique_labels = np.array(unique_labels.tolist() + ['pool'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == '3':
-#     data['labels'][group] = np.array(
-#         ['CU' if 'NPH' in x else x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist() + ['pool'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) for i, x in
-#          enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == '2':
-#     data['labels'][group] = np.array(
-#         ['CU' if 'NPH' in x else x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist()).tolist()
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI').squeeze())
-#     unique_labels = np.array(unique_labels + ['pool', 'MCI'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) + 1 for i, x
-#          in enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == 'NPH_CU_DEM':
-#     data['labels'][group] = np.array(
-#         [x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist()).tolist()
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI').squeeze())
-#     unique_labels = np.array(unique_labels + ['pool', 'MCI'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) + 1 for i, x
-#          in enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == 'CU_DEM':
-#     data['labels'][group] = np.array(
-#         [x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist()).tolist()
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'NPH').squeeze())
-#     unique_labels = np.array(unique_labels + ['pool', 'NPH', 'MCI'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) + 1 for i, x
-#          in enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == 'CU_DEM-AD':
-#     data['labels'][group] = np.array(
-#         [x for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist()).tolist()
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI-AD').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'DEM-other').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI-other').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'NPH').squeeze())
-#     # unique_labels = np.array(unique_labels + ['pool', 'NPH', 'MCI'])
-#     unique_labels = np.array(unique_labels + ['MCI-AD', 'MCI-other', 'NPH', 'DEM-other', 'pool'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) for i, x in
-#          enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-# elif self.args.strategy == 'NPH_DEM-AD':
-#     data['labels'][group] = np.array(
-#         [x for i, x in enumerate(data['labels'][group])])
-#     unique_labels = np.array(get_unique_labels(data['labels'][group]).tolist()).tolist()
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI-AD').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'DEM-other').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'MCI-other').squeeze())
-#     _ = unique_labels.pop(np.argwhere(np.array(unique_labels) == 'CU').squeeze())
-#     # unique_labels = np.array(unique_labels + ['pool', 'NPH', 'MCI'])
-#     unique_labels = np.array(unique_labels + ['MCI-AD', 'MCI-other', 'CU', 'DEM-other', 'pool'])
-#     data['cats'][group] = np.array(
-#         [np.where(x == unique_labels)[0][0] if x in unique_labels else len(unique_labels) for i, x in
-#          enumerate(data['labels'][group])])
-#     data['cats'][f"{group}_pool"] = np.array(
-#         [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][f"{group}_pool"])])
-
 def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, classifier=None, bs=64, device='cuda'):
     """
 
@@ -830,14 +722,14 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
         #     nn.ModuleList([
         #         transforms.GaussianBlur(kernel_size=3, sigma=(0.01, 0.03))
         #     ]), p=0.5),
-        # transforms.RandomApply(
-        #     nn.ModuleList([
-        #         transforms.RandomResizedCrop(
-        #             size=args.new_size,
-        #             scale=(0.8, 1.),
-        #             ratio=(0.8, 1.2)
-        #         )
-        #     ]), p=0.5),
+        transforms.RandomApply(
+            nn.ModuleList([
+                transforms.RandomResizedCrop(
+                    size=args.new_size,
+                    scale=(0.8, 1.),
+                    ratio=(0.8, 1.2)
+                )
+            ]), p=0.5),
         # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 

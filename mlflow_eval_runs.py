@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     # the adenocarcinoma dataset (which I also call amide, but should be changed) has only 3 batches, 
     # so there is only 3 splits possible for training
-    if 'amide' in exp_name or 'bactTest' in exp_name:
+    if 'amide' in exp_name or 'bactTest' in exp_name or 'Adeno' in exp_name:
         n_per_run = 3
     else:
         n_per_run = 5
@@ -33,11 +33,11 @@ if __name__ == '__main__':
     params = [p for p in runs.columns if p.startswith("params") if p != 'params.parameters' and p != 'params.foldername']
     params_common = [p for p in params if len([x for x in runs[p].unique() if x is not None]) == 1]
     # params_varied = [p for p in params if len([x for x in runs[p].unique() if x is not None]) > 1]
-    params_varied = ['params.dloss', 'params.variational', 'params.zinb']
+    params_varied = ['params.dloss', 'params.variational', 'params.kan']
     groups = list(runs.groupby(params_varied).run_id)
     # get history for each metric and run and plot mean + std across identical runs
     client = mlflow.tracking.MlflowClient()
-    metrics = {'_'.join([''.join([s, x]) for s, x in zip(['', 'vae', 'zinb'], g[0])]): {} for g in groups}
+    metrics = {'_'.join([''.join([s, x]) for s, x in zip(['', 'vae', 'kan'], g[0])]): {} for g in groups}
     params = [c for c in runs.columns if c.startswith("params")]
 
     best_metrics = {g: None for g in (metrics.keys())}
@@ -48,7 +48,7 @@ if __name__ == '__main__':
         print(gg)
         best_mcc = -np.inf
         for r in run_ids:
-            g = '_'.join([''.join([s, x]) for s, x in zip(['', 'vae', 'zinb'], gg)])
+            g = '_'.join([''.join([s, x]) for s, x in zip(['', 'vae', 'kan'], gg)])
             metrics[g][r] = {c[8:]: -np.inf for c in runs.columns if c.startswith("metrics")}
             c += 1
             
