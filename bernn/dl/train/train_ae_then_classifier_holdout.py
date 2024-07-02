@@ -49,8 +49,9 @@ random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
 
+from train_ae import TrainAE
 
-class TrainAE:
+class TrainAEThenClassifierHoldout(TrainAE):
 
     def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
                  log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True, pools=True):
@@ -76,64 +77,8 @@ class TrainAE:
             log_mlflow (bool): Wether or not to use mlflow.
 
         """
-        self.hparams_names = None
-        self.best_acc = 0
-        self.best_mcc = -1
-        self.best_closs = np.inf
-        self.logged_inputs = False
-        self.log_tb = log_tb
-        self.log_neptune = log_neptune
-        self.log_mlflow = log_mlflow
-        self.args = args
-        self.path = path
-        self.log_metrics = log_metrics
-        self.log_plots = log_plots
-        self.log_inputs = log_inputs
-        self.keep_models = keep_models
-        self.fix_thres = fix_thres
-        self.load_tb = load_tb
-        self.groupkfold = groupkfold
-        self.foldername = None
-
-        self.verbose = 1
-
-        self.n_cats = None
-        self.data = None
-        self.unique_labels = None
-        self.unique_batches = None
-
-        self.pools = True
-
-    def make_samples_weights(self):
-        self.n_batches = len(set(self.data['batches']['all']))
-        self.class_weights = {
-            label: 1 / (len(np.where(label == self.data['labels']['train'])[0]) /
-                        self.data['labels']['train'].shape[0])
-            for label in self.unique_labels if
-            label in self.data['labels']['train'] and label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH']}
-        self.unique_unique_labels = list(self.class_weights.keys())
-        for group in ['train', 'valid', 'test']:
-            inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels])
-            self.data['inputs'][group] = self.data['inputs'][group].iloc[inds_to_keep]
-            try:
-                self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
-            except:
-                self.data['names'][group] = self.data['names'][group][inds_to_keep]
-
-            self.data['labels'][group] = self.data['labels'][group][inds_to_keep]
-            self.data['cats'][group] = self.data['cats'][group][inds_to_keep]
-            self.data['batches'][group] = self.data['batches'][group][inds_to_keep]
-
-        self.samples_weights = {
-            group: [self.class_weights[label] if label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH'] else 0 for
-                    name, label in
-                    zip(self.data['names'][group],
-                        self.data['labels'][group])] if group == 'train' else [
-                1 if label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH'] else 0 for name, label in
-                zip(self.data['names'][group], self.data['labels'][group])] for group in
-            ['train', 'valid', 'test']}
-        self.n_cats = len(self.class_weights)  # + 1  # for pool samples
-        self.scaler = None
+        super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
+                         log_neptune, log_mlflow, groupkfold, pools)
 
     def train(self, params):
         """
@@ -163,6 +108,10 @@ class TrainAE:
         else:
             params['thres'] = 0
 
+        if not self.args.kan:
+            params['reg_entropy'] = 0
+        if not self.args.use_l1:
+            params['l1'] = 0
         # params['dropout'] = 0
         params['smoothing'] = 0
         # params['margin'] = 0
@@ -181,6 +130,8 @@ class TrainAE:
         wd = params['wd']
         nu = params['nu']
         lr = params['lr']
+        self.l1 = params['l1']
+        self.reg_entropy = params['reg_entropy']
 
         dropout = params['dropout']
         margin = params['margin']
@@ -256,6 +207,7 @@ class TrainAE:
             model["use_mapping"] = run["use_mapping"] = args.use_mapping
             model["dataset_name"] = run["dataset_name"] = args.dataset
             model["n_agg"] = run["n_agg"] = args.n_agg
+            model["kan"] = run["kan"] = args.kan
         else:
             model = None
             run = None
@@ -294,6 +246,12 @@ class TrainAE:
                 "use_mapping": args.use_mapping,
                 "dataset_name": args.dataset,
                 "n_agg": args.n_agg,
+                "kan": args.kan,
+                "l1": self.l1,
+                "reg_entropy": self.reg_entropy,
+                "use_l1": args.use_l1,
+                "clip_val": args.clip_val
+                "update_grid": args.update_grid,
             })
         else:
             model = None
@@ -405,7 +363,7 @@ class TrainAE:
             sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
 
             optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
-            self.optimizer_c = get_optimizer(ae.classifier, nu * lr, wd, optimizer_type)
+            optimizer_c = get_optimizer(ae.classifier, nu * lr, wd, optimizer_type)
 
             # Used only if bdisc==1
             optimizer_b = get_optimizer(ae.dann_discriminator, 1e-2, 0, optimizer_type)
@@ -612,7 +570,7 @@ class TrainAE:
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
-                closs, _, _ = self.loop('train', ae, sceloss, loaders['train'], lists, traces, nu=nu)
+                closs, _, _ = self.loop('train', optimizer_c, ae, sceloss, loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -625,7 +583,9 @@ class TrainAE:
                     for group in list(data['inputs'].keys()):
                         if group in ['all', 'all_pool']:
                             continue
-                        closs, lists, traces = self.loop(group, ae, sceloss, loaders[group], lists, traces, nu=0)
+                        closs, lists, traces = self.loop(group, optimizer_c, ae, sceloss, loaders[group], lists, traces, nu=0)
+                    closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                                            loaders['train'], lists, traces, nu=nu)
 
                 traces = self.get_mccs(lists, traces)
                 values = log_traces(traces, values)
@@ -700,7 +660,7 @@ class TrainAE:
                 for group in list(data['inputs'].keys()):
                     # if group in ['all', 'all_pool']:
                     #     continue
-                    closs, best_lists, traces = self.loop(group, ae, sceloss, loaders[group], best_lists, traces, nu=0,
+                    closs, best_lists, traces = self.loop(group, optimizer_c, ae, sceloss, loaders[group], best_lists, traces, nu=0,
                                                           mapping=False)  # -1
             if self.log_neptune:
                 model["model"].upload(f'{self.complete_log_path}/model_{h}.pth')
@@ -761,433 +721,6 @@ class TrainAE:
 
         return self.best_mcc
 
-    def log_rep(self, best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae, shap_ae, h,
-                epoch):
-        # if run is None:
-        #     return None
-        best_traces = self.get_mccs(best_lists, traces)
-
-        self.log_predictions(best_lists, run, h)
-
-        if self.log_metrics:
-            if self.log_tb:
-                try:
-                    # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
-                    metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch, mlops="tensorboard",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
-                except BrokenPipeError:
-                    print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_neptune:
-                try:
-                    metrics = log_metrics(run, best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch=epoch, mlops="neptune",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
-                except BrokenPipeError:
-                    print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_mlflow:
-                try:
-                    metrics = log_metrics(None, best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch, mlops="mlflow",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
-                except BrokenPipeError:
-                    print("\n\n\nProblem with logging stuff!\n\n\n")
-
-        if self.log_metrics and self.pools:
-            try:
-                if self.log_neptune:
-                    enc_data = make_data(best_lists, 'encoded_values')
-                    metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'enc', 'neptune')
-                    rec_data = make_data(best_lists, 'rec_values')
-                    metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'rec', 'neptune')
-                if self.log_mlflow:
-                    enc_data = make_data(best_lists, 'encoded_values')
-                    metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'enc', 'mlflow')
-                    rec_data = make_data(best_lists, 'rec_values')
-                    metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'rec', 'mlflow')
-                if self.log_tb:
-                    enc_data = make_data(best_lists, 'encoded_values')
-                    metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
-                                               self.unique_unique_labels, loggers['logger'], epoch, metrics, 'enc',
-                                               'tensorboard')
-                    rec_data = make_data(best_lists, 'rec_values')
-                    metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
-                                               self.unique_unique_labels, loggers['logger'], epoch, metrics, 'rec',
-                                               'tensorboard')
-
-            except BrokenPipeError:
-                print("\n\n\nProblem with logging stuff!\n\n\n")
-
-        loggers['cm_logger'].add(best_lists)
-        if h == 1:
-            if self.log_plots:
-                if self.log_tb:
-                    # TODO Add log_shap
-                    # logger.add(loggers['logger_cm'], epoch, best_lists,
-                    #            self.unique_labels, best_traces, 'tensorboard')
-                    log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
-                    log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'tb',
-                             self.complete_log_path,
-                             self.args.device)
-                if self.log_neptune:
-                    log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune', self.complete_log_path,
-                             self.args.device)
-                    log_plots(run, best_lists, 'neptune', epoch)
-                if self.log_mlflow:
-                    log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
-                             self.complete_log_path,
-                             self.args.device)
-                    log_plots(None, best_lists, 'mlflow', epoch)
-
-        columns = self.data['inputs']['all'].columns
-        if self.args.n_meta == 2:
-            columns += ['gender', 'age']
-
-        rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
-
-        if self.log_neptune:
-            run["recs"].track_files(f'{self.complete_log_path}/recs.csv')
-            run["encs"].track_files(f'{self.complete_log_path}/encs.csv')
-
-        best_values['pool_metrics'] = {}
-        try:
-            best_values['batches'] = metrics['batches']
-        except:
-            pass
-        try:
-            best_values['pool_metrics']['enc'] = metrics['pool_metrics_enc']
-        except:
-            pass
-        try:
-            best_values['pool_metrics']['rec'] = metrics['pool_metrics_rec']
-        except:
-            pass
-
-        if self.log_tb:
-            loggers['tb_logging'].logging(best_values, metrics)
-        if self.log_neptune:
-            log_neptune(run, best_values)
-        if self.log_mlflow:
-            log_mlflow(best_values, h)
-
-        # except BrokenPipeError:
-        #     print("\n\n\nProblem with logging stuff!\n\n\n")
-
-    def logging(self, run, cm_logger):
-        if self.log_neptune:
-            cm_logger.plot(run, 0, self.unique_unique_labels, 'neptune')
-            # cm_logger.get_rf_results(run, self.args)
-            run.stop()
-        if self.log_mlflow:
-            cm_logger.plot(None, 0, self.unique_unique_labels, 'mlflow')
-            # cm_logger.get_rf_results(run, self.args)
-            mlflow.end_run()
-        # cm_logger.close()
-        # logger.close()
-
-    def log_predictions(self, best_lists, run, step):
-        cats, labels, preds, scores, names = [{'train': [], 'valid': [], 'test': []} for _ in range(5)]
-        for group in ['train', 'valid', 'test']:
-            cats[group] = np.concatenate(best_lists[group]['cats'])
-            labels[group] = np.concatenate(best_lists[group]['labels'])
-            scores[group] = torch.softmax(torch.Tensor(np.concatenate(best_lists[group]['preds'])), 1)
-            preds[group] = scores[group].argmax(1)
-            names[group] = np.concatenate(best_lists[group]['names'])
-            pd.DataFrame(np.concatenate((labels[group].reshape(-1, 1), scores[group],
-                                         np.array([self.unique_labels[x] for x in preds[group]]).reshape(-1, 1),
-                                         names[group].reshape(-1, 1)), 1)).to_csv(
-                f'{self.complete_log_path}/{group}_predictions.csv')
-            if self.log_neptune:
-                run[f"{group}_predictions"].track_files(f'{self.complete_log_path}/{group}_predictions.csv')
-                run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
-                                                            multi_class='ovr')
-            if self.log_mlflow:
-                mlflow.log_metric(f'{group}_AUC',
-                                  metrics.roc_auc_score(y_true=cats[group], y_score=scores[group], multi_class='ovr'),
-                                  step=step)
-
-    def loop(self, group, ae, celoss, loader, lists, traces, nu=1, mapping=True):
-        """
-
-        Args:
-            group: Which set? Train, valid or test
-            optimizer_ae: Object that contains the optimizer for the autoencoder
-            ae: AutoEncoder (pytorch model, inherits nn.Module)
-            celoss: torch.nn.CrossEntropyLoss instance
-            triplet_loss: torch.nn.TripletMarginLoss instance
-            loader: torch.utils.data.DataLoader
-            lists: List keeping informations on the current run
-            traces: List keeping scores on the current run
-            nu: hyperparameter controlling the importance of the classification loss
-
-        Returns:
-
-        """
-        # If group is train and nu = 0, then it is not training. valid can also have sampling = True
-        if group in ['train', 'valid'] and nu != 0:
-            sampling = True
-        else:
-            sampling = False
-        classif_loss = None
-        for i, batch in enumerate(loader):
-            if group in ['train'] and nu != 0:
-                self.optimizer_c.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
-            # data[torch.isnan(data)] = 0
-            data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
-            to_rec = to_rec.to(self.args.device).float()
-
-            # If n_meta > 0, meta data added to inputs
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
-            not_to_rec = not_to_rec.to(self.args.device).float()
-            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
-            rec = rec['mean']
-
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
-
-            domain_preds = ae.dann_discriminator(enc)
-            try:
-                cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
-                classif_loss = celoss(preds, cats)
-            except:
-                cats = torch.Tensor([self.n_cats + 1 for _ in labels])
-                classif_loss = torch.Tensor([0])
-
-            if not self.args.zinb:
-                if isinstance(rec, list):
-                    rec = rec[-1]
-                if isinstance(to_rec, list):
-                    to_rec = to_rec[-1]
-            lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
-            try:
-                lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
-            except:
-                pass
-            traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
-            traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
-                                               zip(preds.argsort(1), labels)])]
-
-            traces[group]['closs'] += [classif_loss.item()]
-            try:
-                traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
-                ]
-            except:
-                traces[group]['mcc'] = []
-                traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
-                ]
-
-            if group in ['train'] and nu != 0:
-                # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])
-                w = 1
-                total_loss = w * nu * classif_loss
-                # if self.args.train_after_warmup:
-                #     total_loss += rec_loss
-                try:
-                    total_loss.backward()
-                except:
-                    pass
-                nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
-                self.optimizer_c.step()
-
-        return classif_loss, lists, traces
-
-    def forward_discriminate(self, optimizer_b, ae, celoss, loader):
-        # Freezing the layers so the batch discriminator can get some knowledge independently
-        # from the part where the autoencoder is trained. Only for DANN
-        self.freeze_dlayers(ae)
-        sampling = True
-        for i, batch in enumerate(loader):
-            optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
-            # data[torch.isnan(data)] = 0
-            data = data.to(self.args.device).float()
-            to_rec = to_rec.to(self.args.device).float()
-            with torch.no_grad():
-                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
-            with torch.enable_grad():
-                domain_preds = ae.dann_discriminator(enc)
-                bclassif_loss = celoss(domain_preds,
-                                       to_categorical(domain.long(), self.n_batches).to(self.args.device).float())
-                bclassif_loss.backward()
-                nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
-                optimizer_b.step()
-        self.unfreeze_layers(ae)
-        # return classif_loss, lists, traces
-
-    def get_dloss(self, celoss, domain, domain_preds, set_num=None):
-        """
-        This function is used to get the domain loss
-        Args:
-            celoss: PyTorch CrossEntropyLoss instance object
-            domain: one-hot encoded domain classes []
-            domain_preds: Matrix containing the predicted domains []
-
-        Returns:
-            dloss: Domain loss
-            domain: True domain (batch) values
-        """
-        if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
-            domain = domain.to(self.args.device).long().to(self.args.device)
-            dloss = celoss(domain_preds, domain)
-        else:
-            dloss = torch.zeros(1)[0].float().to(self.args.device)
-        if args.dloss == 'normae':
-            dloss = -dloss
-        return dloss, domain
-
-    def get_losses(self, scale, smooth, margin, dloss):
-        """
-        Getter for the losses.
-        Args:
-            scale: Scaler that was used, e.g. normalizer or binarize
-            smooth: Parameter for label_smoothing
-            margin: Parameter for the TripletMarginLoss
-
-        Returns:
-            sceloss: CrossEntropyLoss (with label smoothing)
-            celoss: CrossEntropyLoss object (without label smoothing)
-            mseloss: MSELoss object
-            triplet_loss: TripletMarginLoss object
-        """
-        sceloss = nn.CrossEntropyLoss(label_smoothing=smooth)
-        celoss = nn.CrossEntropyLoss()
-        if self.args.rec_loss == 'mse':
-            mseloss = nn.MSELoss()
-        elif self.args.rec_loss == 'l1':
-            mseloss = nn.L1Loss()
-        if scale == "binarize":
-            mseloss = nn.BCELoss()
-        if dloss == 'revTriplet':
-            triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
-        else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
-
-        return sceloss, celoss, mseloss, triplet_loss
-
-    def freeze_dlayers(self, ae):
-        """
-        Freeze all layers except the dann classifier
-        Args:
-            ae: AutoEncoder object. It inherits torch.nn.Module
-
-        Returns:
-            ae: The same AutoEncoder object, but with all frozen layers. Only the classifier layers are not frozen.
-
-        """
-        if not self.args.train_after_warmup:
-            for param in ae.dec.parameters():
-                param.requires_grad = False
-            for param in ae.enc.parameters():
-                param.requires_grad = False
-            for param in ae.classifier.parameters():
-                param.requires_grad = False
-            for param in ae.dann_discriminator.parameters():
-                param.requires_grad = True
-        return ae
-
-    def freeze_ae(self, ae):
-        """
-        Freeze all layers except the classifier
-        Args:
-            ae: AutoEncoder object. It inherits torch.nn.Module
-
-        Returns:
-            ae: The same AutoEncoder object, but with all frozen layers. Only the classifier layers are not frozen.
-
-        """
-        if not self.args.train_after_warmup:
-            ae.enc.eval()
-            ae.dec.eval()
-            for param in ae.dec.parameters():
-                param.requires_grad = False
-            for param in ae.enc.parameters():
-                param.requires_grad = False
-            for param in ae.classifier.parameters():
-                param.requires_grad = True
-            for param in ae.dann_discriminator.parameters():
-                param.requires_grad = False
-        return ae
-
-    def unfreeze_layers(self, ae):
-        """
-        Unfreeze all layers
-        Args:
-            ae: AutoEncoder object. It inherits torch.nn.Module
-
-        Returns:
-            ae: The same AutoEncoder object, but with all frozen layers. Only the classifier layers are not frozen.
-
-        """
-        for param in ae.parameters():
-            param.requires_grad = True
-        return ae
-
-    @staticmethod
-    def get_mccs(lists, traces):
-        """
-        Function that gets the Matthews Correlation Coefficients. MCC is a statistical tool for model evaluation.
-        It is a balanced measure which can be used even if the classes are of very different sizes.
-        Args:
-            lists:
-            traces:
-
-        Returns:
-            traces: Same list as in the inputs arguments, except in now contains the MCC values
-        """
-        for group in ['train', 'valid', 'test']:
-            try:
-                preds, classes = np.concatenate(lists[group]['preds']).argmax(1), np.concatenate(
-                    lists[group]['classes'])
-            except:
-                pass
-            traces[group]['mcc'] = MCC(preds, classes)
-
-        return traces
-
-    def l1_regularization(self, model, lambda_l1):
-        l1 = 0
-        for p in model.parameters():
-            l1 = l1 + p.abs().sum()
-        return lambda_l1 * l1
-
-
 
 if __name__ == "__main__":
     import argparse
@@ -1234,8 +767,24 @@ if __name__ == "__main__":
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
+    parser.add_argument('--kan', type=int, default=1, help='')
+    parser.add_argument('--update_grid', type=int, default=1, help='')
+    parser.add_argument('--use_l1', type=int, default=1, help='')
+    parser.add_argument('--clip_val', type=float, default=1, help='')
 
     args = parser.parse_args()
+
+    if not args.kan:
+        from pytorch.aedann import AutoEncoder2 as AutoEncoder
+        from pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+    elif args.kan == 1:
+        from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+        from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+    elif args.kan == 2:
+        # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
+        # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
+        from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
 
     try:
         mlflow.create_experiment(
@@ -1245,9 +794,11 @@ if __name__ == "__main__":
         )
     except:
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
-    train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
-                    log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
-                    log_mlflow=True, groupkfold=args.groupkfold, pools=True)
+    train = TrainAEThenClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False, 
+                                         log_metrics=True, keep_models=False,
+                                         log_inputs=False, log_plots=True, log_tb=False, 
+                                         log_neptune=False, log_mlflow=True, 
+                                         groupkfold=args.groupkfold, pools=True)
 
     # train.train()
     # List of hyperparameters getting optimized
@@ -1255,14 +806,24 @@ if __name__ == "__main__":
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        # {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
+        # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [10, 1000]},
+        {"name": "warmup", "type": "range", "bounds": [1, 100]},
+        {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
+
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
+        # {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
-         "values": ['l1', 'minmax', "l2"]},  # scaler whould be no for zinb
+         "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
+        # {"name": "layer3", "type": "range", "bounds": [32, 512]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},
+        # {"name": "layer2", "type": "range", "bounds": [32, 64]},
+        # {"name": "layer1", "type": "range", "bounds": [64, 128]},
+        
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
@@ -1275,6 +836,11 @@ if __name__ == "__main__":
     if args.zinb:
         # zeta = 0 because useless outside a zinb autoencoder
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
+    if args.kan and args.use_l1:
+        # zeta = 0 because useless outside a zinb autoencoder
+        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
+    if args.use_l1:
+        parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,
