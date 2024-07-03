@@ -223,11 +223,11 @@ class TrainAE:
                              self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
 
-        columns = self.data['inputs']['all'].columns
+        columns = list(self.data['inputs']['all'].columns)
         if self.args.n_meta == 2:
             columns += ['gender', 'age']
 
-        rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
+        rec_data, enc_data = to_csv(best_lists, self.complete_log_path, columns)
 
         if self.log_neptune:
             run["recs"].track_files(f'{self.complete_log_path}/recs.csv')
@@ -413,6 +413,10 @@ class TrainAE:
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            if self.args.n_meta > 0:
+                data = torch.cat((data, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
             with torch.no_grad():
                 enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
             with torch.enable_grad():

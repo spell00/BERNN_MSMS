@@ -250,7 +250,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 "l1": self.l1,
                 "reg_entropy": self.reg_entropy,
                 "use_l1": args.use_l1,
-                "clip_val": args.clip_val
+                "clip_val": args.clip_val,
                 "update_grid": args.update_grid,
             })
         else:

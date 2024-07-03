@@ -7,7 +7,7 @@ from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
 from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from bernn.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
-from .ekan.src.efficient_kan.kan import KANLinear
+from efficient_kan.kan import KANLinear
 import copy
 from .utils.utils import to_categorical
 
@@ -537,7 +537,10 @@ class KANAutoencoder2(nn.Module):
         rec = {}
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        enc = self.enc(x)
+        try:
+            enc = self.enc(x)
+        except:
+            pass
         if torch.isnan(enc).any():
             print('nan in enc')
         if self.gaussian_sampling is not None:

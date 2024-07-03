@@ -8,7 +8,7 @@ groupkfold=1
 train_after_warmup=1
 
 dataset=alzheimer
-exp_id=alzheimer_06_27_2024
+exp_id=alzheimer_07_27_2024
 csv_file=unique_genes.csv
 path=data/Alzheimer
 best_features_file=''
