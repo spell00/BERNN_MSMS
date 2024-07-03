@@ -798,8 +798,8 @@ if __name__ == "__main__":
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
     train = TrainAEThenClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False, 
                                          log_metrics=args.log_metrics, keep_models=False,
-                                         log_inputs=False, log_plots=args.log_plots, log_tb=False, 
-                                         log_neptune=False, log_mlflow=True, 
+                                         log_inputs=False, log_plots=args.log_plots,
+                                         log_tb=False, log_neptune=False, log_mlflow=True, 
                                          groupkfold=args.groupkfold, pools=True)
 
     # train.train()
