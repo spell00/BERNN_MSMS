@@ -771,6 +771,8 @@ if __name__ == "__main__":
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
+    parser.add_argument('--log_metrics', type=int, default=1, help='')
+    parser.add_argument('--log_plots', type=int, default=1, help='')
 
     args = parser.parse_args()
 
@@ -795,8 +797,8 @@ if __name__ == "__main__":
     except:
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
     train = TrainAEThenClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False, 
-                                         log_metrics=True, keep_models=False,
-                                         log_inputs=False, log_plots=True, log_tb=False, 
+                                         log_metrics=args.log_metrics, keep_models=False,
+                                         log_inputs=False, log_plots=args.log_plots, log_tb=False, 
                                          log_neptune=False, log_mlflow=True, 
                                          groupkfold=args.groupkfold, pools=True)
 
