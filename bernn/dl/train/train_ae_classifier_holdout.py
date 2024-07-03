@@ -682,7 +682,7 @@ if __name__ == "__main__":
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
-    parser.add_argument('--log_plots', type=int, default=0, help='')
+    parser.add_argument('--log_plots', type=int, default=1, help='')
     parser.add_argument('--log_metrics', type=int, default=0, help='')
     parser.add_argument('--controls', type=str, default='', help='Which samples are the controls. Empty for not binary')
     parser.add_argument('--n_features', type=int, default=-1, help='')

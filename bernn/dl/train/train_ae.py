@@ -33,6 +33,7 @@ from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
     LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+from pytorch.utils.loggings import log_shap
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \

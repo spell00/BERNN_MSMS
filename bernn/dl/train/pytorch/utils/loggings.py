@@ -525,8 +525,8 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
         if n_meta > 0:
             X = np.concatenate((
                 np.concatenate(best_lists[group]['inputs']),
-                np.concatenate(best_lists[group]['age']).reshape(-1, 1),
-                np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
+                # np.concatenate(best_lists[group]['age']).reshape(-1, 1),
+                # np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
             ), 1)
             X_test = torch.Tensor(X).to(device)
             X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
