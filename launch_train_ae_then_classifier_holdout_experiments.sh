@@ -33,5 +33,5 @@ do
 		i=$((i+1))
     	done
 	done
-	wait
+	# wait
 done
