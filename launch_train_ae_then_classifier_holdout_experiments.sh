@@ -8,7 +8,7 @@ groupkfold=1
 train_after_warmup=0
 
 dataset=alzheimer
-exp_id=alzheimer_07_27_2024
+exp_id=alzheimer_07_03_2024
 csv_file=unique_genes.csv
 path=data/Alzheimer
 best_features_file=''
@@ -17,7 +17,7 @@ use_l1=1
 n_emb=2
 
 i=0
-for variational in 0
+for variational in 0 1
 do
 	for kan in 1
 	do
@@ -31,6 +31,7 @@ do
 			--n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
 			--best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 &
 		i=$((i+1))
+		sleep 60
     	done
 	done
 	# wait

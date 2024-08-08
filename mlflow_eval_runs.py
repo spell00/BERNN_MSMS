@@ -10,7 +10,7 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='adenocarcinoma_06_14_2024', help='Name of the experiment to evaluate')
+    parser.add_argument('--exp_name', type=str, default='benchmark_08_06_2024', help='Name of the experiment to evaluate')
     args = parser.parse_args()
 
     # get runs
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     
     # Counter variable used for writing
     # headers to the CSV file
-    some_metric = list(best_metrics.keys())[2]
+    some_metric = list(best_metrics.keys())[0]
     count = 0
     for model in best_metrics:
         if best_metrics[model] is not None:

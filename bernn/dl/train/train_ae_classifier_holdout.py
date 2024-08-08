@@ -146,7 +146,7 @@ class TrainAEClassifierHoldout(TrainAE):
             params['thres'] = self.fix_thres
         else:
             params['thres'] = 0
-        if not self.args.kan:
+        if not self.args.kan or not self.args.use_l1 :
             params['reg_entropy'] = 0
         if not self.args.use_l1:
             params['l1'] = 0
@@ -273,6 +273,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 "tied_weights": args.tied_weights,
                 "random_recs": args.random_recs,
                 "train_after_warmup": args.train_after_warmup,
+                "warmup_after_warmup": args.warmup_after_warmup,
                 "dloss": args.dloss,
                 "predict_tests": args.predict_tests,
                 "variational": args.variational,
@@ -310,7 +311,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 "use_l1": args.use_l1,
                 "clip_val": args.clip_val,
                 "update_grid": args.update_grid,
-
+                "prune_threshold": args.prune_threshold,
             })
         else:
             model = None
@@ -321,6 +322,7 @@ class TrainAEClassifierHoldout(TrainAE):
         best_closses = []
         best_mccs = []
         while h < self.args.n_repeats:
+            prune_threshold = self.args.prune_threshold
             print(f'Rep: {h}')
             epoch = 0
             self.best_loss = np.inf
@@ -476,7 +478,6 @@ class TrainAEClassifierHoldout(TrainAE):
                         self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
                                          self.best_loss, True, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
-
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
                         if self.verbose > 0:
@@ -484,11 +485,15 @@ class TrainAEClassifierHoldout(TrainAE):
                         break
                     lists, traces = get_empty_traces()
 
+                    if self.args.warmup_after_warmup:
+                        self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
+                                            self.best_loss, False, epoch,
+                                            optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
                         ae = self.freeze_all_but_clayers(ae)
                     closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
                                             loaders['train'], lists, traces, nu=nu)
-
+            
                     if torch.isnan(closs):
                         if self.log_mlflow:
                             mlflow.log_param('finished', 0)
@@ -504,7 +509,22 @@ class TrainAEClassifierHoldout(TrainAE):
                                 continue
                             closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                              loaders[group], lists, traces, nu=0)
+                        # IF KAN and pruning threshold > 0, then prune the network
+                        if self.args.kan and prune_threshold > 0:
+                            try:
+                                self.prune_neurons(ae, prune_threshold)
+                            except:
+                                if self.log_mlflow:
+                                    mlflow.log_param('finished', 0)
+                                    mlflow.end_run()
+                                return self.best_loss
+                        if self.args.kan and self.args.prune_neurites_threshold > 0:
+                            self.prune_neurites(ae)
+                        if self.args.kan and early_stop_counter % 10 == 0 and early_stop_counter > 0:
+                            prune_threshold *= 10
+                            print(f"Pruning threshold: {prune_threshold}")
 
+                                
                     traces = self.get_mccs(lists, traces)
                     values = log_traces(traces, values)
                     if self.log_tb:
@@ -520,7 +540,8 @@ class TrainAEClassifierHoldout(TrainAE):
                             values['valid']['mcc']) > self.args.n_agg:
                         print(f"Best Classification Mcc Epoch {epoch}, "
                               f"Acc: {values['test']['acc'][-1]}"
-                              f"Mcc: {values['test']['mcc'][-1]}"
+                              f"VALID Mcc: {values['valid']['mcc'][-1]}"
+                              f"TEST Mcc: {values['test']['mcc'][-1]}"
                               f"Classification train loss: {values['train']['closs'][-1]},"
                               f" valid loss: {values['valid']['closs'][-1]},"
                               f" test loss: {values['test']['closs'][-1]}")
@@ -638,6 +659,23 @@ class TrainAEClassifierHoldout(TrainAE):
 
         return self.best_mcc
 
+    def increase_pruning_threshold(self):
+        '''
+        increase the pruning threshold
+        
+        Args:
+        -----
+            threshold : float
+                the amount of increase
+        
+        Returns:
+        --------
+            None
+        '''
+        if self.prune_threshold == 0:
+            self.prune_threshold = 1e-8
+        else:
+            self.prune_threshold *= 10
 
 if __name__ == "__main__":
     import argparse
@@ -649,6 +687,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=100)
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
     parser.add_argument('--train_after_warmup', type=int, default=1, help="Train autoencoder after warmup")
+    parser.add_argument('--warmup_after_warmup', type=int, default=1, help="Warmup after warmup")
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
@@ -690,6 +729,8 @@ if __name__ == "__main__":
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
+    parser.add_argument('--prune_threshold', type=float, default=1.0, help='')
+    parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
 
     args = parser.parse_args()
     

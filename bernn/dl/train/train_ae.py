@@ -30,6 +30,8 @@ from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
+from pytorch.aeekandann import KANAutoencoder2
+from pytorch.ekan.src.efficient_kan.kan import KANLinear
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
     LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
@@ -400,6 +402,9 @@ class TrainAE:
                 nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 optimizer.step()
 
+        # for m in ae.modules():
+        #     if isinstance(m, KANAutoencoder2):
+        #         print('KAN!')
         return classif_loss, lists, traces
 
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
@@ -422,8 +427,11 @@ class TrainAE:
                 enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
             with torch.enable_grad():
                 domain_preds = ae.dann_discriminator(enc)
+
                 bclassif_loss = celoss(domain_preds,
                                        to_categorical(domain.long(), self.n_batches).to(self.args.device).float())
+                if torch.isnan(bclassif_loss):
+                    print("NAN in batch discriminator loss!")
                 bclassif_loss.backward()
                 nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
                 optimizer_b.step()
@@ -792,6 +800,21 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
+    def prune_neurons(self, ae, threshold):
+        """
+        Prune neurons in the autoencoder
+        Args:
+            ae: AutoEncoder object
+
+        Returns:
+            ae: AutoEncoder object
+        """
+        for m in ae.modules():
+            if isinstance(m, KANAutoencoder2):
+                for n in m.modules():
+                    for i in n.modules():
+                        if isinstance(i, KANLinear):
+                            i.prune_neurons(threshold)
 
 if __name__ == "__main__":
     import argparse

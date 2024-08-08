@@ -540,20 +540,28 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
         # explanation.values = explanation.values.detach().cpu().numpy()
         misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
                                                               np.concatenate(best_lists[group]['cats']).argmax(1))]
-        log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
+        try:
+            log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
                            group, run, best_lists[group]['cats'], log_path, mlops, device
                            )
+        except:
+            pass
         if not log_deep_only:
             # TODO Problem with not enough memory...
-            log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
+            try:
+                log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
                           group, run, best_lists[group]['cats'], log_path, device
                           )
-            log_kernel_explainer(ae, X_test_df,
+            except:
+                pass
+            try:
+                log_kernel_explainer(ae, X_test_df,
                                  misclassified,
                                  np.concatenate(best_lists[group]['labels']),
                                  group, run, best_lists[group]['cats'], log_path
                                  )
-
+            except:
+                pass
 
 def log_neptune(run, traces):
     if not np.isnan(traces['rec_loss']):
