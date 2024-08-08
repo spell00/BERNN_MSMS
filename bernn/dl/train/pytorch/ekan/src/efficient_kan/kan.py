@@ -170,15 +170,11 @@ class KANLinear(torch.nn.Module):
         )
         output = base_output + spline_output
         
-<<<<<<< HEAD
         output = output.view(*original_shape[:-1], self.out_features)
         if self.prune_threshold > 0.0:
             output = self.mask * output
             self.counts += np.abs(output.detach().cpu().numpy().sum(0))
             self.n += output.size(0)
-=======
-        output = output.reshape(*original_shape[:-1], self.out_features)
->>>>>>> 7b6ce1c87f18c8bc90c208f6b494042344216b11
         return output
 
     def prune_neurons(self, prune_threshold):
