@@ -23,7 +23,7 @@ for train_after_warmup in 1 0
 do
     for warmup_after_warmup in 1 0
     do
-        for prune_threshold in 0 0.0001
+        for prune_threshold in 0.0001
         do
             for variational in 0 1
             do
