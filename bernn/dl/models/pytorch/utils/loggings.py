@@ -256,7 +256,7 @@ def interactions_mean_matrix(shap_interactions, run, group):
 
 
 def make_summary_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.summary_plot(values, df, show=False)
+    shap.summary_plot(values[:,  :, 0], df, show=False)
     f = plt.gcf()
     if mlops == 'neptune':
         run[f'shap/summary_{category}/{group}_values'].upload(f)
@@ -269,7 +269,7 @@ def make_summary_plot(df, values, group, run, log_path, category='explainer', ml
 
 
 def make_force_plot(df, values, features, group, run, log_path, category='explainer', mlops='mlflow'):
-    shap.force_plot(df, values, features=features, show=False)
+    shap.force_plot(df, values[:,  :, 0], features=features, show=False)
     f = plt.gcf()
     if mlops == 'neptune':
         run[f'shap/force_{category}/{group}_values'].upload(f)
@@ -463,9 +463,9 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
 
     # Summary plot
     make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
-    make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
-    make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
+    # make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
+    # make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
+    # make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):
@@ -476,10 +476,10 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
         except:
             pass
 
-    try:
-        make_dependence_plot(x_df, shap_values, 'APOE', group, run, log_path, 'DeepExplainer', mlops)
-    except:
-        pass
+    # try:
+    #     make_dependence_plot(x_df, shap_values, 'APOE', group, run, log_path, 'DeepExplainer', mlops)
+    # except:
+    #     pass
 
     # mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
     # make_group_difference_plot(x_df, mask, group, run, 'DeepExplainer')
@@ -522,19 +522,19 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
     # explainer = shap.KernelExplainer(svc_linear.predict_proba, X_train[:100])
     os.makedirs(log_path, exist_ok=True)
     for group in ['valid', 'test']:
-        if n_meta > 0:
-            X = np.concatenate((
-                np.concatenate(best_lists[group]['inputs']),
-                np.concatenate(best_lists[group]['age']).reshape(-1, 1),
-                np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
-            ), 1)
-            X_test = torch.Tensor(X).to(device)
-            X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
-        else:
+        # if n_meta > 0:
+        #     X = np.concatenate((
+        #         np.concatenate(best_lists[group]['inputs']),
+        #         np.concatenate(best_lists[group]['age']).reshape(-1, 1),
+        #         np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
+        #     ), 1)
+        #     X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
+        # else:
+        try:
             X = np.concatenate(best_lists[group]['inputs'])
-            X_test = torch.Tensor(X).to(device)
             X_test_df = pd.DataFrame(X, columns=list(cols))
-
+        except:
+            pass
         # explainer = shap.DeepExplainer(ae, X_test)
         # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
         # explanation.values = explanation.values.detach().cpu().numpy()

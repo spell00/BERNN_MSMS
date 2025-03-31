@@ -642,8 +642,9 @@ class TrainAE:
                         values['valid']['mcc']) > self.args.n_agg:
                     print(f"Best Classification Mcc Epoch {epoch}, "
                           f"Acc: {values['test']['acc'][-1]}"
-                          f"Mcc: {values['test']['mcc'][-1]}"
-                          f"Classification train loss: {values['train']['closs'][-1]},"
+                          f" test Mcc: {values['test']['mcc'][-1]}"
+                          f" valid Mcc: {values['valid']['mcc'][-1]}"
+                          f" Classification train loss: {values['train']['closs'][-1]},"
                           f" valid loss: {values['valid']['closs'][-1]},"
                           f" test loss: {values['test']['closs'][-1]}")
                     best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
@@ -1097,7 +1098,7 @@ class TrainAE:
         if dloss == 'revTriplet':
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+            triplet_loss = None
 
         return sceloss, celoss, mseloss, triplet_loss
 

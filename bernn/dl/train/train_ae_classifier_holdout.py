@@ -1462,16 +1462,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if not args.kan:
-        from pytorch.aedann import AutoEncoder2 as AutoEncoder
-        from pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+        from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
+        from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
     elif args.kan == 1:
-        from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-        from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        from bernn.dl.models.pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+        from bernn.dl.models.pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
     elif args.kan == 2:
         # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
         # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-        from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
-        from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
+        from bernn.dl.models.pytorch.aekandann import KANAutoencoder3 as AutoEncoder
+        from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
     
     try:
         mlflow.create_experiment(
@@ -1493,23 +1493,16 @@ if __name__ == "__main__":
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        # {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
-        # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 100]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
-        # {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
-        # {"name": "layer3", "type": "range", "bounds": [32, 512]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},
-        # {"name": "layer2", "type": "range", "bounds": [32, 64]},
-        # {"name": "layer1", "type": "range", "bounds": [64, 128]},
         
     ]
 

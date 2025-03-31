@@ -8,7 +8,7 @@ from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log
 from bernn.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
 from efficient_kan import KANLinear
-from kan import KANLayer
+# from kan import KANLayer
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)
@@ -380,10 +380,9 @@ class SHAPKANAutoencoder2(nn.Module):
             x = torch.Tensor(x.values).to(self.device)
         if self.n_emb > 0:
             meta_values = x[:, -2:]
-            x = x[:, :-2]
-        # if self.n_meta > 0:
-        #     x = x[:, :-2]
-        # rec = {}
+        if self.n_meta == 0 and self.n_emb > 0:
+            x = x[:, :self.n_emb]
+
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
         # if self.use_gnn:
@@ -503,9 +502,9 @@ class KANAutoencoder2(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer2, 64, n_batches, update_grid=update_grid)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, update_grid=update_grid)
-        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), MeanAct())
-        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), DispAct())
-        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), nn.Sigmoid())
+        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
+        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
