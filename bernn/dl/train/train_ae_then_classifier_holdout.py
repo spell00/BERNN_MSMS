@@ -20,25 +20,21 @@ import copy
 import torch
 from torch import nn
 import os
-
-from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
-from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination, log_neptune
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
+from bernn.utils.utils import scale_data
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
-from bernn.dl.models.pytorch.utils.loggings import make_data
-import neptune.new as neptune
+import neptune
 import mlflow
 import warnings
 from datetime import datetime
@@ -49,7 +45,7 @@ random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
 
-from train_ae import TrainAE
+from bernn.dl.train.train_ae import TrainAE
 
 class TrainAEThenClassifierHoldout(TrainAE):
 

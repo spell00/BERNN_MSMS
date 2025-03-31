@@ -28,13 +28,13 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from data_getters import get_data, get_bacteria_images_ms2
+from .data_getters import get_data, get_bacteria_images_ms2
 from torchvision.models import resnet18, ResNet18_Weights
-from aedacnn import SHAPAutoEncoder2 as SHAPAutoEncoder
+from .aedacnn import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
     LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
 # from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from dataset import get_images_loaders, get_images_loaders_no_pool
+from .dataset import get_images_loaders, get_images_loaders_no_pool
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, \
     add_to_mlflow
@@ -847,7 +847,6 @@ class TrainAE:
                 optimizer_ae.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
                 neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
-            # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -932,7 +931,6 @@ class TrainAE:
             optimizer_b.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
                 neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
-            # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             with torch.no_grad():

@@ -22,29 +22,27 @@ from torch import nn
 import os
 
 from sklearn import metrics
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+# from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-from pytorch.aeekandann import KANAutoencoder2
-from pytorch.ekan.src.efficient_kan.kan import KANLinear
-from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
-from pytorch.utils.loggings import log_shap
-from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
+# from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
+from bernn.dl.models.pytorch.aeekandann import KANAutoencoder2
+from efficient_kan import KANLinear
+# from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+from bernn.dl.models.pytorch.utils.loggings import log_metrics, \
+    log_plots, log_neptune, log_shap, log_mlflow
+from bernn.dl.models.pytorch.utils.loggings import log_shap
+# from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+from bernn.utils.utils import to_csv
+from bernn.dl.models.pytorch.utils.utils import to_categorical, get_empty_traces, \
+    log_traces, add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
-import neptune.new as neptune
 import mlflow
 import warnings
-from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
@@ -484,7 +482,7 @@ class TrainAE:
         if dloss == 'revTriplet':
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+            triplet_loss = None
 
         return sceloss, celoss, mseloss, triplet_loss
 

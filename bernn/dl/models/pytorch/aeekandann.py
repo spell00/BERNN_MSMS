@@ -8,7 +8,7 @@ from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log
 from bernn.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
 from efficient_kan import KANLinear
-from kan import KANLayer
+# from bernn.dl.train.pytorch.kan import KANLayer
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)

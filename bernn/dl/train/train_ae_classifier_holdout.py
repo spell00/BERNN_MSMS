@@ -16,14 +16,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
-import json
+# import json
 import copy
 import torch
 # torch.set_default_dtype(torch.float64)
 from torch import nn
 import os
 
-from sklearn import metrics
+# from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
@@ -31,21 +31,21 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, \
-    add_to_mlflow
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
+    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 import mlflow
 import warnings
 from datetime import datetime
+from bernn.dl.train.train_ae import TrainAE
 
 
 # import StratifiedGroupKFold
-from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
-from bernn.utils.utils import get_unique_labels
+# from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
+# from bernn.utils.utils import get_unique_labels
 
 # from fastapi import BackgroundTasks, FastAPI
 # from threading import Thread
@@ -89,7 +89,6 @@ def binarize_labels(data, controls):
         data['cats'][group] = data['labels'][group]
     return data
 
-from train_ae import TrainAE
 
 class TrainAEClassifierHoldout(TrainAE):
 
@@ -766,24 +765,16 @@ if __name__ == "__main__":
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        # {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
-        # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 100]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
-        # {"name": "ncols", "type": "range", "bounds": [20, 10000]},
         {"name": "scaler", "type": "choice",
          "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
-        # {"name": "layer3", "type": "range", "bounds": [32, 512]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
-        {"name": "layer1", "type": "range", "bounds": [512, 1024]},
-        # {"name": "layer2", "type": "range", "bounds": [32, 64]},
-        # {"name": "layer1", "type": "range", "bounds": [64, 128]},
-        
+        {"name": "layer1", "type": "range", "bounds": [512, 1024]},        
     ]
 
     # Some hyperparameters are not always required. 
