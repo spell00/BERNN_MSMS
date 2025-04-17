@@ -10,7 +10,7 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='benchmark_08_06_2024', help='Name of the experiment to evaluate')
+    parser.add_argument('--exp_name', type=str, default='testbenchmark_08_15_2024', help='Name of the experiment to evaluate')
     args = parser.parse_args()
 
     # get runs
@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     exp_id = mlflow.get_experiment_by_name(exp_name).experiment_id
 
-    print(exp_id)
+    print(n_per_run, exp_id)
 
     runs = mlflow.search_runs(exp_id)
     runs.index = runs['run_id']

@@ -564,15 +564,19 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
                 pass
 
 def log_neptune(run, traces):
-    if not np.isnan(traces['rec_loss']):
-        run["rec_loss"].log(traces['rec_loss'])
-    if not np.isnan(traces['dom_loss']):
-        run["dom_loss"].log(traces['dom_loss'])
-    if not np.isnan(traces['dom_acc']):
-        try:
-            run["dom_acc"].log(traces['dom_acc'])
-        except:
-            run["dom_acc"].log(traces['dom_acc'][0])
+    if 'rec_loss' in traces:
+        if not np.isnan(traces['rec_loss']):
+            try:
+                run["rec_loss"].log(traces['rec_loss'])
+            except:
+                print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+        if not np.isnan(traces['dom_loss']):
+            run["dom_loss"].log(traces['dom_loss'])
+        if not np.isnan(traces['dom_acc']):
+            try:
+                run["dom_acc"].log(traces['dom_acc'])
+            except:
+                run["dom_acc"].log(traces['dom_acc'][0])
 
     # tf.summary.scalar('qc_aPCC', metrics['pool_metrics']['encoded']['all']['qc_aPCC'], step=1)
     # tf.summary.scalar('qc_aPCC_input', metrics['pool_metrics']['inputs']['all']['qc_aPCC'], step=1)
@@ -586,17 +590,19 @@ def log_neptune(run, traces):
         run[f'{g}/acc'].log(traces[f'{g}_acc'])
         run[f'{g}/top3'].log(traces[f'{g}_top3'])
         run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
-    try:
-        run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
-        run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
-        run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
-        run['enc batch_entropy'].log(traces['enc batch_entropy']),
-        run['rec b_euclidean/tot_eucl'].log(traces['rec b_euclidean/tot_eucl']),
-        run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
-        run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
-        run['rec batch_entropy'].log(traces['rec batch_entropy']),
-    except:
-        pass
+    for rep in ['enc', 'rec']:
+        for g in ['all', 'train', 'valid', 'test']:
+            try:
+                run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
+                run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
+                run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
+                run['enc batch_entropy'].log(traces['enc batch_entropy']),
+                run['rec b_euclidean/tot_eucl'].log(traces['rec b_euclidean/tot_eucl']),
+                run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
+                run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
+                run['rec batch_entropy'].log(traces['rec batch_entropy']),
+            except:
+                pass
 
 
 def log_mlflow(traces, step):
@@ -629,15 +635,15 @@ def log_mlflow(traces, step):
     for rep in ['enc', 'rec']:
         for g in ['all', 'train', 'valid', 'test']:
             try:
+                mlflow.log_metric(f"{rep} {g} batch_entropy", traces['batches'][g]['batch_entropy'][rep]['domains'][-1], step)
+                mlflow.log_metric(f"{rep} {g} adjusted_rand_score", traces['batches'][g]['adjusted_rand_score'][rep]['domains'][-1], step)
+                mlflow.log_metric(f"{rep} {g} adjusted_mutual_info_score", traces['batches'][g]['adjusted_mutual_info_score'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} b_euclidean/tot_eucl", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
                 mlflow.log_metric(f"{rep} {g} qc_dist/tot_eucl", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
                 mlflow.log_metric(f"{rep} {g} qc_aPCC", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
-                mlflow.log_metric(f"{rep} {g} batch_entropy", traces['batches'][g]['batch_entropy'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} silhouette", traces['batches'][g]['silhouette'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} lisi", traces['batches'][g]['lisi'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} kbet", traces['batches'][g]['kbet'][rep]['domains'][-1], step)
-                mlflow.log_metric(f"{rep} {g} adjusted_rand_score", traces['batches'][g]['adjusted_rand_score'][rep]['domains'][-1], step)
-                mlflow.log_metric(f"{rep} {g} adjusted_mutual_info_score", traces['batches'][g]['adjusted_mutual_info_score'][rep]['domains'][-1], step)
             except:
                 pass
 

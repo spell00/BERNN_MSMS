@@ -22,24 +22,20 @@ from torch import nn
 import os
 
 from sklearn import metrics
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from pytorch.aeekandann import KANAutoencoder2
 from pytorch.ekan.src.efficient_kan.kan import KANLinear
-from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+from pytorch.utils.loggings import log_metrics, log_plots, log_neptune, log_shap, log_mlflow
 from pytorch.utils.loggings import log_shap
-from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
+# from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+from bernn.utils.utils import to_csv
+from pytorch.utils.utils import to_categorical, get_empty_traces, log_traces, add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
 import neptune.new as neptune
 import mlflow
@@ -138,10 +134,8 @@ class TrainAE:
         self.n_cats = len(self.class_weights)  # + 1  # for pool samples
         self.scaler = None
 
-    def log_rep(self, best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae, shap_ae, h,
+    def log_rep(self, best_lists, best_vals, best_values, traces, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
-        # if run is None:
-        #     return None
         best_traces = self.get_mccs(best_lists, traces)
 
         self.log_predictions(best_lists, run, h)
@@ -268,7 +262,7 @@ class TrainAE:
         if self.log_mlflow:
             cm_logger.plot(None, 0, self.unique_unique_labels, 'mlflow')
             # cm_logger.get_rf_results(run, self.args)
-            mlflow.end_run()
+            # mlflow.end_run()
         # cm_logger.close()
         # logger.close()
 
@@ -321,7 +315,6 @@ class TrainAE:
                 optimizer.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
                 neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
-            # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -402,9 +395,6 @@ class TrainAE:
                 nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 optimizer.step()
 
-        # for m in ae.modules():
-        #     if isinstance(m, KANAutoencoder2):
-        #         print('KAN!')
         return classif_loss, lists, traces
 
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
@@ -436,7 +426,6 @@ class TrainAE:
                 nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
                 optimizer_b.step()
         self.unfreeze_layers(ae)
-        # return classif_loss, lists, traces
 
     def get_dloss(self, celoss, domain, domain_preds, set_num=None):
         """
@@ -587,10 +576,10 @@ class TrainAE:
         """
         l1_loss = sum(
             layer.regularization_loss(l1, reg_entropy) for layer in [
-                model.enc.linear1[0], model.enc.linear2[0], 
-                model.dec.linear1[0], model.dec.linear2[0], 
-                model.classifier.linear1[0],
-                model.dann_discriminator.linear1[0], model.dann_discriminator.linear2[0]
+                model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
+                model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
+                model.classifier.layers.layer1[0], model.classifier.layers.layer2[0],
+                model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
                 ]
         )
         if torch.isnan(l1_loss):
@@ -662,10 +651,9 @@ class TrainAE:
                 # domain = domain.argmax(1)
 
             if torch.isnan(enc[0][0]):
-                if self.log_mlflow:
-                    mlflow.log_param('finished', 0)
-                    mlflow.end_run()
-                return None
+                # if self.log_mlflow:
+                #     mlflow.log_param('finished', 0)
+                return 0
             # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
             if isinstance(rec, list):
                 rec = rec[-1]
@@ -711,6 +699,7 @@ class TrainAE:
             loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss + l1_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
+                return 0
             loss.backward()
             nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
             optimizer_ae.step()
@@ -775,6 +764,8 @@ class TrainAE:
             self.warmup_b_counter += 1
         else:
             self.warmup_disc_b = False
+        
+        return 1
 
     def freeze_all_but_clayers(self, ae):
         """
@@ -815,6 +806,24 @@ class TrainAE:
                     for i in n.modules():
                         if isinstance(i, KANLinear):
                             i.prune_neurons(threshold)
+    
+    def count_neurons(self, ae):
+        """
+        Count the number of neurons in the autoencoder
+        Args:
+            ae: AutoEncoder object
+
+        Returns:
+            neurons: Number of neurons in the autoencoder
+        """
+        neurons = 0
+        for m in ae.modules():
+            if isinstance(m, KANAutoencoder2):
+                for n in m.modules():
+                    for i in n.modules():
+                        if isinstance(i, KANLinear):
+                            i.count_active_neurons()
+        return neurons
 
 if __name__ == "__main__":
     import argparse

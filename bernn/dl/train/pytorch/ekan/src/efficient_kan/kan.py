@@ -173,12 +173,32 @@ class KANLinear(torch.nn.Module):
         output = output.view(*original_shape[:-1], self.out_features)
         if self.prune_threshold > 0.0:
             output = self.mask * output
-            self.counts += np.abs(output.detach().cpu().numpy().sum(0))
-            self.n += output.size(0)
+        self.counts += output.abs().detach().cpu().numpy().mean(0)
+        self.n += 1
         return output
+
+    def count_active_neurons(self):
+        """
+        Count the number of active neurons in the current batch.
+        """
+        if self.counts.sum() == 0:
+            return
+        new_mask = self.mask.clone().detach().cpu()
+        scores = (torch.Tensor(self.counts).clone() / self.n)
+        new_mask = scores > self.prune_threshold
+        if new_mask.sum() == 0:
+            print(f'{new_mask.sum()}/{len(new_mask.sum())}')
+        else:
+            pass
 
     def prune_neurons(self, prune_threshold):
         """
+        We implement soft neuron-level pruning in each KANLinear layer by maintaining 
+        an activity counter for each output neuron, based on its average absolute 
+        activation across batches. Neurons with mean activity below a specified threshold 
+        are masked during the forward pass. Although these neurons are not yet removed 
+        from the model architecture, their outputs are zeroed out, effectively disabling 
+        them. Future work will implement structural pruning to fully remove inactive neurons.
         Prunes the neurons that are not active enough.
         Dead Neurons can't be unpruned.
         TODO : REMOVE THE NEURONS, NOT ONLY HIDE THEM!
@@ -188,13 +208,6 @@ class KANLinear(torch.nn.Module):
         new_mask = self.mask.clone().detach().cpu()
         scores = (torch.Tensor(self.counts).clone() / self.n)
         new_mask = scores > prune_threshold
-        if new_mask.sum() == 0:
-            print(f'{new_mask.sum()}/{len(new_mask.sum())}')
-        else:
-            pass
-            # print(
-            #     f"min:{torch.min(scores).item()}, mean: {torch.mean(scores).item()}, max:{torch.max(scores).item()}"
-            # )
         self.mask = torch.tensor(new_mask, device=self.mask.device, dtype=torch.bool)
         self.restore_counts()
         # return new_mask.sum()/len(new_mask.sum())

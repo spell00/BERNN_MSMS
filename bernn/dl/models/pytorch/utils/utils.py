@@ -707,7 +707,7 @@ def add_to_logger(values, logger, epoch):
             pass
 
 
-def add_to_neptune(values, run, epoch):
+def add_to_neptune(values, run):
     """
     Add values to the neptune run
     Args:
@@ -716,10 +716,15 @@ def add_to_neptune(values, run, epoch):
         epoch: Epoch of the values getting logged
 
     """
-    if not np.isnan(values['rec_loss'][-1]):
-        run["rec_loss"].log(values['rec_loss'][-1])
-        run["dom_loss"].log(values['dom_loss'][-1])
-        run["dom_acc"].log(values['dom_acc'][-1])
+    if len(values['rec_loss']) > 0:
+        if not np.isnan(values['rec_loss'][-1]):
+            run["rec_loss"].log(values['rec_loss'][-1])
+    if len(values['dom_loss']) > 0:
+        if not np.isnan(values['dom_loss'][-1]):
+            run["dom_loss"].log(values['dom_loss'][-1])
+    if len(values['dom_acc']) > 0:
+        if not np.isnan(values['dom_acc'][-1]):
+            run["dom_acc"].log(values['dom_acc'][-1])
     for group in list(values.keys())[4:]:
         try:
             if not np.isnan(values[group]['closs'][-1]):

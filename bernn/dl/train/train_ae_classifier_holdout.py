@@ -1,7 +1,6 @@
 #!/usr/bin/python3
-NEPTUNE_API_TOKEN = "YOUR-API-KEY"
-NEPTUNE_PROJECT_NAME = "YOUR-PROJECT-NAME"
-NEPTUNE_MODEL_NAME = "YOUR-MODEL-NAME"
+NEPTUNE_API_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJlZjRiZGUzYS1kNTJmLTRkNGItOWU1MS1iNDU3MGE1NjAyODAifQ=="
+NEPTUNE_PROJECT_NAME = "BERNN"
 
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
@@ -215,45 +214,39 @@ class TrainAEClassifierHoldout(TrainAE):
                 project=NEPTUNE_PROJECT_NAME,
                 api_token=NEPTUNE_API_TOKEN,
             )  # your credentials
-            model = neptune.init_model_version(
-                model=NEPTUNE_MODEL_NAME,
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-                # your credentials
-            )
             run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
             run["metadata"].track_files(
                 f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
-            model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
-            model["best_unique"] = run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            model["use_valid"] = run["use_valid"] = args.use_valid
-            model["use_test"] = run["use_test"] = args.use_test
-            model["tied_weights"] = run["tied_weights"] = args.tied_weights
-            model["random_recs"] = run["random_recs"] = args.random_recs
-            model["train_after_warmup"] = run["train_after_warmup"] = args.train_after_warmup
-            model["dloss"] = run["dloss"] = args.dloss
-            model["predict_tests"] = run["predict_tests"] = args.predict_tests
-            model["variational"] = run["variational"] = args.variational
-            model["zinb"] = run["zinb"] = args.zinb
-            model["threshold"] = run["threshold"] = args.threshold
-            model["rec_loss_type"] = run["rec_loss_type"] = args.rec_loss
-            model["strategy"] = run["strategy"] = args.strategy
-            model["bad_batches"] = run["bad_batches"] = args.bad_batches
-            model["remove_zeros"] = run["remove_zeros"] = args.remove_zeros
-            model["parameters"] = run["parameters"] = params
-            model["csv_file"] = run["csv_file"] = args.csv_file
-            model["model_name"] = run["model_name"] = 'ae_classifier_holdout'
-            model["n_meta"] = run["n_meta"] = args.n_meta
-            model["n_emb"] = run["n_emb"] = args.embeddings_meta
-            model["groupkfold"] = run["groupkfold"] = args.groupkfold
-            model["embeddings_meta"] = run["embeddings_meta"] = args.embeddings_meta
-            model["foldername"] = run["foldername"] = self.foldername
-            model["use_mapping"] = run["use_mapping"] = args.use_mapping
-            model["dataset_name"] = run["dataset_name"] = args.dataset
-            model["n_agg"] = run["n_agg"] = args.n_agg
-            model["kan"] = run["kan"] = args.kan
+            run["inputs_type"] = args.csv_file.split(".csv")[0]
+            run["best_unique"] = args.best_features_file.split(".tsv")[0]
+            run["use_valid"] = args.use_valid
+            run["use_test"] = args.use_test
+            run["tied_weights"] = args.tied_weights
+            run["random_recs"] = args.random_recs
+            run["train_after_warmup"] = args.train_after_warmup
+            run["dloss"] = args.dloss
+            run["predict_tests"] = args.predict_tests
+            run["variational"] = args.variational
+            run["zinb"] = args.zinb
+            run["threshold"] = args.threshold
+            run["rec_loss_type"] = args.rec_loss
+            run["strategy"] = args.strategy
+            run["bad_batches"] = args.bad_batches
+            run["remove_zeros"] = args.remove_zeros
+            run["parameters"] = params
+            run["csv_file"] = args.csv_file
+            run["model_name"] = 'ae_classifier_holdout'
+            run["n_meta"] = args.n_meta
+            run["n_emb"] = args.embeddings_meta
+            run["groupkfold"] = args.groupkfold
+            run["embeddings_meta"] = args.embeddings_meta
+            run["foldername"] = self.foldername
+            run["use_mapping"] = args.use_mapping
+            run["dataset_name"] = args.dataset
+            run["n_agg"] = args.n_agg
+            run["kan"] = args.kan
         else:
             model = None
             run = None
@@ -406,7 +399,8 @@ class TrainAEClassifierHoldout(TrainAE):
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
 
-                if h == 1:
+                if h == 1 or self.args.kan == 1:
+
                     ae = AutoEncoder(data['inputs']['all'].shape[1],
                                     n_batches=self.n_batches,
                                     nb_classes=self.n_cats,
@@ -475,9 +469,11 @@ class TrainAEClassifierHoldout(TrainAE):
                     print(f"\n\nNO WARMUP\n\n")
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
-                        self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
+                        no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
                                          self.best_loss, True, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+                        if not no_error:
+                            break
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
                         if self.verbose > 0:
@@ -495,10 +491,8 @@ class TrainAEClassifierHoldout(TrainAE):
                                             loaders['train'], lists, traces, nu=nu)
             
                     if torch.isnan(closs):
-                        if self.log_mlflow:
-                            mlflow.log_param('finished', 0)
-                            mlflow.end_run()
-                        return self.best_loss
+                        print("NAN LOSS")
+                        break
                     ae.eval()
                     ae.mapper.eval()
 
@@ -514,10 +508,10 @@ class TrainAEClassifierHoldout(TrainAE):
                             try:
                                 self.prune_neurons(ae, prune_threshold)
                             except:
-                                if self.log_mlflow:
-                                    mlflow.log_param('finished', 0)
-                                    mlflow.end_run()
-                                return self.best_loss
+                                print("COULD NOT PRUNE")
+                                # if self.log_mlflow:
+                                #     mlflow.log_param('finished', 0)
+                                break
                         if self.args.kan and self.args.prune_neurites_threshold > 0:
                             self.prune_neurites(ae)
                         if self.args.kan and early_stop_counter % 10 == 0 and early_stop_counter > 0:
@@ -586,10 +580,16 @@ class TrainAEClassifierHoldout(TrainAE):
                 best_mccs += [self.best_mcc]
 
                 best_lists, traces = get_empty_traces()
+                
+                # Verify the model exists
+                if not os.path.exists(f'{self.complete_log_path}/model_{h}_state.pth'):
+                    return -1
+                
                 # Loading best model that was saved during training
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # Need another model because the other cant be use to get shap values
-                shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
+                if h == 1:
+                    shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # ae.load_state_dict(sd)
                 ae.eval()
                 shap_ae.eval()
@@ -648,7 +648,7 @@ class TrainAEClassifierHoldout(TrainAE):
             # shutil.rmtree(f'{self.complete_log_path}/cm', ignore_errors=True)
             # shutil.rmtree(f'{self.complete_log_path}/hp', ignore_errors=True)
             shutil.rmtree(f'{self.complete_log_path}', ignore_errors=True)
-        print('Duration: {}'.format(datetime.now() - start_time))
+        print('\n\nDuration: {}\n\n'.format(datetime.now() - start_time))
         best_closs = np.mean(best_closses)
         if best_closs < self.best_closs:
             self.best_closs = best_closs
@@ -729,7 +729,7 @@ if __name__ == "__main__":
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
-    parser.add_argument('--prune_threshold', type=float, default=1.0, help='')
+    parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
 
     args = parser.parse_args()
@@ -764,14 +764,14 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 100]},
+        {"name": "warmup", "type": "range", "bounds": [1, 3]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
