@@ -19,12 +19,11 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib import rcParams, cycler
 from matplotlib.lines import Line2D
-from bernn.dl.models.pytorch.utils.plotting import confidence_ellipse
+from .plotting import confidence_ellipse
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.neighbors import KNeighborsClassifier
-from bernn.dl.models.pytorch.utils.metrics import batch_f1_score
-from bernn.dl.models.pytorch.utils.utils import log_confusion_matrix, save_roc_curve, save_precision_recall_curve, \
-    LogConfusionMatrix
+from .metrics import batch_f1_score
+from .utils import save_roc_curve, save_precision_recall_curve
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
@@ -34,8 +33,8 @@ from sklearn.cross_decomposition import CCA
 # except:
 from umap.umap_ import UMAP
 
-from sklearn.manifold import TSNE
-from bernn.utils.metrics import calculate_aic, calculate_bic
+# from sklearn.manifold import TSNE
+# from bernn.utils.metrics import calculate_aic, calculate_bic
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
 # It is useless to run tensorflow on GPU and it takes a lot of GPU RAM for nothing
@@ -640,9 +639,9 @@ def log_PAD(lists, values, model):
 
 def get_metrics(lists, values, model):
     # sets are grouped togheter for a single metric
-    from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
-    from bernn.dl.models.pytorch.utils.metrics import rKBET, rLISI
-    from sklearn.neighbors import KNeighborsClassifier
+    # from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
+    # from bernn.dl.models.pytorch.utils.metrics import rLISI
+    # from sklearn.neighbors import KNeighborsClassifier
     
     knns = {info: {repres: KNeighborsClassifier(n_neighbors=20) for repres in ['set', 'domains', 'labels', 'times']} for
             info in ['enc', 'rec', 'inputs']}
@@ -1141,7 +1140,7 @@ def log_CCA(ordin, logger, data, uniques, mlops, epoch):
 
 
 def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epoch, mlops, metrics, n_meta_emb=0, device='cuda'):
-    from bernn.dl.models.pytorch.utils.metrics import batch_f1_score
+    # from bernn.dl.models.pytorch.utils.metrics import batch_f1_score
     
     if len(unique_labels) > 2:
         bout = 0

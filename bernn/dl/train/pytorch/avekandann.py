@@ -7,6 +7,9 @@ from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
 from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from bernn.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
+from efficient_kan.kan import KANLinear
+import copy
+from .utils.utils import to_categorical
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)
@@ -79,27 +82,27 @@ def grad_reverse(x):
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_shape=64, out_shape=9, n_layers=2):
+    def __init__(self, in_shape=64, out_shape=9, n_layers=2, update_grid=False):
         super(Classifier, self).__init__()
         if n_layers == 2:
-            self.linear2 = nn.Sequential(
-                nn.Linear(in_shape, in_shape),
+            self.linear1 = nn.Sequential(
+                KANLinear(in_shape, in_shape),
             )
-            self.linear3 = nn.Sequential(
-                nn.Linear(in_shape, out_shape),
+            self.linear2 = nn.Sequential(
+                KANLinear(in_shape, out_shape),
             )
         if n_layers == 1:
-            self.linear2 = nn.Sequential(
-                nn.Linear(in_shape, out_shape),
+            self.linear1 = nn.Sequential(
+                KANLinear(in_shape, out_shape),
             )
 
         self.random_init()
         self.n_layers = n_layers
 
     def forward(self, x):
-        x = self.linear2(x)
+        x = self.linear1(x)
         if self.n_layers == 2:
-            x = self.linear3(x)
+            x = self.linear2(x)
         return x
 
     def random_init(self, init_func=nn.init.kaiming_uniform_):
@@ -108,9 +111,9 @@ class Classifier(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d):
-            #     nn.init.constant_(m.weight, 0.975)
-            #     nn.init.constant_(m.bias, 0.125)
+            if isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 0.975)
+                nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
         return self.linear2(x).detach().cpu().numpy()
@@ -120,16 +123,16 @@ class Classifier(nn.Module):
 
 
 class Classifier2(nn.Module):
-    def __init__(self, in_shape=64, hidden=64, out_shape=9):
+    def __init__(self, in_shape=64, hidden=64, out_shape=9, update_grid=False):
         super(Classifier2, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(in_shape, hidden),
+            KANLinear(in_shape, hidden),
             nn.BatchNorm1d(hidden),
             nn.Dropout(),
-            nn.ReLU(),
+            # nn.ReLU(),  # TODO RELU ETAIT DANS MEILLEUR MODEL 
         )
         self.linear2 = nn.Sequential(
-            nn.Linear(hidden, out_shape),
+            KANLinear(hidden, out_shape),
         )
         self.random_init()
 
@@ -159,19 +162,19 @@ class Classifier3(nn.Module):
     def __init__(self, in_shape=64, hidden=64, out_shape=9):
         super(Classifier3, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(in_shape, hidden),
+            KANLinear(in_shape, hidden),
             nn.BatchNorm1d(hidden),
             nn.Dropout(),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
         self.linear2 = nn.Sequential(
-            nn.Linear(hidden, hidden),
+            KANLinear(hidden, hidden),
             nn.BatchNorm1d(hidden),
             nn.Dropout(),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
         self.linear3 = nn.Sequential(
-            nn.Linear(hidden, out_shape),
+            KANLinear(hidden, out_shape),
         )
         self.random_init()
 
@@ -203,7 +206,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
 
         self.linear1 = nn.Sequential(
-            nn.Linear(in_shape, layer1),
+            KANLinear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
             # nn.LeakyReLU(),
         )
@@ -216,7 +219,7 @@ class Encoder(nn.Module):
 
     def random_init(self, init_func=nn.init.kaiming_uniform_):
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+            if isinstance(m, KANLinear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
@@ -226,16 +229,16 @@ class Encoder(nn.Module):
 
 
 class Encoder2(nn.Module):
-    def __init__(self, in_shape, layer1, layer2, dropout):
+    def __init__(self, in_shape, layer1, layer2, dropout, update_grid=False):
         super(Encoder2, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(in_shape, layer1),
+            KANLinear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
             nn.Dropout(dropout),
-            nn.LeakyReLU(),
+            # nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
-            nn.Linear(layer1, layer2),
+            KANLinear(layer1, layer2),
             nn.BatchNorm1d(layer2),
             # nn.Dropout(dropout),
             # nn.Sigmoid(),
@@ -245,9 +248,10 @@ class Encoder2(nn.Module):
 
         self.random_init()
 
-    def forward(self, x):
+    def forward(self, x, batches=None):
         x = self.linear1(x)
         x = self.linear2(x)
+        # x2 = torch.sigmoid(x2)
         return x
 
     def random_init(self, init_func=nn.init.kaiming_uniform_):
@@ -262,29 +266,32 @@ class Encoder2(nn.Module):
 
 
 class Decoder2(nn.Module):
-    def __init__(self, in_shape, n_batches, layer1, layer2, dropout):
+    def __init__(self, in_shape, n_batches, layer1, layer2, dropout, update_grid=False):
         super(Decoder2, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(layer1 + n_batches, layer2),
+            KANLinear(layer1 + n_batches, layer2),
             nn.BatchNorm1d(layer2),
             nn.Dropout(dropout),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
 
         self.linear2 = nn.Sequential(
-            nn.Linear(layer2, in_shape),
-            # nn.BatchNorm1d(in_shape),
-            # nn.Sigmoid(),
+            KANLinear(layer2, in_shape),
         )
+        self.update_grid = False
         self.n_batches = n_batches
         self.random_init()
 
     def forward(self, x, batches=None):
         if batches is not None and self.n_batches > 0:
             x = torch.cat((x, batches), 1)
+        # cannot update grid here because m<n?
+        if self.update_grid and self.training:
+            self.linear1[0].update_grid(x.contiguous(), 1e-4)
         x1 = self.linear1(x)
+        if self.update_grid and self.training:
+            self.linear2[0].update_grid(x1.contiguous())
         x2 = self.linear2(x1)
-        # x2 = torch.sigmoid(x2)
         return [x1, x2]
 
     def random_init(self, init_func=nn.init.kaiming_uniform_):
@@ -302,7 +309,7 @@ class Decoder(nn.Module):
     def __init__(self, in_shape, n_batches, layer1, dropout):
         super(Decoder, self).__init__()
         self.linear2 = nn.Sequential(
-            nn.Linear(layer1 + n_batches, in_shape),
+            KANLinear(layer1 + n_batches, in_shape),
         )
         self.n_batches = n_batches
         self.random_init()
@@ -324,10 +331,10 @@ class Decoder(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPAutoEncoder2(nn.Module):
+class SHAPKANAutoencoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, dropout,
                  n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPAutoEncoder2, self).__init__()
+        super(SHAPKANAutoencoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
@@ -352,9 +359,9 @@ class SHAPAutoEncoder2(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
+        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
+        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.xavier_uniform_)
 
     def forward(self, x, batches=None, sampling=False, beta=1.0):
@@ -459,15 +466,12 @@ class SHAPAutoEncoder2(nn.Module):
         return result
 
 
-class AutoEncoder2(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb,
-                 mapper, variational, layer1, layer2, dropout, n_layers, zinb=False,
-                 conditional=False, add_noise=False, tied_weights=0,
-                 update_grid=False, use_gnn=False, device='cuda'):
-        """
-        TODO MAKE DESCRIPTION
-        """
-        super(AutoEncoder2, self).__init__()
+class KANAutoencoder2(nn.Module):
+    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, 
+                 variational, layer1, layer2, dropout, n_layers, zinb=False,
+                 conditional=False, add_noise=False, tied_weights=0, 
+                 use_gnn=False, update_grid=False, device='cuda'):
+        super(KANAutoencoder2, self).__init__()
         self.add_noise = add_noise
         self.device = device
         self.use_gnn = use_gnn
@@ -477,22 +481,22 @@ class AutoEncoder2(nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
-        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout, update_grid=update_grid)
         if conditional:
-            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout, update_grid=update_grid)
         else:
-            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2)
+            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout, update_grid=update_grid)
+        self.mapper = Classifier(n_batches + 1, layer2, update_grid=0)
 
         if variational:
-            self.gaussian_sampling = GaussianSample(layer2, layer2, device)
+            self.gaussian_sampling = GaussianSample(layer2, layer2, device) 
         else:
             self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(layer2, 64, n_batches)
-        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
+        self.dann_discriminator = Classifier2(layer2, 64, n_batches, update_grid=update_grid)
+        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, update_grid=update_grid)
+        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
+        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
@@ -500,6 +504,8 @@ class AutoEncoder2(nn.Module):
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
         enc = self.enc(x)
+        if torch.isnan(enc).any():
+            print('nan in enc')
         if self.gaussian_sampling is not None:
             if sampling:
                 enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
@@ -625,24 +631,127 @@ class AutoEncoder2(nn.Module):
         result = torch.mean(result)
         return result
 
+    def prune(self, threshold=1e-2, mode="auto", active_neurons_id=None):
+        '''
+        pruning KAN on the node level. If a node has small incoming or outgoing connection, it will be pruned away.
+        
+        Args:
+        -----
+            threshold : float
+                the threshold used to determine whether a node is small enough
+            mode : str
+                "auto" or "manual". If "auto", the thresold will be used to automatically prune away nodes. If "manual", active_neuron_id is needed to specify which neurons are kept (others are thrown away).
+            active_neuron_id : list of id lists
+                For example, [[0,1],[0,2,3]] means keeping the 0/1 neuron in the 1st hidden layer and the 0/2/3 neuron in the 2nd hidden layer. Pruning input and output neurons is not supported yet.
+            
+        Returns:
+        --------
+            model2 : KAN
+                pruned model
+         
+        Example
+        -------
+        >>> # for more interactive examples, please see demos
+        >>> from utils import create_dataset
+        >>> model = KAN(width=[2,5,1], grid=5, k=3, noise_scale=0.1, seed=0)
+        >>> f = lambda x: torch.exp(torch.sin(torch.pi*x[:,[0]]) + x[:,[1]]**2)
+        >>> dataset = create_dataset(f, n_var=2)
+        >>> model.train(dataset, opt='LBFGS', steps=50, lamb=0.01);
+        >>> model.prune()
+        >>> model.plot(mask=True)
+        '''
+        mask = [torch.ones(self.width[0], )]
+        active_neurons = [list(range(self.width[0]))]
+        for i in range(len(self.acts_scale) - 1):
+            if mode == "auto":
+                in_important = torch.max(self.acts_scale[i], dim=1)[0] > threshold
+                out_important = torch.max(self.acts_scale[i + 1], dim=0)[0] > threshold
+                overall_important = in_important * out_important
+            elif mode == "manual":
+                overall_important = torch.zeros(self.width[i + 1], dtype=torch.bool)
+                overall_important[active_neurons_id[i + 1]] = True
+            mask.append(overall_important.float())
+            active_neurons.append(torch.where(overall_important == True)[0])
+        active_neurons.append(list(range(self.width[-1])))
+        mask.append(torch.ones(self.width[-1], ))
+
+        self.mask = mask  # this is neuron mask for the whole model
+
+        # update act_fun[l].mask
+        for l in range(len(self.acts_scale) - 1):
+            for i in range(self.width[l + 1]):
+                if i not in active_neurons[l + 1]:
+                    self.remove_node(l + 1, i)
+
+        model2 = KANAutoencoder2(copy.deepcopy(self.width), self.grid, self.k, base_fun=self.base_fun, device=self.device)
+        model2.load_state_dict(self.state_dict())
+        for i in range(len(self.acts_scale)):
+            if i < len(self.acts_scale) - 1:
+                model2.biases[i].weight.data = model2.biases[i].weight.data[:, active_neurons[i + 1]]
+
+            model2.act_fun[i] = model2.act_fun[i].get_subset(active_neurons[i], active_neurons[i + 1])
+            model2.width[i] = len(active_neurons[i])
+            model2.symbolic_fun[i] = self.symbolic_fun[i].get_subset(active_neurons[i], active_neurons[i + 1])
+
+        return model2
+
+    def remove_edge(self, l, i, j):
+        '''
+        remove activtion phi(l,i,j) (set its mask to zero)
+        
+        Args:
+        -----
+            l : int
+                layer index
+            i : int
+                input neuron index
+            j : int
+                output neuron index
+        
+        Returns:
+        --------
+            None
+        '''
+        self.act_fun[l].mask[j * self.width[l] + i] = 0.
+
+    def remove_node(self, l, i):
+        '''
+        remove neuron (l,i) (set the masks of all incoming and outgoing activation functions to zero)
+        
+        Args:
+        -----
+            l : int
+                layer index
+            i : int
+                neuron index
+        
+        Returns:
+        --------
+            None
+        '''
+        self.act_fun[l - 1].mask[i * self.width[l - 1] + torch.arange(self.width[l - 1])] = 0.
+        self.act_fun[l].mask[torch.arange(self.width[l + 1]) * self.width[l] + i] = 0.
+        self.symbolic_fun[l - 1].mask[i, :] *= 0.
+        self.symbolic_fun[l].mask[:, i] *= 0.
+
 
 class Encoder3(nn.Module):
     def __init__(self, in_shape, layer1, layer2, layer3, dropout):
         super(Encoder3, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(in_shape, layer1),
+            KANLinear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
-            nn.Linear(layer1, layer2),
+            KANLinear(layer1, layer2),
             nn.BatchNorm1d(layer2),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear3 = nn.Sequential(
-            nn.Linear(layer2, layer3),
+            KANLinear(layer2, layer3),
             nn.BatchNorm1d(layer3),
             # nn.Dropout(dropout),
             # nn.Sigmoid(),
@@ -671,20 +780,20 @@ class Decoder3(nn.Module):
     def __init__(self, in_shape, n_batches, layer1, layer2, layer3, dropout):
         super(Decoder3, self).__init__()
         self.linear1 = nn.Sequential(
-            nn.Linear(layer1 + n_batches, layer2),
+            KANLinear(layer1 + n_batches, layer2),
             nn.BatchNorm1d(layer2),
             nn.Dropout(dropout),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
         self.linear2 = nn.Sequential(
-            nn.Linear(layer2 + n_batches, layer3),
+            KANLinear(layer2 + n_batches, layer3),
             nn.BatchNorm1d(layer3),
             nn.Dropout(dropout),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
 
         self.linear3 = nn.Sequential(
-            nn.Linear(layer3, in_shape),
+            KANLinear(layer3, in_shape),
             # nn.BatchNorm1d(in_shape),
             # nn.Sigmoid(),
         )
@@ -711,10 +820,10 @@ class Decoder3(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPAutoEncoder3(nn.Module):
+class SHAPKANAutoencoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, layer3, dropout, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPAutoEncoder3, self).__init__()
+        super(SHAPKANAutoencoder3, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
@@ -739,9 +848,9 @@ class SHAPAutoEncoder3(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer3, 64, n_batches)
         self.classifier = Classifier(layer3 + n_emb, nb_classes)
-        self._dec_mean = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), nn.Sigmoid())
-        self._dec_disp = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), nn.Sigmoid())
+        self._dec_mean = nn.Sequential(KANLinear(layer2, in_shape + n_meta), nn.Sigmoid())
+        self._dec_disp = nn.Sequential(KANLinear(layer2, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer2, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.xavier_uniform_)
 
     def forward(self, x, batches=None, sampling=False, beta=1.0):
@@ -809,6 +918,8 @@ class SHAPAutoEncoder3(nn.Module):
             if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
+            if isinstance(m, KANLinear):
+                m.reset_parameters()
 
     def predict_proba(self, x):
         return self.classifier(x).detach().cpu().numpy()
@@ -876,10 +987,10 @@ class SHAPAutoEncoder3(nn.Module):
         return result
 
 
-class AutoEncoder3(nn.Module):
+class KANAutoencoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layer1, layer2, layer3, dropout, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(AutoEncoder3, self).__init__()
+        super(KANAutoencoder3, self).__init__()
         self.add_noise = add_noise
         self.device = device
         self.use_gnn = use_gnn
@@ -902,9 +1013,9 @@ class AutoEncoder3(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer3, 64, n_batches)
         self.classifier = Classifier(layer3 + n_emb, nb_classes)
-        self._dec_mean = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), nn.Sigmoid())
+        self._dec_mean = nn.Sequential(KANLinear(layer2, in_shape + n_meta), MeanAct())
+        self._dec_disp = nn.Sequential(KANLinear(layer2, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer2, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0):

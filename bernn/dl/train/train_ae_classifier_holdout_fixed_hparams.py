@@ -1,8 +1,7 @@
 #!/usr/bin/python3
-
-import os
-NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
-NEPTUNE_PROJECT_NAME = "BERNN"
+NEPTUNE_API_TOKEN = "YOUR-API-KEY"
+NEPTUNE_PROJECT_NAME = "YOUR-PROJECT-NAME"
+NEPTUNE_MODEL_NAME = "YOUR-MODEL-NAME"
 
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
@@ -17,13 +16,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
-# import json
+import json
 import copy
 import torch
 # torch.set_default_dtype(torch.float64)
 from torch import nn
+import os
 
-# from sklearn import metrics
+from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
@@ -31,21 +31,21 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
-from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
+    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
+    log_traces, get_best_values, add_to_logger, add_to_neptune, \
+    add_to_mlflow
 import mlflow
 import warnings
 from datetime import datetime
-from bernn.dl.train.train_ae import TrainAE
 
 
 # import StratifiedGroupKFold
-# from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
-# from bernn.utils.utils import get_unique_labels
+from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
+from bernn.utils.utils import get_unique_labels
 
 # from fastapi import BackgroundTasks, FastAPI
 # from threading import Thread
@@ -89,6 +89,7 @@ def binarize_labels(data, controls):
         data['cats'][group] = data['labels'][group]
     return data
 
+from train_ae import TrainAE
 
 class TrainAEClassifierHoldout(TrainAE):
 
@@ -129,31 +130,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
         """
         start_time = datetime.now()
-        # Fixing the hyperparameters that are not optimized
-        if args.dloss not in ['revTriplet', 'revDANN', 'DANN',
-                              'inverseTriplet', 'normae'] or 'gamma' not in params:
-            # gamma = 0 will ensure DANN is not learned
-            params['gamma'] = 0
-        if not self.args.variational or 'beta' not in params:
-            # beta = 0 because useless outside a variational autoencoder
-            params['beta'] = 0
-        if not self.args.zinb or 'zeta' not in params:
-            # zeta = 0 because useless outside a zinb autoencoder
-            params['zeta'] = 0
-        if 1 > self.fix_thres >= 0:
-            # fixes the threshold of 0s tolerated for a feature
-            params['thres'] = self.fix_thres
-        else:
-            params['thres'] = 0
-        if not self.args.kan or not self.args.use_l1 :
-            params['reg_entropy'] = 0
-        if not self.args.use_l1:
-            params['l1'] = 0
 
-        # params['dropout'] = 0
-        # params['smoothing'] = 0
-        # params['margin'] = 0
-        # params['wd'] = 0
         print(params)
 
         # Assigns the hyperparameters getting optimized
@@ -214,39 +191,45 @@ class TrainAEClassifierHoldout(TrainAE):
                 project=NEPTUNE_PROJECT_NAME,
                 api_token=NEPTUNE_API_TOKEN,
             )  # your credentials
+            model = neptune.init_model_version(
+                model=NEPTUNE_MODEL_NAME,
+                project=NEPTUNE_PROJECT_NAME,
+                api_token=NEPTUNE_API_TOKEN,
+                # your credentials
+            )
             run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
             run["metadata"].track_files(
                 f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
-            run["inputs_type"] = args.csv_file.split(".csv")[0]
-            run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            run["use_valid"] = args.use_valid
-            run["use_test"] = args.use_test
-            run["tied_weights"] = args.tied_weights
-            run["random_recs"] = args.random_recs
-            run["train_after_warmup"] = args.train_after_warmup
-            run["dloss"] = args.dloss
-            run["predict_tests"] = args.predict_tests
-            run["variational"] = args.variational
-            run["zinb"] = args.zinb
-            run["threshold"] = args.threshold
-            run["rec_loss_type"] = args.rec_loss
-            run["strategy"] = args.strategy
-            run["bad_batches"] = args.bad_batches
-            run["remove_zeros"] = args.remove_zeros
-            run["parameters"] = params
-            run["csv_file"] = args.csv_file
-            run["model_name"] = 'ae_classifier_holdout'
-            run["n_meta"] = args.n_meta
-            run["n_emb"] = args.embeddings_meta
-            run["groupkfold"] = args.groupkfold
-            run["embeddings_meta"] = args.embeddings_meta
-            run["foldername"] = self.foldername
-            run["use_mapping"] = args.use_mapping
-            run["dataset_name"] = args.dataset
-            run["n_agg"] = args.n_agg
-            run["kan"] = args.kan
+            model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
+            model["best_unique"] = run["best_unique"] = args.best_features_file.split(".tsv")[0]
+            model["use_valid"] = run["use_valid"] = args.use_valid
+            model["use_test"] = run["use_test"] = args.use_test
+            model["tied_weights"] = run["tied_weights"] = args.tied_weights
+            model["random_recs"] = run["random_recs"] = args.random_recs
+            model["train_after_warmup"] = run["train_after_warmup"] = args.train_after_warmup
+            model["dloss"] = run["dloss"] = args.dloss
+            model["predict_tests"] = run["predict_tests"] = args.predict_tests
+            model["variational"] = run["variational"] = args.variational
+            model["zinb"] = run["zinb"] = args.zinb
+            model["threshold"] = run["threshold"] = args.threshold
+            model["rec_loss_type"] = run["rec_loss_type"] = args.rec_loss
+            model["strategy"] = run["strategy"] = args.strategy
+            model["bad_batches"] = run["bad_batches"] = args.bad_batches
+            model["remove_zeros"] = run["remove_zeros"] = args.remove_zeros
+            model["parameters"] = run["parameters"] = params
+            model["csv_file"] = run["csv_file"] = args.csv_file
+            model["model_name"] = run["model_name"] = 'ae_classifier_holdout'
+            model["n_meta"] = run["n_meta"] = args.n_meta
+            model["n_emb"] = run["n_emb"] = args.embeddings_meta
+            model["groupkfold"] = run["groupkfold"] = args.groupkfold
+            model["embeddings_meta"] = run["embeddings_meta"] = args.embeddings_meta
+            model["foldername"] = run["foldername"] = self.foldername
+            model["use_mapping"] = run["use_mapping"] = args.use_mapping
+            model["dataset_name"] = run["dataset_name"] = args.dataset
+            model["n_agg"] = run["n_agg"] = args.n_agg
+            model["kan"] = run["kan"] = args.kan
         else:
             model = None
             run = None
@@ -588,8 +571,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 # Loading best model that was saved during training
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # Need another model because the other cant be use to get shap values
-                if h == 1:
-                    shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
+                shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # ae.load_state_dict(sd)
                 ae.eval()
                 shap_ae.eval()
@@ -729,7 +711,7 @@ if __name__ == "__main__":
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
-    parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
+    parser.add_argument('--prune_threshold', type=float, default=1.0, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
 
     args = parser.parse_args()
@@ -740,11 +722,11 @@ if __name__ == "__main__":
     elif args.kan == 1:
         from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
         from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-    # elif args.kan == 2:
-    #     # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
-    #     # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-    #     from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
-    #     from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
+    elif args.kan == 2:
+        # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
+        # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
+        from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
     
     try:
         mlflow.create_experiment(
@@ -761,47 +743,27 @@ if __name__ == "__main__":
                     log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,
                     log_mlflow=True, groupkfold=args.groupkfold)
 
-    # List of hyperparameters getting optimized
-    parameters = [
-        {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
-        {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
-        {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 3]},
-        {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
+    parameters = {
+        'nu': 57.62209361696243,
+        'lr': 0.0002866874793641167,
+        'wd': 2.1707730937174506e-06,
+        'smoothing': 0.011093495786190033,
+        'margin': 9.637901186943054,
+        'warmup': 37,
+        'disc_b_warmup': 1,
+        'dropout': 0.15570732951164246,
+        'layer2': 227,
+        'layer1': 956,
+        'gamma': 0.013416354045760274,
+        'reg_entropy': 0.0018682798787011542,
+        'l1': 3.904233171732793e-07,
+        'scaler': 'robust_per_batch',
+        'beta': 0,
+        'zeta': 0,
+        'thres': 0
+    }
 
-        {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
-        {"name": "scaler", "type": "choice",
-         "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
-        {"name": "layer2", "type": "range", "bounds": [32, 512]},
-        {"name": "layer1", "type": "range", "bounds": [512, 1024]},        
-    ]
-
-    # Some hyperparameters are not always required. 
-    if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
-        # gamma = 0 will ensure DANN is not learned
-        parameters += [{"name": "gamma", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.variational:
-        # beta = 0 because useless outside a variational autoencoder
-        parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.zinb:
-        # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.kan and args.use_l1:
-        # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
-    if args.use_l1:
-        parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
-
-    best_parameters, values, experiment, model = optimize(
-        parameters=parameters,
-        evaluation_function=train.train,
-        objective_name='closs',
-        minimize=True,
-        total_trials=args.n_trials,
-        random_seed=41
-    )
+    train.train(parameters)
 
     # fig = plt.figure()
     # render(plot_contour(model=model, param_x="learning_rate", param_y="weight_decay", metric_name='Loss'))

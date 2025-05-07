@@ -437,7 +437,12 @@ class SHAPKANAutoencoder2(nn.Module):
             x = torch.tensor(x.values).to(self.device)
         if self.n_emb > 0:
             meta_values = x[:, -2:]
-
+            x = x[:, :-2]
+        # if self.n_meta > 0:
+        #     x = x[:, :-self.n_meta]
+        # if self.n_meta > 0:
+        #     x = x[:, :-2]
+        # rec = {}
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
 
@@ -566,7 +571,7 @@ class KANAutoencoder2(nn.Module):
         self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
         self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
         self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self.random_init(nn.init.kaiming_uniform_)
+        # self.random_init(nn.init.kaiming_uniform_)
         
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
@@ -1473,7 +1478,7 @@ class KANAutoencoder3(nn.Module):
         self._dec_mean = nn.Sequential(KANLinear(layer2, in_shape + n_meta), MeanAct())
         self._dec_disp = nn.Sequential(KANLinear(layer2, in_shape + n_meta), DispAct())
         self._dec_pi = nn.Sequential(KANLinear(layer2, in_shape + n_meta), nn.Sigmoid())
-        self.random_init(nn.init.kaiming_uniform_)
+        # self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0):
         rec = {}

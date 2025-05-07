@@ -7,8 +7,8 @@ from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
 from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from bernn.dl.models.pytorch.utils.utils import to_categorical
 import pandas as pd
-from efficient_kan import KANLinear
-from kan import KANLayer
+from bernn.dl.train.pytorch.ekan.src.efficient_kan.kan import KANLinear
+# from bernn.dl.train.pytorch.kan import KANLayer
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)
@@ -236,6 +236,7 @@ class Encoder(nn.Module):
 class Encoder2(nn.Module):
     def __init__(self, in_shape, layer1, layer2, dropout, update_grid=False):
         super(Encoder2, self).__init__()
+        self.update_grid = update_grid
         self.linear1 = nn.Sequential(
             KANLinear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
@@ -277,6 +278,7 @@ class Encoder2(nn.Module):
 class Decoder2(nn.Module):
     def __init__(self, in_shape, n_batches, layer1, layer2, dropout, update_grid=False):
         super(Decoder2, self).__init__()
+        self.update_grid = update_grid
         self.linear1 = nn.Sequential(
             KANLinear(layer1 + n_batches, layer2),
             nn.BatchNorm1d(layer2),
@@ -503,9 +505,10 @@ class KANAutoencoder2(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer2, 64, n_batches, update_grid=update_grid)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, update_grid=update_grid)
-        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), MeanAct())
-        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), DispAct())
-        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta, update_grid=update_grid), nn.Sigmoid())
+        # TODO: add update_grid to the decoders for zinb
+        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
+        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):

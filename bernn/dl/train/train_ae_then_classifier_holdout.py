@@ -1,4 +1,7 @@
-NEPTUNE_API_TOKEN = "eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJlZjRiZGUzYS1kNTJmLTRkNGItOWU1MS1iNDU3MGE1NjAyODAifQ=="
+#!/usr/bin/python3
+
+import os
+NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
 NEPTUNE_PROJECT_NAME = "BERNN"
 
 import matplotlib
@@ -18,26 +21,21 @@ import json
 import copy
 import torch
 from torch import nn
-import os
-
-from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
-from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination, log_neptune
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from bernn.utils.utils import scale_data, to_csv
-from pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
+from bernn.utils.utils import scale_data
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
-from bernn.dl.models.pytorch.utils.loggings import make_data
-import neptune.new as neptune
+import neptune
 import mlflow
 import warnings
 from datetime import datetime
@@ -48,7 +46,7 @@ random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
 
-from train_ae import TrainAE
+from bernn.dl.train.train_ae import TrainAE
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
     """
@@ -700,7 +698,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     loaders = get_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, ae,
                                           ae.classifier)
 
-                if params['prune_threshold'] > 0:
+                if params['prune_threshold'] > 0 and self.args.kan == 1:
                     n_neurons = ae.prune_model_paperwise(True, is_dann, weight_threshold=params['prune_threshold'])
                     # If save neptune is True, save the model
                     if self.log_neptune:

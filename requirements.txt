@@ -1,29 +1,18 @@
 numpy==1.23.5
-# jax==0.4.7
-# numpyro==0.12.1
-# Pillow==8.4.0
 scikit-learn==1.0.2
 pandas==1.4.4
 scikit-optimize==0.9.0
-# pytest
-# pytest-cov
-# pylint
-# pytest-pylint
 matplotlib==3.6.3
 seaborn==0.12.2
 tabulate==0.9.0
 scipy==1.9.1
-tqdm==4.64.1
+tqdm
 joblib~=1.0.0
-# sunbird
 ax-platform==0.2.10
-# combat
-# shap
 pycombat
-# PTable
-torch==1.13.1
-torchvision==0.14.1
-tensorboardX==2.5.1
+torch>=2.3.0
+torchvision>=0.15.0
+tensorboardX>=2.5.1
 tensorboard==2.11.0
 tensorflow==2.11.0
 ax-platform==0.2.10
@@ -41,8 +30,13 @@ xgboost==1.0.0
 torch-geometric
 neptune
 fastapi==0.89.1
-mlflow[extras]==2.2.1
+mlflow[extras]
 threadpoolctl==3.1.0
+protobuf==3.19.6
+shap
+pykan
+pytest
+pytest-cov
 # R packages:
 # install.packages("harmony")
 # install.packages("sva")
@@ -52,4 +46,4 @@ threadpoolctl==3.1.0
 # devtools::install_github("immunogenomics/lisi")
 # install.packages("https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz", repos = NULL, type = "source")
 # devtools::install_github("dengkuistat/WaveICA",host="https://api.github.com")
-efficient_kan
+

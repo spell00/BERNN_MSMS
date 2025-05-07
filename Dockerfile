@@ -1,48 +1,75 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04 
-RUN apt-get update && \
-    apt-get install -y python3-pip python3-dev && \
-    rm -rf /var/lib/apt/lists/*
-ADD mlflow_eval_runs.py ./
-ADD setup.py ./
-ADD launch_train_ae_classifier_holdout_experiments.sh ./
-ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
-ADD mlflow_eval_runs.py ./
-ADD bernn ./bernn/
-COPY requirements.txt ./requirements.txt
-# ADD data ./data/
-# ADD notebooks ./notebooks/
-RUN chmod +x launch_train_ae_classifier_holdout_experiments.sh
-RUN chmod +x launch_train_ae_then_classifier_holdout_experiments.sh
+FROM rocker/tidyverse:4.2.0
 
-RUN apt-get update
-RUN apt-get upgrade -y
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libhdf5-dev \
+    libfontconfig1-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libgsl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV TZ=America/Toronto
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# Install R packages
+RUN R -e "install.packages(c('harmony', 'sva', 'factor', 'devtools'), repos='https://cloud.r-project.org/')" && \
+    R -e "BiocManager::install('zinbwave')" && \
+    R -e "devtools::install_github('immunogenomics/lisi')" && \
+    R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos=NULL, type='source')" && \
+    R -e "devtools::install_github('dengkuistat/WaveICA', host='https://api.github.com')"
 
-RUN apt-get install -y r-base r-cran-devtools python3-pip python3-dev software-properties-common linux-modules-nvidia-525-generic \
-  && cd /usr/local/bin \
-  && ln -s /usr/bin/python3 python \
-  && pip3 install --upgrade pip
+# Install Python packages
+RUN pip3 install --no-cache-dir \
+    numpy==1.23.5 \
+    scikit-learn==1.0.2 \
+    pandas==1.4.4 \
+    scikit-optimize==0.9.0 \
+    matplotlib==3.6.3 \
+    seaborn==0.12.2 \
+    tabulate==0.9.0 \
+    scipy==1.9.1 \
+    tqdm \
+    joblib~=1.0.0 \
+    ax-platform==0.2.10 \
+    pycombat \
+    torch>=2.3.0 \
+    torchvision>=0.15.0 \
+    tensorboardX>=2.5.1 \
+    tensorboard==2.11.0 \
+    tensorflow==2.11.0 \
+    psutil==5.9.4 \
+    scikit-image \
+    nibabel \
+    mpmath==1.3.0 \
+    patsy==0.5.3 \
+    umap-learn==0.5.3 \
+    shapely==2.0.0 \
+    numba==0.57.1 \
+    rpy2==3.5.7 \
+    openpyxl==3.0.10 \
+    xgboost==1.0.0 \
+    torch-geometric \
+    neptune \
+    fastapi==0.89.1 \
+    "mlflow[extras]" \
+    threadpoolctl==3.1.0 \
+    protobuf==3.20.1 \
+    shap
 
-RUN R -e "devtools::install_github('immunogenomics/lisi', host='https://api.github.com')"
-# RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com")'
-# RUN R -e "devtools::install_github('zinbwave')"
-# RUN R -e "BiocManager::install_github('zinbwave')"
-RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-# RUN R -e "install.packages('devtools')"
-RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos = NULL, type = 'source')"
+# Create app directory
+WORKDIR /app
 
-RUN python -m pip install -r requirements.txt
-RUN python setup.py build
-RUN python setup.py install
-RUN python -m pip install .
-# CMD ./mzdb2train.sh test
+# Set environment variables
+ENV PATH="/usr/local/bin:$PATH"
+ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV R_LIBS="/usr/local/lib/R/site-library"
 
-
-# R packages:
-# BiocManager::install("zinbwave")
-# devtools::install_github("immunogenomics/lisi")
-# devtools::install_github("dengkuistat/WaveICA",host="https://api.github.com")
+# Default command
+CMD ["/bin/bash"]
