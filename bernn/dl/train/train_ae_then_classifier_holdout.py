@@ -120,7 +120,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
         """
         start_time = datetime.now()
         # Fixing the hyperparameters that are not optimized
-        if args.dloss not in ['revTriplet', 'revDANN', 'DANN',
+        if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
                                                           'inverseTriplet', 'normae'] or 'gamma' not in params:
             # gamma = 0 will ensure DANN is not learned
             params['gamma'] = 0
@@ -135,7 +135,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             params['thres'] = self.fix_thres
         else:
             params['thres'] = 0
-        if not args.prune_network:
+        if not self.args.prune_network:
             params['prune_threshold'] = 0
 
         if not self.args.kan:
@@ -212,35 +212,35 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
-            run["inputs_type"] = args.csv_file.split(".csv")[0]
-            run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            # run["use_valid"] = args.use_valid
-            # run["use_test"] = args.use_test
-            run["tied_weights"] = args.tied_weights
-            run["random_recs"] = args.random_recs
-            run["train_after_warmup"] = args.train_after_warmup
-            # run["triplet_loss"] = args.triplet_loss
-            run["dloss"] = args.dloss
-            run["predict_tests"] = args.predict_tests
-            run["variational"] = args.variational
-            run["zinb"] = args.zinb
-            run["threshold"] = args.threshold
-            run["rec_loss_type"] = args.rec_loss
-            run["strategy"] = args.strategy
-            run["bad_batches"] = args.bad_batches
-            run["remove_zeros"] = args.remove_zeros
+            run["inputs_type"] = self.args.csv_file.split(".csv")[0]
+            run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
+            # run["use_valid"] = self.args.use_valid
+            # run["use_test"] = self.args.use_test
+            run["tied_weights"] = self.args.tied_weights
+            run["random_recs"] = self.args.random_recs
+            run["train_after_warmup"] = self.args.train_after_warmup
+            # run["triplet_loss"] = self.args.triplet_loss
+            run["dloss"] = self.args.dloss
+            run["predict_tests"] = self.args.predict_tests
+            run["variational"] = self.args.variational
+            run["zinb"] = self.args.zinb
+            run["threshold"] = self.args.threshold
+            run["rec_loss_type"] = self.args.rec_loss
+            run["strategy"] = self.args.strategy
+            run["bad_batches"] = self.args.bad_batches
+            run["remove_zeros"] = self.args.remove_zeros
             run["parameters"] = params
-            run["csv_file"] = args.csv_file
+            run["csv_file"] = self.args.csv_file
             run["model_name"] = 'ae_then_classifier_holdout'
-            run["n_meta"] = args.n_meta
-            run["n_emb"] = args.embeddings_meta
-            run["groupkfold"] = args.groupkfold
-            run["embeddings_meta"] = args.embeddings_meta
+            run["n_meta"] = self.args.n_meta
+            run["n_emb"] = self.args.embeddings_meta
+            run["groupkfold"] = self.args.groupkfold
+            run["embeddings_meta"] = self.args.embeddings_meta
             run["foldername"] = self.foldername
-            run["use_mapping"] = args.use_mapping
-            run["dataset_name"] = args.dataset
-            run["n_agg"] = args.n_agg
-            run["kan"] = args.kan
+            run["use_mapping"] = self.args.use_mapping
+            run["dataset_name"] = self.args.dataset
+            run["n_agg"] = self.args.n_agg
+            run["kan"] = self.args.kan
         else:
             model = None
             run = None
@@ -255,36 +255,36 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 mlflow.end_run()
                 mlflow.start_run()
             mlflow.log_params({
-                "inputs_type": args.csv_file.split(".csv")[0],
-                "best_unique": args.best_features_file.split(".tsv")[0],
-                "tied_weights": args.tied_weights,
-                "random_recs": args.random_recs,
-                "train_after_warmup": args.train_after_warmup,
-                "dloss": args.dloss,
-                "predict_tests": args.predict_tests,
-                "variational": args.variational,
-                "zinb": args.zinb,
-                "threshold": args.threshold,
-                "rec_loss_type": args.rec_loss,
-                "bad_batches": args.bad_batches,
-                "remove_zeros": args.remove_zeros,
+                "inputs_type": self.args.csv_file.split(".csv")[0],
+                "best_unique": self.args.best_features_file.split(".tsv")[0],
+                "tied_weights": self.args.tied_weights,
+                "random_recs": self.args.random_recs,
+                "train_after_warmup": self.args.train_after_warmup,
+                "dloss": self.args.dloss,
+                "predict_tests": self.args.predict_tests,
+                "variational": self.args.variational,
+                "zinb": self.args.zinb,
+                "threshold": self.args.threshold,
+                "rec_loss_type": self.args.rec_loss,
+                "bad_batches": self.args.bad_batches,
+                "remove_zeros": self.args.remove_zeros,
                 "parameters": params,
                 "scaler": params['scaler'],
-                "csv_file": args.csv_file,
-                "model_name": args.model_name,
-                "n_meta": args.n_meta,
-                "n_emb": args.embeddings_meta,
-                "groupkfold": args.groupkfold,
+                "csv_file": self.args.csv_file,
+                "model_name": self.args.model_name,
+                "n_meta": self.args.n_meta,
+                "n_emb": self.args.embeddings_meta,
+                "groupkfold": self.args.groupkfold,
                 "foldername": self.foldername,
-                "use_mapping": args.use_mapping,
-                "dataset_name": args.dataset,
-                "n_agg": args.n_agg,
-                "kan": args.kan,
+                "use_mapping": self.args.use_mapping,
+                "dataset_name": self.args.dataset,
+                "n_agg": self.args.n_agg,
+                "kan": self.args.kan,
                 "l1": self.l1,
                 "reg_entropy": self.reg_entropy,
-                "use_l1": args.use_l1,
-                "clip_val": args.clip_val,
-                "update_grid": args.update_grid,
+                "use_l1": self.args.use_l1,
+                "clip_val": self.args.clip_val,
+                "update_grid": self.args.update_grid,
             })
         else:
             model = None
@@ -314,17 +314,17 @@ class TrainAEThenClassifierHoldout(TrainAE):
             best_acc = 0
             best_mcc = -np.inf
             if self.args.dataset == 'alzheimer':
-                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
                 self.pools = True
             elif self.args.dataset == 'amide':
-                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
                 self.pools = True
 
             elif self.args.dataset == 'mice':
-                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
                 self.pools = False
             else:
-                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
                 self.pools = self.args.pool
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
@@ -397,7 +397,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
             loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-            sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
+            sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, self.args.dloss)
 
             optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
             optimizer_c = get_optimizer(ae.classifier, nu * lr, wd, optimizer_type)
@@ -452,15 +452,15 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             rec = rec['mean']
                             zinb_loss = zinb_loss.to(self.args.device)
                             reverse = ReverseLayerF.apply(enc, 1)
-                            if args.dloss == 'DANN':
+                            if self.args.dloss == 'DANN':
                                 domain_preds = ae.dann_discriminator(reverse)
                                 is_dann = True
                             else:
                                 domain_preds = ae.dann_discriminator(enc)
                                 is_dann = False
-                            if args.dloss not in ['revTriplet', 'inverseTriplet']:
+                            if self.args.dloss not in ['revTriplet', 'inverseTriplet']:
                                 dloss, domain = self.get_dloss(celoss, domain, domain_preds, 2)
-                            elif args.dloss == 'revTriplet':
+                            elif self.args.dloss == 'revTriplet':
                                 pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                                 neg_batch_sample = neg_batch_sample.to(self.args.device).float()
                                 meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
@@ -474,7 +474,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                                      ReverseLayerF.apply(pos_enc, 1),
                                                      ReverseLayerF.apply(neg_enc, 1)
                                                      )
-                            elif args.dloss == 'inverseTriplet':
+                            elif self.args.dloss == 'inverseTriplet':
                                 pos_batch_sample, neg_batch_sample = neg_batch_sample.to(
                                     self.args.device).float(), pos_batch_sample.to(self.args.device).float()
                                 meta_pos_batch_sample, meta_neg_batch_sample = meta_neg_batch_sample.to(

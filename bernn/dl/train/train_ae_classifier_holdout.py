@@ -26,19 +26,18 @@ from torch import nn
 # from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
-from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
-from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
-from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
-from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-from bernn.utils.utils import scale_data, to_csv
-from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
+from bernn.dl.train.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
+from bernn.dl.train.pytorch.utils.utils import LogConfusionMatrix
+from bernn.dl.train.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+from bernn.utils.utils import scale_data
+from bernn.dl.train.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 import mlflow
 import warnings
+import neptune
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
 
@@ -129,8 +128,21 @@ class TrainAEClassifierHoldout(TrainAE):
 
         """
         start_time = datetime.now()
+
+        if not self.args.kan:
+            from bernn.dl.train.pytorch.aedann import AutoEncoder2 as AutoEncoder
+            from bernn.dl.train.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+        elif self.args.kan == 1:
+            from bernn.dl.train.pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+            from bernn.dl.train.pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        # elif args.kan == 2:
+        #     # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
+        #     # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        #     from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
+        #     from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
+
         # Fixing the hyperparameters that are not optimized
-        if args.dloss not in ['revTriplet', 'revDANN', 'DANN',
+        if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
                               'inverseTriplet', 'normae'] or 'gamma' not in params:
             # gamma = 0 will ensure DANN is not learned
             params['gamma'] = 0
@@ -219,34 +231,34 @@ class TrainAEClassifierHoldout(TrainAE):
                 f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
             )
             # Track metadata and hyperparameters by assigning them to the run
-            run["inputs_type"] = args.csv_file.split(".csv")[0]
-            run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            run["use_valid"] = args.use_valid
-            run["use_test"] = args.use_test
-            run["tied_weights"] = args.tied_weights
-            run["random_recs"] = args.random_recs
-            run["train_after_warmup"] = args.train_after_warmup
-            run["dloss"] = args.dloss
-            run["predict_tests"] = args.predict_tests
-            run["variational"] = args.variational
-            run["zinb"] = args.zinb
-            run["threshold"] = args.threshold
-            run["rec_loss_type"] = args.rec_loss
-            run["strategy"] = args.strategy
-            run["bad_batches"] = args.bad_batches
-            run["remove_zeros"] = args.remove_zeros
+            run["inputs_type"] = self.args.csv_file.split(".csv")[0]
+            run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
+            run["use_valid"] = self.args.use_valid
+            run["use_test"] = self.args.use_test
+            run["tied_weights"] = self.args.tied_weights
+            run["random_recs"] = self.args.random_recs
+            run["train_after_warmup"] = self.args.train_after_warmup
+            run["dloss"] = self.args.dloss
+            run["predict_tests"] = self.args.predict_tests
+            run["variational"] = self.args.variational
+            run["zinb"] = self.args.zinb
+            run["threshold"] = self.args.threshold
+            run["rec_loss_type"] = self.args.rec_loss
+            run["strategy"] = self.args.strategy
+            run["bad_batches"] = self.args.bad_batches
+            run["remove_zeros"] = self.args.remove_zeros
             run["parameters"] = params
-            run["csv_file"] = args.csv_file
+            run["csv_file"] = self.args.csv_file
             run["model_name"] = 'ae_classifier_holdout'
-            run["n_meta"] = args.n_meta
-            run["n_emb"] = args.embeddings_meta
-            run["groupkfold"] = args.groupkfold
-            run["embeddings_meta"] = args.embeddings_meta
+            run["n_meta"] = self.args.n_meta
+            run["n_emb"] = self.args.embeddings_meta
+            run["groupkfold"] = self.args.groupkfold
+            run["embeddings_meta"] = self.args.embeddings_meta
             run["foldername"] = self.foldername
-            run["use_mapping"] = args.use_mapping
-            run["dataset_name"] = args.dataset
-            run["n_agg"] = args.n_agg
-            run["kan"] = args.kan
+            run["use_mapping"] = self.args.use_mapping
+            run["dataset_name"] = self.args.dataset
+            run["n_agg"] = self.args.n_agg
+            run["kan"] = self.args.kan
         else:
             model = None
             run = None
@@ -261,31 +273,31 @@ class TrainAEClassifierHoldout(TrainAE):
                 mlflow.end_run()
                 mlflow.start_run()
             mlflow.log_params({
-                "inputs_type": args.csv_file.split(".csv")[0],
-                "best_unique": args.best_features_file.split(".tsv")[0],
-                "tied_weights": args.tied_weights,
-                "random_recs": args.random_recs,
-                "train_after_warmup": args.train_after_warmup,
-                "warmup_after_warmup": args.warmup_after_warmup,
-                "dloss": args.dloss,
-                "predict_tests": args.predict_tests,
-                "variational": args.variational,
-                "zinb": args.zinb,
-                "threshold": args.threshold,
-                "rec_loss_type": args.rec_loss,
-                "bad_batches": args.bad_batches,
-                "remove_zeros": args.remove_zeros,
+                "inputs_type": self.args.csv_file.split(".csv")[0],
+                "best_unique": self.args.best_features_file.split(".tsv")[0],
+                "tied_weights": self.args.tied_weights,
+                "random_recs": self.args.random_recs,
+                "train_after_warmup": self.args.train_after_warmup,
+                "warmup_after_warmup": self.args.warmup_after_warmup,
+                "dloss": self.args.dloss,
+                "predict_tests": self.args.predict_tests,
+                "variational": self.args.variational,
+                "zinb": self.args.zinb,
+                "threshold": self.args.threshold,
+                "rec_loss_type": self.args.rec_loss,
+                "bad_batches": self.args.bad_batches,
+                "remove_zeros": self.args.remove_zeros,
                 "parameters": params,
                 "scaler": params['scaler'],
-                "csv_file": args.csv_file,
-                "model_name": args.model_name,
-                "n_meta": args.n_meta,
-                "n_emb": args.embeddings_meta,
-                "groupkfold": args.groupkfold,
+                "csv_file": self.args.csv_file,
+                "model_name": self.args.model_name,
+                "n_meta": self.args.n_meta,
+                "n_emb": self.args.embeddings_meta,
+                "groupkfold": self.args.groupkfold,
                 "foldername": self.foldername,
-                "use_mapping": args.use_mapping,
-                "dataset_name": args.dataset,
-                "n_agg": args.n_agg,
+                "use_mapping": self.args.use_mapping,
+                "dataset_name": self.args.dataset,
+                "n_agg": self.args.n_agg,
                 "lr": lr,
                 "wd": wd,
                 "dropout": dropout,
@@ -298,13 +310,13 @@ class TrainAEClassifierHoldout(TrainAE):
                 "zeta": self.zeta,
                 "thres": thres,
                 "nu": nu,
-                "kan": args.kan,
+                "kan": self.args.kan,
                 "l1": self.l1,
                 "reg_entropy": self.reg_entropy,
-                "use_l1": args.use_l1,
-                "clip_val": args.clip_val,
-                "update_grid": args.update_grid,
-                "prune_threshold": args.prune_threshold,
+                "use_l1": self.args.use_l1,
+                "clip_val": self.args.clip_val,
+                "update_grid": self.args.update_grid,
+                "prune_threshold": self.args.prune_threshold,
             })
         else:
             model = None
@@ -315,7 +327,7 @@ class TrainAEClassifierHoldout(TrainAE):
         best_closses = []
         best_mccs = []
         while h < self.args.n_repeats:
-            prune_threshold = self.args.prune_threshold
+            # prune_threshold = self.args.prune_threshold
             print(f'Rep: {h}')
             epoch = 0
             self.best_loss = np.inf
@@ -336,22 +348,22 @@ class TrainAEClassifierHoldout(TrainAE):
             else:
                 warmup = False
             if self.args.dataset == 'alzheimer':
-                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
                 self.pools = True
             elif self.args.dataset in ['amide', 'adenocarcinoma']:
-                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
                 self.pools = True
 
             elif self.args.dataset == 'mice':
                 # This seed split the data to have n_samples in train: 96, valid:52, test: 23
-                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
             elif self.args.dataset == 'multi':
-                self.data, self.unique_labels, self.unique_batches = get_data3(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_data3(self.path, self.args, seed=seed)
                 self.pools = self.args.pool
             else:
-                self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
+                self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
                 self.pools = self.args.pool
-            if args.best_features_file != '':
+            if self.args.best_features_file != '':
                 self.data = keep_top_features(self.data, self.path, self.args)
             if self.args.controls != '':
                 self.data = binarize_labels(self.data, self.args.controls)
@@ -441,7 +453,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     ae.random_init(nn.init.xavier_uniform_)
                 loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
                 loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-                sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
+                sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, self.args.dloss)
 
                 optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
 
@@ -504,9 +516,9 @@ class TrainAEClassifierHoldout(TrainAE):
                             closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                              loaders[group], lists, traces, nu=0)
                         # IF KAN and pruning threshold > 0, then prune the network
-                        if self.args.kan and prune_threshold > 0:
+                        if self.args.kan and self.args.prune_threshold > 0:
                             try:
-                                self.prune_neurons(ae, prune_threshold)
+                                self.prune_neurons(ae, self.args.prune_threshold)
                             except:
                                 print("COULD NOT PRUNE")
                                 # if self.log_mlflow:
@@ -515,8 +527,8 @@ class TrainAEClassifierHoldout(TrainAE):
                         if self.args.kan and self.args.prune_neurites_threshold > 0:
                             self.prune_neurites(ae)
                         if self.args.kan and early_stop_counter % 10 == 0 and early_stop_counter > 0:
-                            prune_threshold *= 10
-                            print(f"Pruning threshold: {prune_threshold}")
+                            self.args.prune_threshold *= 10
+                            print(f"Pruning threshold: {self.args.prune_threshold}")
 
                                 
                     traces = self.get_mccs(lists, traces)
@@ -611,7 +623,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 #                       shap_ae, h,
                 #                       epoch])
                 # daemon.start()
-                self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae,
+                self.log_rep(best_lists, best_vals, best_values, traces, metrics, run, loggers, ae,
                              shap_ae, h, epoch)
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
@@ -672,10 +684,10 @@ class TrainAEClassifierHoldout(TrainAE):
         --------
             None
         '''
-        if self.prune_threshold == 0:
-            self.prune_threshold = 1e-8
+        if self.args.prune_threshold == 0:
+            self.args.prune_threshold = 1e-8
         else:
-            self.prune_threshold *= 10
+            self.args.prune_threshold *= 10
 
 if __name__ == "__main__":
     import argparse
@@ -733,18 +745,6 @@ if __name__ == "__main__":
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
 
     args = parser.parse_args()
-    
-    if not args.kan:
-        from pytorch.aedann import AutoEncoder2 as AutoEncoder
-        from pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-    elif args.kan == 1:
-        from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-        from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-    # elif args.kan == 2:
-    #     # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
-    #     # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-    #     from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
-    #     from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
     
     try:
         mlflow.create_experiment(

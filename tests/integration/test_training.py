@@ -1,3 +1,4 @@
+import os
 import pytest
 import torch
 import pandas as pd
@@ -33,18 +34,54 @@ def sample_data():
             )
         },
         'batches': {
-            'all': np.random.randint(0, n_batches, n_samples),
-            'train': np.random.randint(0, n_batches, n_samples//2),
-            'valid': np.random.randint(0, n_batches, n_samples//4),
-            'test': np.random.randint(0, n_batches, n_samples//4)
+            'all': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples)]),
+            'train': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//2)]),
+            'valid': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//4)]),
+            'test': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//4)])
         },
         'labels': {
-            'all': np.random.randint(0, n_classes, n_samples),
-            'train': np.random.randint(0, n_classes, n_samples//2),
-            'valid': np.random.randint(0, n_classes, n_samples//4),
-            'test': np.random.randint(0, n_classes, n_samples//4)
+            'all': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples)]),
+            'train': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//2)]),
+            'valid': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//4)]),
+            'test': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//4)])
+        },
+        'names': {
+            'all': np.array(['s' + str(x) for x in np.arange(0, n_samples)]),
+            'train': np.array(['s' + str(x) for x in np.arange(0, n_samples//2)]),
+            'valid': np.array(['s' + str(x) for x in np.arange(0, n_samples//4)]),
+            'test': np.array(['s' + str(x) for x in np.arange(0, n_samples//4)])         
         }
     }
+    data['inputs']['all'] = pd.concat((
+        pd.DataFrame(data['names']['all'].reshape(len(data['names']['all']), 1)),
+        pd.DataFrame(data['labels']['all'].reshape(len(data['labels']['all']), 1)),
+        pd.DataFrame(data['batches']['all'].reshape(len(data['batches']['all']), 1)),
+        data['inputs']['all']
+    ), 1)
+    data['inputs']['train'] = pd.concat((
+        pd.DataFrame(data['names']['train'].reshape(len(data['names']['train']), 1)),
+        pd.DataFrame(data['labels']['train'].reshape(len(data['labels']['train']), 1)),
+        pd.DataFrame(data['batches']['train'].reshape(len(data['batches']['train']), 1)),
+        data['inputs']['train']
+    ), 1)
+    data['inputs']['valid'] = pd.concat((
+        pd.DataFrame(data['names']['valid'].reshape(len(data['names']['valid']), 1)),
+        pd.DataFrame(data['labels']['valid'].reshape(len(data['labels']['valid']), 1)),
+        pd.DataFrame(data['batches']['valid'].reshape(len(data['batches']['valid']), 1)),
+        data['inputs']['valid']
+    ), 1)
+    data['inputs']['test'] = pd.concat((
+        pd.DataFrame(data['names']['test'].reshape(len(data['names']['test']), 1)),
+        pd.DataFrame(data['labels']['test'].reshape(len(data['labels']['test']), 1)),
+        pd.DataFrame(data['batches']['test'].reshape(len(data['batches']['test']), 1)),
+        data['inputs']['test']
+    ), 1)
+    for split in ['all','train','valid','test']:
+        df = data['inputs'][split]
+        cols = df.columns.tolist()
+        cols[:3] = ['names','labels','batches']
+        df.set_axis(cols, axis=1, inplace=True)
+        print(df.columns[:5])
     return data
 
 @pytest.fixture
@@ -79,6 +116,23 @@ def mock_args():
             self.log_metrics = 0
             self.log_plots = 0
             self.prune_network = 0
+            self.dataset = 'mock'
+            self.csv_file = 'mock.csv'
+            self.log1p = 1
+            self.berm = 'none'
+            self.pool = 0
+            self.strategy = 'none'
+            self.best_features_file = 'mock_top_features.tsv'
+            self.n_features = -1
+            self.bad_batches = ''
+            self.controls = 'l0'
+            self.exp_id = 'mockTest'
+            self.warmup_after_warmup = 1
+            self.bs = 8
+            self.n_agg = 1
+            self.update_grid = 1
+            self.prune_threshold = 0.001
+
     return Args()
 
 @pytest.mark.integration
@@ -126,11 +180,19 @@ def test_training_loop(sample_data, mock_args, tmp_path):
         'prune_threshold': 0.0
     }
     
+    # Write the data to a csv file
+    sample_data['inputs']['all'].to_csv(trainer.path + '/mock.csv', index=False)
+    # Save mock top features to tsv
+    pd.DataFrame(sample_data['inputs']['all'].columns[3:]).to_csv(trainer.path + '/mock_top_features.tsv', index=False)
+    
     try:
         result = trainer.train(params)
         assert isinstance(result, (float, int)), "Training should return a numeric value"
     except Exception as e:
         pytest.skip(f"Training failed due to: {str(e)}")
+    # Delete the csv
+    os.remove(trainer.path + '/mock.csv')
+    
 
 @pytest.mark.integration
 @pytest.mark.slow
@@ -164,6 +226,11 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
     trainer.unique_batches = np.unique(sample_data['batches']['all'])
     trainer.columns = sample_data['inputs']['all'].columns
     
+    # Write the data to a csv file
+    sample_data['inputs']['all'].to_csv(trainer.path + '/mock.csv', index=False)
+    # Save mock top features to tsv
+    pd.DataFrame(sample_data['inputs']['all'].columns[3:]).to_csv(trainer.path + '/mock_top_features.tsv', index=False)
+
     # Run training with some test parameters
     params = {
         'nu': 0.001,
@@ -188,4 +255,6 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
         result = trainer.train(params)
         assert isinstance(result, (float, int)), "Training should return a numeric value"
     except Exception as e:
-        pytest.skip(f"Training failed due to: {str(e)}") 
+        pytest.skip(f"Training failed due to: {str(e)}")
+    # Delete the csv
+    os.remove(trainer.path + '/mock.csv')

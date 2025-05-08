@@ -468,7 +468,7 @@ class TrainAE:
             mseloss = nn.L1Loss()
         if scale == "binarize":
             mseloss = nn.BCELoss()
-        if dloss == 'revTriplet':
+        if dloss == 'revTriplet' or dloss == 'inverseTriplet':
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
             triplet_loss = None
