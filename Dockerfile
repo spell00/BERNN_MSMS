@@ -35,8 +35,8 @@ RUN R -e "install.packages('pROC')"
 RUN R -e "install.packages('plsdepot')"
 RUN R -e "install.packages('fdrtool')"
 RUN R -e "install.packages('scatterplot3d')"
-RUN R -e "install.packages('ggfortify')"
-RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com")'
+RUN R -e "install.packages('ggfortify', repos='http://cran.rstudio.com/')"
+RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com", dependencies = TRUE)'
 # RUN R -e "devtools::install_github('zinbwave')"
 # RUN R -e "BiocManager::install_github('zinbwave')"
 RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
