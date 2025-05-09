@@ -37,3 +37,7 @@ mlruns/
 bernn/dl/train/pytorch/__pycache__/
 bernn/dl/train/pytorch/utils/__pycache__/
 bernn/ml/train/__pycache__/
+/home/simonp/BERNN_MSMS/.github/workflows/tests.yml
+/home/simonp/BERNN_MSMS/.github/workflows/python-tests.yml
+/home/simonp/BERNN_MSMS/.github/workflows/publish.yml
+/home/simonp/BERNN_MSMS/.github/workflows/ci.yml

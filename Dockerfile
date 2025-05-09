@@ -1,6 +1,14 @@
 FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04 
+# install libssl-dev libcurl4-openssl-dev libfontconfig1-dev 
+# sudo apt-get update && sudo apt-get install -y \
+#     libharfbuzz-dev \
+#     libfribidi-dev \
+#     libfreetype6-dev \
+#     libpng-dev \
+#     libtiff5-dev \
+#     libjpeg-dev
 RUN apt-get update && \
-    apt-get install -y python3.8 python3.8-dev python3.8-distutils curl && \
+    apt-get install -y python3.8 python3.8-dev python3.8-distutils curl libssl-dev libcurl4-openssl-dev libfontconfig1-dev && \
     ln -sf /usr/bin/python3.8 /usr/bin/python && \
     curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python && \
     pip install --upgrade pip && \
@@ -29,20 +37,18 @@ RUN apt-get install -y r-base r-cran-devtools python3-pip python3-dev software-p
   && ln -s /usr/bin/python3 python \
   && pip3 install --upgrade pip
 
+RUN R -e "install.packages('ragg')" 
+RUN R -e "install.packages('pkgdown')" 
+RUN R -e "install.packages('devtools')"
 RUN R -e "devtools::install_github('immunogenomics/lisi', host='https://api.github.com')"
-
-RUN R -e "install.packages('pROC')"
-RUN R -e "install.packages('plsdepot')"
-RUN R -e "install.packages('fdrtool')"
-RUN R -e "install.packages('scatterplot3d')"
-RUN R -e "install.packages('ggfortify', repos='http://cran.rstudio.com/')"
-RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com", dependencies = TRUE)'
+# RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com")'
 # RUN R -e "devtools::install_github('zinbwave')"
 # RUN R -e "BiocManager::install_github('zinbwave')"
 RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-# RUN R -e "install.packages('devtools')"
+RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
+# BiocManager::install(c("GenomeInfoDb", "Biostrings", "KEGGREST", "AnnotationDbi", "annotate", "genefilter"))
+# BiocManager::install("sva")
+# RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos = NULL, type = 'source')"
 
 RUN python -m pip install -r requirements.txt
