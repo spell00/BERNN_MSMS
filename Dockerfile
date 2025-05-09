@@ -77,3 +77,4 @@ RUN python -m pip install -r requirements.txt && \
 #     libpng-dev \
 #     libtiff5-dev \
 #     libjpeg-dev
+CMD ["pytest", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]
