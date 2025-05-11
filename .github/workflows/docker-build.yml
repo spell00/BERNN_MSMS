@@ -30,7 +30,7 @@ jobs:
 
       - name: Run Python tests in container
         run: |
-          docker run --rm bernn:latest pytest tests/ --cov=bernn --cov-report=xml
+          docker run --rm bernn:latest pytest -v -rs tests/ --cov=bernn --cov-report=term --cov-report=xml:coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
