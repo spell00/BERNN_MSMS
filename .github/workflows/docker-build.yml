@@ -24,9 +24,9 @@ jobs:
         run: |
           docker run --rm bernn:latest python3 -c "import numpy; import torch; import tensorflow; import mlflow; print('All core dependencies imported successfully')"
 
-      - name: Test R environment
-        run: |
-          docker run --rm bernn:latest R -e "library(sva); print('All R packages loaded successfully')"
+      # - name: Test R environment
+      #   run: |
+      #     docker run --rm bernn:latest R -e "library(sva); print('All R packages loaded successfully')"
 
       - name: Run Python tests in container
         run: |

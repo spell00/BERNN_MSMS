@@ -54,12 +54,6 @@ RUN R -e "install.packages('devtools')"
 # RUN R -e "BiocManager::install_github('zinbwave')"
 # RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('BiocManager')" 
-# RUN R -e "BiocManager::install('sva')" 
-# RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
-# BiocManager::install(c("GenomeInfoDb", "Biostrings", "KEGGREST", "AnnotationDbi", "annotate", "genefilter"))
-# BiocManager::install("sva")
-# RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-# RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos = NULL, type = 'source')"
 
 # Install Python packages
 RUN python -m pip install -r requirements.txt && \
@@ -72,15 +66,12 @@ ENV LD_LIBRARY_PATH=/usr/lib/R/lib:${LD_LIBRARY_PATH}
 # CMD ./mzdb2train.sh test
 CMD ["pytest", "-v", "-rs", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]
 
-# R packages:
-# BiocManager::install("zinbwave")
-# devtools::install_github("immunogenomics/lisi")
-# devtools::install_github("dengkuistat/WaveICA",host="https://api.github.com")
-# install libssl-dev libcurl4-openssl-dev libfontconfig1-dev 
-# sudo apt-get update && sudo apt-get install -y \
-#     libharfbuzz-dev \
-#     libfribidi-dev \
-#     libfreetype6-dev \
-#     libpng-dev \
-#     libtiff5-dev \
-#     libjpeg-dev
+
+
+
+# RUN R -e "BiocManager::install('sva')" 
+# RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
+# BiocManager::install(c("GenomeInfoDb", "Biostrings", "KEGGREST", "AnnotationDbi", "annotate", "genefilter"))
+# BiocManager::install("sva")
+# RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
+# RUN R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/gPCA/gPCA_1.0.tar.gz', repos = NULL, type = 'source')"
