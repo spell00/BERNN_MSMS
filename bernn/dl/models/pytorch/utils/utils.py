@@ -1,19 +1,24 @@
+# Standard library imports
 import os
 import math
+import itertools
+from itertools import cycle
+
+# Third-party imports
 import torch
 import mlflow
 import sklearn
-import itertools
 import numpy as np
 import tensorflow as tf
 from sklearn import metrics
-from itertools import cycle
-from matplotlib import pyplot as plt, cm
 from sklearn.metrics import roc_auc_score, PrecisionRecallDisplay
-from bernn.ml.train.params_gp import *
-from bernn.ml.train.sklearn_train_nocv import Train
-from skopt import gp_minimize
 from sklearn.preprocessing import label_binarize, OneHotEncoder
+from matplotlib import pyplot as plt, cm
+from skopt import gp_minimize
+
+# Local imports
+from .....ml.train.params_gp import *
+from .....ml.train.sklearn_train_nocv import Train
 
 
 def get_optimizer(model, learning_rate, weight_decay, optimizer_type, momentum=0.9):
@@ -156,7 +161,6 @@ class LogConfusionMatrix:
                 logger[f"CM_{group}_all"].upload(figure)
             elif mlops == "mlflow":
                 mlflow.log_figure(figure, f"CM_{group}_all.png")
-                # logger[f"CM_{group}_all"].log(figure)
             plt.close(figure)
         del cm, figure
 

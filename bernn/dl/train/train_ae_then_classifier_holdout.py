@@ -27,8 +27,6 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 from bernn.ml.train.params_gp import *
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination, log_neptune
 from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
@@ -80,6 +78,9 @@ def log_num_neurons(run, n_neurons, init_n_neurons):
             pass
 
 class TrainAEThenClassifierHoldout(TrainAE):
+    """
+    This class was previously named TrainAEClassifierHoldout. It is now TrainAEThenClassifierHoldout.
+    """
 
     def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
                  log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True, pools=True):
@@ -356,7 +357,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                               None, None, bs=8)
 
-            ae = AutoEncoder(data['inputs']['all'].shape[1],
+            ae = self.ae(data['inputs']['all'].shape[1],
                              n_batches=self.n_batches,
                              nb_classes=self.n_cats,
                              mapper=self.args.use_mapping,
@@ -379,7 +380,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
             # if self.args.embeddings_meta > 0:
             #     n_meta = self.n_meta
-            shap_ae = SHAPAutoEncoder(data['inputs']['all'].shape[1],
+            shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
                                       n_batches=self.n_batches,
                                       nb_classes=self.n_cats,
                                       mapper=self.args.use_mapping,
@@ -597,7 +598,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         if self.log_tb:
                             loggers['tb_logging'].logging(values, metrics)
                         if self.log_neptune:
-                            add_to_neptune(run, values)
+                            add_to_neptune(values, run)
                         if self.log_mlflow:
                             add_to_mlflow(values, epoch)
                         continue
@@ -650,7 +651,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     except:
                         print("Problem with add_to_logger!")
                 if self.log_neptune:
-                    add_to_neptune(run, values)
+                    add_to_neptune(values, run)
                 if self.log_mlflow:
                     add_to_mlflow(values, epoch)
                 if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
@@ -837,18 +838,6 @@ if __name__ == "__main__":
     parser.add_argument('--prune_network', type=float, default=1, help='')
 
     args = parser.parse_args()
-
-    if not args.kan:
-        from pytorch.aedann import AutoEncoder2 as AutoEncoder
-        from pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-    elif args.kan == 1:
-        from pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-        from pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-    elif args.kan == 2:
-        # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
-        # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-        from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
-        from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
 
     try:
         mlflow.create_experiment(

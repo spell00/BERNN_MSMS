@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
-from efficient_kan.src.kan import KANLinear
+from ..ekan.src.efficient_kan.kan import KANLinear
 
 
 class Stochastic(nn.Module):

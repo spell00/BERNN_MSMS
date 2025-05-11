@@ -14,6 +14,7 @@ RUN apt-get update && \
         libcurl4-openssl-dev \
         libfontconfig1-dev \
         r-base \
+        r-base-dev \
         r-cran-devtools \
         python3-pip \
         python3-dev \
@@ -33,6 +34,7 @@ ADD launch_train_ae_classifier_holdout_experiments.sh ./
 ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
 ADD bernn ./bernn/
+ADD tests ./tests/
 COPY requirements.txt ./requirements.txt
 COPY README.md ./README.md
 # ADD data ./data/
@@ -51,7 +53,9 @@ RUN R -e "install.packages('devtools')"
 # RUN R -e "devtools::install_github('zinbwave')"
 # RUN R -e "BiocManager::install_github('zinbwave')"
 # RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
+RUN R -e "install.packages('BiocManager')" 
+# RUN R -e "BiocManager::install('sva')" 
+# RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
 # BiocManager::install(c("GenomeInfoDb", "Biostrings", "KEGGREST", "AnnotationDbi", "annotate", "genefilter"))
 # BiocManager::install("sva")
 # RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
@@ -62,8 +66,11 @@ RUN python -m pip install -r requirements.txt && \
     python setup.py build && \
     python setup.py install && \
     python -m pip install .
-# CMD ./mzdb2train.sh test
 
+ENV R_HOME=/usr/lib/R
+ENV LD_LIBRARY_PATH=/usr/lib/R/lib:${LD_LIBRARY_PATH}
+# CMD ./mzdb2train.sh test
+CMD ["pytest", "-v", "-rs", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]
 
 # R packages:
 # BiocManager::install("zinbwave")
@@ -77,4 +84,3 @@ RUN python -m pip install -r requirements.txt && \
 #     libpng-dev \
 #     libtiff5-dev \
 #     libjpeg-dev
-CMD ["pytest", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]

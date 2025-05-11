@@ -198,10 +198,10 @@ def test_training_loop(sample_data, mock_args, tmp_path):
 @pytest.mark.slow
 def test_full_training_pipeline(sample_data, mock_args, tmp_path):
     if not torch.cuda.is_available():
-        pytest.skip("CUDA not available")
-        
-    # Set CUDA device
-    mock_args.device = 'cuda:0'
+        mock_args.device = 'cpu'
+    else:
+        # Set CUDA device
+        mock_args.device = 'cuda:0'
     
     # Initialize trainer
     trainer = TrainAEClassifierHoldout(

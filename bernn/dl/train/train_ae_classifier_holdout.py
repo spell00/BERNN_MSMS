@@ -88,6 +88,37 @@ def binarize_labels(data, controls):
         data['cats'][group] = data['labels'][group]
     return data
 
+def log_num_neurons(run, n_neurons, init_n_neurons):
+    """
+    Log the number of neurons in the model to Neptune.
+
+    Args:
+        run: The Neptune run object.
+        n_neurons: Dictionary of current neuron counts per layer (flattened).
+        init_n_neurons: Dictionary of initial neuron counts per layer (nested).
+    """
+    for key, count in n_neurons.items():
+        if key in ["total", "total_neurons", "total_remaining"]:
+            run["n_neurons/total"].log(count)
+            denom = init_n_neurons.get("total") or init_n_neurons.get("total_neurons")
+            if denom:
+                run["n_neurons/relative_total"].log(count / denom)
+            continue
+
+        if '.' not in key:
+            continue  # unexpected format, skip
+
+        layer_abbr, sublayer = key.split(".")
+        layer_key = {"enc": "encoder2", "dec": "decoder2"}.get(layer_abbr, layer_abbr)
+
+        run[f"n_neurons/{layer_key}/{sublayer}"].log(count)
+
+        try:
+            init_count = init_n_neurons[layer_key][sublayer]
+            run[f"n_neurons/{layer_key}/relative_{sublayer}"].log(count / init_count)
+        except (KeyError, ZeroDivisionError):
+            pass
+
 
 class TrainAEClassifierHoldout(TrainAE):
 
@@ -129,18 +160,6 @@ class TrainAEClassifierHoldout(TrainAE):
         """
         start_time = datetime.now()
 
-        if not self.args.kan:
-            from bernn.dl.train.pytorch.aedann import AutoEncoder2 as AutoEncoder
-            from bernn.dl.train.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-        elif self.args.kan == 1:
-            from bernn.dl.train.pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-            from bernn.dl.train.pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-        # elif args.kan == 2:
-        #     # from bernn.dl.models.pytorch.aekandann import KANAutoencoder2 as AutoEncoder
-        #     # from bernn.dl.models.pytorch.aekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
-        #     from pytorch.aekandann import KANAutoencoder3 as AutoEncoder
-        #     from pytorch.aekandann import SHAPKANAutoencoder3 as SHAPAutoEncoder
-
         # Fixing the hyperparameters that are not optimized
         if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
                               'inverseTriplet', 'normae'] or 'gamma' not in params:
@@ -161,6 +180,10 @@ class TrainAEClassifierHoldout(TrainAE):
             params['reg_entropy'] = 0
         if not self.args.use_l1:
             params['l1'] = 0
+        if not self.args.prune_network:
+            params['prune_threshold'] = 0
+        if params['prune_threshold'] > 0:
+            dropout = 0
 
         # params['dropout'] = 0
         # params['smoothing'] = 0
@@ -413,7 +436,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                 if h == 1 or self.args.kan == 1:
 
-                    ae = AutoEncoder(data['inputs']['all'].shape[1],
+                    ae = self.ae(data['inputs']['all'].shape[1],
                                     n_batches=self.n_batches,
                                     nb_classes=self.n_cats,
                                     mapper=self.args.use_mapping,
@@ -427,13 +450,16 @@ class TrainAEClassifierHoldout(TrainAE):
                                     zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
                                     use_gnn=0,  # TODO to remove
                                     device=self.args.device,
+                                    prune_threshold=params['prune_threshold'],
                                     update_grid=self.args.update_grid
                                     ).to(self.args.device)
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
+                    n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
+                    init_n_neurons = ae.count_n_neurons()
                     # if self.args.embeddings_meta > 0:
                     #     n_meta = self.n_meta
-                    shap_ae = SHAPAutoEncoder(data['inputs']['all'].shape[1],
+                    shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
                                             n_batches=self.n_batches,
                                             nb_classes=self.n_cats,
                                             mapper=self.args.use_mapping,
@@ -513,22 +539,30 @@ class TrainAEClassifierHoldout(TrainAE):
                         for group in list(data['inputs'].keys()):
                             if group in ['all', 'all_pool']:
                                 continue
-                            closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
-                                                             loaders[group], lists, traces, nu=0)
-                        # IF KAN and pruning threshold > 0, then prune the network
-                        if self.args.kan and self.args.prune_threshold > 0:
-                            try:
-                                self.prune_neurons(ae, self.args.prune_threshold)
-                            except:
-                                print("COULD NOT PRUNE")
-                                # if self.log_mlflow:
-                                #     mlflow.log_param('finished', 0)
-                                break
-                        if self.args.kan and self.args.prune_neurites_threshold > 0:
-                            self.prune_neurites(ae)
-                        if self.args.kan and early_stop_counter % 10 == 0 and early_stop_counter > 0:
-                            self.args.prune_threshold *= 10
-                            print(f"Pruning threshold: {self.args.prune_threshold}")
+                            closs, lists, traces = self.loop(group, optimizer_, ae, sceloss, loaders[group], lists, traces, nu=0)
+                        closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                                                loaders['train'], lists, traces, nu=nu)
+                    # Below is the loop for all sets
+                    # with torch.no_grad():
+                    #     for group in list(data['inputs'].keys()):
+                    #         if group in ['all', 'all_pool']:
+                    #             continue
+                    #         closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
+                    #                                          loaders[group], lists, traces, nu=0)
+                    #     # IF KAN and pruning threshold > 0, then prune the network
+                    #     if self.args.kan and self.args.prune_threshold > 0:
+                    #         try:
+                    #             self.prune_neurons(ae, self.args.prune_threshold)
+                    #         except:
+                    #             print("COULD NOT PRUNE")
+                    #             # if self.log_mlflow:
+                    #             #     mlflow.log_param('finished', 0)
+                    #             break
+                    #     if self.args.kan and self.args.prune_neurites_threshold > 0:
+                    #         self.prune_neurites(ae)
+                    #     if self.args.kan and early_stop_counter % 10 == 0 and early_stop_counter > 0:
+                    #         self.args.prune_threshold *= 10
+                    #         print(f"Pruning threshold: {self.args.prune_threshold}")
 
                                 
                     traces = self.get_mccs(lists, traces)
@@ -588,6 +622,11 @@ class TrainAEClassifierHoldout(TrainAE):
                     if self.args.predict_tests and (epoch % 10 == 0):
                         loaders = get_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, ae,
                                               ae.classifier, bs=self.args.bs)
+                    if params['prune_threshold'] > 0:
+                        n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
+                        # If save neptune is True, save the model
+                        if self.log_neptune:
+                            log_num_neurons(run, n_neurons, init_n_neurons)
 
                 best_mccs += [self.best_mcc]
 
@@ -743,6 +782,7 @@ if __name__ == "__main__":
     parser.add_argument('--clip_val', type=float, default=1, help='')
     parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
+    parser.add_argument('--prune_network', type=float, default=1, help='')
 
     args = parser.parse_args()
     
@@ -793,6 +833,8 @@ if __name__ == "__main__":
         parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
     if args.use_l1:
         parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
+    if args.prune_network:
+        parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,

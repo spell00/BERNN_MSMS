@@ -22,21 +22,21 @@ from sklearn import metrics
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 # from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from bernn.ml.train.params_gp import *
+from ...ml.train.params_gp import *
 # from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
-from bernn.dl.models.pytorch.aedann import ReverseLayerF
+from .pytorch.aedann import ReverseLayerF
 # from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-from bernn.dl.models.pytorch.aeekandann import KANAutoencoder2
-from bernn.dl.train.pytorch.ekan.src.efficient_kan.kan import KANLinear
+from .pytorch.aeekandann import KANAutoencoder2
+from .pytorch.ekan.src.efficient_kan.kan import KANLinear
 # from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-from bernn.dl.models.pytorch.utils.loggings import log_metrics, \
+from .pytorch.utils.loggings import log_metrics, \
     log_plots, log_neptune, log_shap, log_mlflow
-from bernn.dl.models.pytorch.utils.loggings import log_shap
+from .pytorch.utils.loggings import log_shap
 # from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import to_csv
-from bernn.dl.models.pytorch.utils.utils import to_categorical, get_empty_traces, \
+from .pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
-from bernn.dl.models.pytorch.utils.loggings import make_data
+from .pytorch.utils.loggings import make_data
 import mlflow
 import warnings
 
@@ -100,6 +100,8 @@ class TrainAE:
         self.unique_batches = None
 
         self.pools = pools
+        self.load_autoencoder()
+
 
     def make_samples_weights(self):
         self.n_batches = len(set(self.data['batches']['all']))
@@ -131,6 +133,16 @@ class TrainAE:
             ['train', 'valid', 'test']}
         self.n_cats = len(self.class_weights)  # + 1  # for pool samples
         self.scaler = None
+
+    def load_autoencoder(self):
+        if not self.args.kan:
+            from .pytorch.aedann import AutoEncoder2 as AutoEncoder
+            from .pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+        elif self.args.kan == 1:
+            from .pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+            from .pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+        self.ae = AutoEncoder
+        self.shap_ae = SHAPAutoEncoder
 
     def log_rep(self, best_lists, best_vals, best_values, traces, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
@@ -572,14 +584,24 @@ class TrainAE:
         Returns:
 
         """
-        l1_loss = sum(
-            layer.regularization_loss(l1, reg_entropy) for layer in [
-                model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
-                model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
-                model.classifier.layers.layer1[0], model.classifier.layers.layer2[0],
-                model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
-                ]
-        )
+        try:
+            l1_loss = sum(
+                layer.regularization_loss(l1, reg_entropy) for layer in [
+                    model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
+                    model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
+                    model.classifier.layers.layer1[0], model.classifier.layers.layer2[0],
+                    model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
+                    ]
+            )
+        except:
+            l1_loss = sum(
+                layer.regularization_loss(l1, reg_entropy) for layer in [
+                    model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
+                    model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
+                    model.classifier.layers.layer1[0],
+                    model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
+                    ]
+            )
         if torch.isnan(l1_loss):
             # print("NAN in regularization!")
             l1_loss = torch.zeros(1).to(self.args.device)[0]
@@ -789,21 +811,20 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
-    def prune_neurons(self, ae, threshold):
-        """
-        Prune neurons in the autoencoder
-        Args:
-            ae: AutoEncoder object
-
-        Returns:
-            ae: AutoEncoder object
-        """
-        for m in ae.modules():
-            if isinstance(m, KANAutoencoder2):
-                for n in m.modules():
-                    for i in n.modules():
-                        if isinstance(i, KANLinear):
-                            i.prune_neurons(threshold)
+    # def prune_neurons(self, ae, threshold):
+    #     """
+    #     Prune neurons in the autoencoder
+    #     Args:
+    #         ae: AutoEncoder object
+    #     Returns:
+    #         ae: AutoEncoder object
+    #     """
+    #     for m in ae.modules():
+    #         if isinstance(m, KANAutoencoder2):
+    #             for n in m.modules():
+    #                 for i in n.modules():
+    #                     if isinstance(i, KANLinear):
+    #                         i.prune_neurons(threshold)
     
     def count_neurons(self, ae):
         """

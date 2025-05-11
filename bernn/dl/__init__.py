@@ -3,15 +3,37 @@
 This subpackage contains the deep learning models and training code.
 """
 
-from bernn.dl.models.pytorch.aedann import AutoEncoder2, SHAPAutoEncoder2
-from bernn.dl.models.pytorch.aeekandann import KANAutoencoder2, SHAPKANAutoencoder2
-# from bernn.dl.models.pytorch.aekandann import KANAutoencoder3, SHAPKANAutoencoder3
+# Model definitions
+from .models.pytorch import (
+    AutoEncoder2,
+    SHAPAutoEncoder2,
+    KANAutoencoder2,
+    SHAPKANAutoencoder2,
+)
+
+# Training modules
+from .train import (
+    TrainAE,
+    TrainAEClassifierHoldout,
+    TrainAEThenClassifierHoldout,
+)
+
+# KAN modules
+from .train.pytorch.ekan import KANLinear, KAN
 
 __all__ = [
+    # Models
     "AutoEncoder2",
     "SHAPAutoEncoder2",
     "KANAutoencoder2",
     "SHAPKANAutoencoder2",
-    # "KANAutoencoder3",
-    # "SHAPKANAutoencoder3"
+    
+    # Training
+    "TrainAE",
+    "TrainAEClassifierHoldout",
+    "TrainAEThenClassifierHoldout",
+    
+    # KAN
+    "KANLinear",
+    "KAN"
 ]

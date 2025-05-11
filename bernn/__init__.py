@@ -8,12 +8,37 @@ __version__ = "0.1.0"
 __author__ = "Simon Pelletier"
 __license__ = "MIT"
 
-from bernn.dl.train.train_ae import TrainAE
-from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
-from bernn.dl.train.train_ae_then_classifier_holdout import TrainAEThenClassifierHoldout
+# Core training modules
+from .dl.train import (
+    TrainAE,
+    TrainAEClassifierHoldout,
+    TrainAEThenClassifierHoldout,
+)
+
+# Model definitions
+from .dl.models.pytorch import (
+    AutoEncoder2,
+    SHAPAutoEncoder2,
+    KANAutoencoder2,
+    SHAPKANAutoencoder2,
+)
+
+# KAN modules
+from .dl.train.pytorch.ekan import KANLinear, KAN
 
 __all__ = [
+    # Training
     "TrainAE",
-    "TrainAEClassifierHoldout", 
-    "TrainAEThenClassifierHoldout"
+    "TrainAEClassifierHoldout",
+    "TrainAEThenClassifierHoldout",
+    
+    # Models
+    "AutoEncoder2",
+    "SHAPAutoEncoder2",
+    "KANAutoencoder2",
+    "SHAPKANAutoencoder2",
+    
+    # KAN
+    "KANLinear",
+    "KAN"
 ]

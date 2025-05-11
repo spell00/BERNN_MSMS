@@ -3,9 +3,9 @@ from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.autograd import Function
-from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
-from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
-from bernn.dl.models.pytorch.utils.utils import to_categorical
+from .utils.stochastic import GaussianSample
+from .utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
+from .utils.utils import to_categorical
 import pandas as pd
 
 def sample_gumbel(shape, eps=1e-20):

@@ -5,12 +5,12 @@ Created on Fri May 28 2021
 @author: Simon Pelletier
 """
 
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
+# from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression, SGDClassifier
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.svm import LinearSVC, SVC, NuSVC
+# from sklearn.linear_model import LogisticRegression, SGDClassifier
+# from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.svm import LinearSVC # , SVC, NuSVC
 from skopt.space import Real, Integer, Categorical
 
 sgd_space = [

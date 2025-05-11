@@ -326,7 +326,8 @@ class Decoder(nn.Module):
 
 class SHAPAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, dropout,
-                 n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
+                 n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda',
+                 ):
         super(SHAPAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
@@ -461,9 +462,10 @@ class SHAPAutoEncoder2(nn.Module):
 
 class AutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb,
-                 mapper, variational, layer1, layer2, dropout, n_layers, zinb=False,
-                 conditional=False, add_noise=False, tied_weights=0,
-                 update_grid=False, use_gnn=False, device='cuda'):
+                 mapper, variational, layer1, layer2, dropout, n_layers, 
+                 prune_threshold, zinb=False, conditional=False, 
+                 add_noise=False, tied_weights=0, update_grid=False,
+                 use_gnn=False, device='cuda'):
         """
         TODO MAKE DESCRIPTION
         """
@@ -551,6 +553,14 @@ class AutoEncoder2(nn.Module):
         # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
         return [enc, rec, zinb_loss, kl]
 
+    def prune_model_paperwise(self, is_classification, is_dann, weight_threshold: float = 0):
+        print("Pruning not available for this model")
+        # TODO implement pruning or count the number of neurons
+        return 0
+    
+    def count_n_neurons(self):
+        return 0
+    
     def random_init(self, init_func=nn.init.kaiming_uniform_):
         for m in self.modules():
             if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):

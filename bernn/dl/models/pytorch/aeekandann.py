@@ -3,12 +3,14 @@ from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.autograd import Function
-from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
-from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
-from bernn.dl.models.pytorch.utils.utils import to_categorical
+from .utils.stochastic import GaussianSample
+from .utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
+from .utils.utils import to_categorical
 import pandas as pd
-from bernn.dl.train.pytorch.ekan.src.efficient_kan.kan import KANLinear
+from ...train.pytorch.ekan import KANLinear
 # from bernn.dl.train.pytorch.kan import KANLayer
+import copy
+import numpy as np
 
 def sample_gumbel(shape, eps=1e-20):
     U = torch.rand(shape)
@@ -878,8 +880,7 @@ class SHAPKANAutoencoder3(nn.Module):
         mean = mean * scale_factor
 
         t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (
-                    x * (torch.log(disp + eps) - torch.log(mean + eps)))
+        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
         nb_final = t1 + t2
 
         nb_case = nb_final - torch.log(1.0 - pi + eps)

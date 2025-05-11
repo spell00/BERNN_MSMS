@@ -180,4 +180,4 @@ def test_freeze_ae():
         elif name.startswith('classifier') or name.startswith('mapper'):
             assert param.requires_grad, f"Parameter {name} should not be frozen"
     
-    return frozen_model 
+    # return frozen_model 
