@@ -64,7 +64,7 @@ RUN python -m pip install -r requirements.txt && \
 ENV R_HOME=/usr/lib/R
 ENV LD_LIBRARY_PATH=/usr/lib/R/lib:${LD_LIBRARY_PATH}
 # CMD ./mzdb2train.sh test
-CMD ["pytest", "-v", "-rs", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]
+# CMD ["pytest", "-v", "-rs", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"]
 
 
 

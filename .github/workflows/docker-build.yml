@@ -28,10 +28,12 @@ jobs:
       #   run: |
       #     docker run --rm bernn:latest R -e "library(sva); print('All R packages loaded successfully')"
 
-      - name: Run Python tests in container
+      # - name: Run tests in Docker
+      #   run: |
+      #     docker run --rm bernn:latest pytest -v -rs --cov=bernn --cov-report=term --cov-report=xml:coverage.xml tests/
+      - name: Run tests in Docker
         run: |
-          docker run --rm bernn:latest pytest -v -rs tests/ --cov=bernn --cov-report=term --cov-report=xml:coverage.xml
-
+            docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace bernn:latest pytest -v -rs --cov=bernn --cov-report=term --cov-report=xml:coverage.xml tests/
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
