@@ -941,9 +941,3 @@ if __name__ == "__main__":
 
     )
 
-    # fig = plt.figure()
-    # render(plot_contour(model=model, param_x="learning_rate", param_y="weight_decay", metric_name='Loss'))
-    # fig.savefig('test.jpg')
-    # print('Best Loss:', values[0]['loss'])
-    # print('Best Parameters:')
-    # print(json.dumps(best_parameters, indent=4))
