@@ -6,6 +6,67 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, Normalizer
 from sklearn.pipeline import Pipeline
 
+def keep_top_features(data, path, args):
+    """
+    Keeps the top features according to the precalculated scores
+    Args:
+        data: The data to be used to keep the top features
+
+    Returns:
+        data: The data with only the top features
+    """
+    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
+    for group in ['all', 'train', 'valid', 'test']:
+        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
+
+    return data
+
+def binarize_labels(data, controls):
+    """
+    Binarizes the labels to be used in the classification loss
+    Args:
+        labels: The labels to be binarized
+        controls: The control labels
+
+    Returns:
+        labels: The binarized labels
+    """
+    for group in ['all', 'train', 'valid', 'test']:
+        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+        data['cats'][group] = data['labels'][group]
+    return data
+
+def log_num_neurons(run, n_neurons, init_n_neurons):
+    """
+    Log the number of neurons in the model to Neptune.
+
+    Args:
+        run: The Neptune run object.
+        n_neurons: Dictionary of current neuron counts per layer (flattened).
+        init_n_neurons: Dictionary of initial neuron counts per layer (nested).
+    """
+    for key, count in n_neurons.items():
+        if key in ["total", "total_neurons", "total_remaining"]:
+            run["n_neurons/total"].log(count)
+            denom = init_n_neurons.get("total") or init_n_neurons.get("total_neurons")
+            if denom:
+                run["n_neurons/relative_total"].log(count / denom)
+            continue
+
+        if '.' not in key:
+            continue  # unexpected format, skip
+
+        layer_abbr, sublayer = key.split(".")
+        layer_key = {"enc": "encoder2", "dec": "decoder2"}.get(layer_abbr, layer_abbr)
+
+        run[f"n_neurons/{layer_key}/{sublayer}"].log(count)
+
+        try:
+            init_count = init_n_neurons[layer_key][sublayer]
+            run[f"n_neurons/{layer_key}/relative_{sublayer}"].log(count / init_count)
+        except (KeyError, ZeroDivisionError):
+            pass
+
 
 def scale_data(scale, data, device='cpu'):
     unique_batches = np.unique(data['batches']['all'])

@@ -1,44 +1,41 @@
+# import os
+# import json
+# import copy
+# import uuid
+# import shutil
+# import matplotlib.pyplot as plt
+# from tensorboardX import SummaryWriter
+# from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+# from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
+# from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+# from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
-
-matplotlib.use('Agg')
-CUDA_VISIBLE_DEVICES = ""
-
-import uuid
-import shutil
-
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
-import json
-import copy
 import torch
 from torch import nn
-import os
-
 from sklearn import metrics
-# from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
-# from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from ...ml.train.params_gp import *
-# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from .pytorch.aedann import ReverseLayerF
-# from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from .pytorch.aeekandann import KANAutoencoder2
 from .pytorch.ekan.src.efficient_kan.kan import KANLinear
-# from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from .pytorch.utils.loggings import log_metrics, \
     log_plots, log_neptune, log_shap, log_mlflow
-from .pytorch.utils.loggings import log_shap
-# from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import to_csv
 from .pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
 from .pytorch.utils.loggings import make_data
 import mlflow
 import warnings
+
+matplotlib.use('Agg')
+CUDA_VISIBLE_DEVICES = ""
 
 warnings.filterwarnings("ignore")
 
@@ -73,7 +70,6 @@ class TrainAE:
             log_mlflow (bool): Wether or not to use mlflow.
 
         """
-        self.hparams_names = None
         self.best_acc = 0
         self.best_mcc = -1
         self.best_closs = np.inf
@@ -91,17 +87,95 @@ class TrainAE:
         self.load_tb = load_tb
         self.groupkfold = groupkfold
         self.foldername = None
-
         self.verbose = 1
-
         self.n_cats = None
         self.data = None
         self.unique_labels = None
         self.unique_batches = None
-
         self.pools = pools
+        self.default_params()
+        self.args = self.fill_missing_params_with_default(args)
         self.load_autoencoder()
 
+    def default_params(self):
+        """Initialize default parameters for the training process."""
+        self.all_params = {
+            'controls': '',
+            'random_recs': 0,
+            'predict_tests': 0,
+            'early_stop': 50,
+            'early_warmup_stop': -1,
+            'train_after_warmup': 0,
+            'threshold': 0.,
+            'n_epochs': 1000,
+            'n_trials': 100,
+            'device': 'cuda:0',
+            'rec_loss': 'l1',
+            'tied_weights': 0,
+            'random': 1,
+            'variational': 0,
+            'zinb': 0,  # TODO resolve problems, do not use
+            'use_mapping': 1,
+            'bdisc': 1,
+            'n_repeats': 5,
+            'dloss': 'inverseTriplet',  # one of revDANN, DANN, inverseTriplet, revTriplet
+            'csv_file': 'unique_genes.csv',
+            'best_features_file': '',  # best_unique_genes.tsv
+            'bad_batches': '',  # 0;23;22;21;20;19;18;17;16;15
+            'remove_zeros': 0,
+            'n_meta': 0,
+            'embeddings_meta': 0,
+            'groupkfold': 1,
+            'dataset': 'custom',
+            'bs': 32,
+            'path': './data/',
+            'exp_id': 'default_ae_then_classifier',
+            'strategy': 'CU_DEM',  # only for alzheimer dataset
+            'n_agg': 1,  # Number of trailing values to get stable valid values
+            'n_layers': 2,  # N layers for classifier
+            'log1p': 1,  # log1p the data? Should be 0 with zinb
+            'pool': 1,  # only for alzheimer dataset
+            'kan': 1,
+            'update_grid': 1,
+            'use_l1': 1,
+            'clip_val': 1,
+            'log_metrics': 1,
+            'log_plots': 1,
+            'prune_network': 1,
+        }
+
+    def fill_missing_params_with_default(self, params):
+        """
+        Fill missing parameters with default values.
+
+        Args:
+            params: An argparse.Namespace object containing parameters.
+
+        Returns:
+            argparse.Namespace: Updated namespace with default values for missing parameters.
+        """
+        # Convert params to dict if it's a Namespace object
+        params_dict = vars(params) if hasattr(params, '__dict__') else params
+
+        # Create a new dict with default values
+        updated_params = {}
+
+        # First copy all default values
+        for param, default_value in self.all_params.items():
+            updated_params[param] = default_value
+
+        # Then override with provided values
+        for param, value in params_dict.items():
+            if param in self.all_params:
+                updated_params[param] = value
+
+        # Convert back to Namespace if input was Namespace
+        if hasattr(params, '__dict__'):
+            for key, value in updated_params.items():
+                setattr(params, key, value)
+            return params
+        else:
+            return updated_params
 
     def make_samples_weights(self):
         self.n_batches = len(set(self.data['batches']['all']))
@@ -116,7 +190,8 @@ class TrainAE:
             self.data['inputs'][group] = self.data['inputs'][group].iloc[inds_to_keep]
             try:
                 self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
-            except:
+            except Exception as e:
+                print(f"Error loading names: {e}")
                 self.data['names'][group] = self.data['names'][group][inds_to_keep]
 
             self.data['labels'][group] = self.data['labels'][group][inds_to_keep]
@@ -146,7 +221,7 @@ class TrainAE:
 
     def log_rep(self, best_lists, best_vals, best_values, traces, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
-        best_traces = self.get_mccs(best_lists, traces)
+        # best_traces = self.get_mccs(best_lists, traces)
 
         self.log_predictions(best_lists, run, h)
 
@@ -155,28 +230,28 @@ class TrainAE:
                 try:
                     # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch, mlops="tensorboard",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
+                                          np.unique(np.concatenate(best_lists['train']['labels'])),
+                                          np.unique(self.data['batches']), epoch, mlops="tensorboard",
+                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
             if self.log_neptune:
                 try:
                     metrics = log_metrics(run, best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch=epoch, mlops="neptune",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
+                                          np.unique(np.concatenate(best_lists['train']['labels'])),
+                                          np.unique(self.data['batches']), epoch=epoch, mlops="neptune",
+                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
             if self.log_mlflow:
                 try:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
-                                        np.unique(np.concatenate(best_lists['train']['labels'])),
-                                        np.unique(self.data['batches']), epoch, mlops="mlflow",
-                                        metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                        device=self.args.device)
+                                          np.unique(np.concatenate(best_lists['train']['labels'])),
+                                          np.unique(self.data['batches']), epoch, mlops="mlflow",
+                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
 
@@ -218,16 +293,14 @@ class TrainAE:
                     #            self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'tb',
-                             self.complete_log_path,
-                             self.args.device)
+                             self.complete_log_path, self.args.device)
                 if self.log_neptune:
-                    log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune', self.complete_log_path,
-                             self.args.device)
+                    log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
+                             self.complete_log_path, self.args.device)
                     log_plots(run, best_lists, 'neptune', epoch)
                 if self.log_mlflow:
                     log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
-                             self.complete_log_path,
-                             self.args.device)
+                             self.complete_log_path, self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
 
         columns = list(self.data['inputs']['all'].columns)
@@ -243,15 +316,18 @@ class TrainAE:
         best_values['pool_metrics'] = {}
         try:
             best_values['batches'] = metrics['batches']
-        except:
+        except Exception as e:
+            print(f"Error in batches: {e}")
             pass
         try:
             best_values['pool_metrics']['enc'] = metrics['pool_metrics_enc']
-        except:
+        except Exception as e:
+            print(f"Error in pool_metrics_enc: {e}")
             pass
         try:
             best_values['pool_metrics']['rec'] = metrics['pool_metrics_rec']
-        except:
+        except Exception as e:
+            print(f"Error in pool_metrics_rec: {e}")
             pass
 
         if self.log_tb:
@@ -347,7 +423,8 @@ class TrainAE:
             try:
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
                 classif_loss = celoss(preds, cats)
-            except:
+            except Exception as e:
+                print(f"Error in classif_loss: {e}")
                 cats = torch.Tensor([self.n_cats + 1 for _ in labels])
                 classif_loss = torch.Tensor([0])
 
@@ -357,7 +434,9 @@ class TrainAE:
                 if isinstance(to_rec, list):
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
+            lists[group]['domains'] += [
+                np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])
+            ]
             lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
             lists[group]['preds'] += [preds.detach().cpu().numpy()]
             lists[group]['classes'] += [labels.detach().cpu().numpy()]
@@ -373,20 +452,23 @@ class TrainAE:
             try:
                 lists[group]['labels'] += [np.array(
                     [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
-            except:
+            except Exception as e:
+                print(f"Error in labels: {e}")
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                               zip(preds.detach().cpu().numpy().argmax(1),
                                                   labels.detach().cpu().numpy())])]
-            traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
-                                               zip(preds.argsort(1), labels)])]
+            traces[group]['top3'] += [np.mean(
+                [1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
+                 zip(preds.argsort(1), labels)])]
 
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
                     MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
                 ]
-            except:
+            except Exception as e:
+                print(f"Error in mcc: {e}")
                 traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
                     MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
@@ -400,8 +482,8 @@ class TrainAE:
                 #     total_loss += rec_loss
                 try:
                     total_loss.backward()
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Error in total_loss: {e}")
                 nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 optimizer.step()
 
@@ -561,7 +643,8 @@ class TrainAE:
             try:
                 preds, classes = np.concatenate(lists[group]['preds']).argmax(1), np.concatenate(
                     lists[group]['classes'])
-            except:
+            except Exception as e:
+                print(f"Error loading preds and classes: {e}")
                 pass
             traces[group]['mcc'] = MCC(preds, classes)
 
@@ -587,17 +670,18 @@ class TrainAE:
         try:
             l1_loss = sum(
                 layer.regularization_loss(l1, reg_entropy) for layer in [
-                    model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
-                    model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
+                    model.enc.layers.layer1[0], model.enc.layers.layer2[0],
+                    model.dec.layers.layer1[0], model.dec.layers.layer2[0],
                     model.classifier.layers.layer1[0], model.classifier.layers.layer2[0],
                     model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
                     ]
             )
-        except:
+        except Exception as e:
+            print(f"Error in reg_kan: {e}")
             l1_loss = sum(
                 layer.regularization_loss(l1, reg_entropy) for layer in [
-                    model.enc.layers.layer1[0], model.enc.layers.layer2[0], 
-                    model.dec.layers.layer1[0], model.dec.layers.layer2[0], 
+                    model.enc.layers.layer1[0], model.enc.layers.layer2[0],
+                    model.dec.layers.layer1[0], model.dec.layers.layer2[0],
                     model.classifier.layers.layer1[0],
                     model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
                     ]
@@ -708,7 +792,8 @@ class TrainAE:
             try:
                 lists['all']['labels'] += [np.array(
                     [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
-            except:
+            except Exception as e:
+                print(f"Error loading labels: {e}")
                 pass
             if not self.args.kan and self.l1 > 0:
                 l1_loss = self.l1_regularization(ae, self.l1)
@@ -736,14 +821,14 @@ class TrainAE:
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
 
-        if (
-                self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:  # or warmup_counter == 100:
+        if (self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:
             # When the warnup counter gets to
             values = log_traces(traces, values)
             if self.args.early_warmup_stop != 0:
                 try:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                except:
+                except Exception as e:
+                    print(f"Error loading model: {e}")
                     pass
             print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
             warmup = False
@@ -754,7 +839,8 @@ class TrainAE:
             if self.args.early_warmup_stop != 0:
                 try:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
-                except:
+                except Exception as e:
+                    print(f"Error loading model: {e}")
                     pass
             print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
             values = log_traces(traces, values)
@@ -784,7 +870,7 @@ class TrainAE:
             self.warmup_b_counter += 1
         else:
             self.warmup_disc_b = False
-        
+
         return 1
 
     def freeze_all_but_clayers(self, ae):
@@ -825,7 +911,7 @@ class TrainAE:
     #                 for i in n.modules():
     #                     if isinstance(i, KANLinear):
     #                         i.prune_neurons(threshold)
-    
+
     def count_neurons(self, ae):
         """
         Count the number of neurons in the autoencoder
@@ -844,13 +930,13 @@ class TrainAE:
                             i.count_active_neurons()
         return neurons
 
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_recs', type=int, default=0)  # TODO to deprecate, no longer used
     parser.add_argument('--predict_tests', type=int, default=0)
-    # parser.add_argument('--balanced_rec_loader', type=int, default=0)
     parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=-1)
     parser.add_argument('--train_after_warmup', type=int, default=0)
@@ -862,23 +948,16 @@ if __name__ == "__main__":
     parser.add_argument('--tied_weights', type=int, default=0)
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
-    parser.add_argument('--zinb', type=int, default=0) # TODO resolve problems, do not use
-    # parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
-    # parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
+    parser.add_argument('--zinb', type=int, default=0)  # TODO resolve problems, do not use
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
-    # parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
-    # parser.add_argument('--freeze_ae', type=int, default=0)
-    # parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
-    parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
+    parser.add_argument('--dloss', type=str, default='inverseTriplet')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
-    parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)
     parser.add_argument('--n_meta', type=int, default=0)
     parser.add_argument('--embeddings_meta', type=int, default=0)
-    parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
@@ -898,7 +977,8 @@ if __name__ == "__main__":
             # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),
             # tags={"version": "v1", "priority": "P1"},
         )
-    except:
+    except Exception as e:
+        print(f"Error creating experiment: {e}")
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
     train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
                     log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
@@ -938,6 +1018,4 @@ if __name__ == "__main__":
         minimize=False,
         total_trials=args.n_trials,
         random_seed=41,
-
     )
-

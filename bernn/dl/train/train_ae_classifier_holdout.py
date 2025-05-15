@@ -1,18 +1,10 @@
 #!/usr/bin/python3
 
 import os
-NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
-NEPTUNE_PROJECT_NAME = "BERNN"
-
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
-
-matplotlib.use('Agg')
-CUDA_VISIBLE_DEVICES = ""
-
 import uuid
 import shutil
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -22,7 +14,6 @@ import copy
 import torch
 # torch.set_default_dtype(torch.float64)
 from torch import nn
-
 # from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
@@ -41,6 +32,10 @@ import neptune
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
 
+matplotlib.use('Agg')
+CUDA_VISIBLE_DEVICES = ""
+NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
+NEPTUNE_PROJECT_NAME = "BERNN"
 
 # import StratifiedGroupKFold
 # from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
@@ -73,6 +68,7 @@ def keep_top_features(data, path, args):
 
     return data
 
+
 def binarize_labels(data, controls):
     """
     Binarizes the labels to be used in the classification loss
@@ -87,6 +83,7 @@ def binarize_labels(data, controls):
         data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
         data['cats'][group] = data['labels'][group]
     return data
+
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
     """
@@ -147,7 +144,8 @@ class TrainAEClassifierHoldout(TrainAE):
         """
 
         super(TrainAEClassifierHoldout, self).__init__(args, path, fix_thres, load_tb, log_metrics, keep_models,
-                                                       log_inputs, log_plots, log_tb, log_neptune, log_mlflow, groupkfold, pools)
+                                                       log_inputs, log_plots, log_tb, log_neptune, log_mlflow, 
+                                                       groupkfold, pools)
 
     def train(self, params):
         """
@@ -176,7 +174,7 @@ class TrainAEClassifierHoldout(TrainAE):
             params['thres'] = self.fix_thres
         else:
             params['thres'] = 0
-        if not self.args.kan or not self.args.use_l1 :
+        if not self.args.kan or not self.args.use_l1:
             params['reg_entropy'] = 0
         if not self.args.use_l1:
             params['l1'] = 0

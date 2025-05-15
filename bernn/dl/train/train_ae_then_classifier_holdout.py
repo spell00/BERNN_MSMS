@@ -46,6 +46,37 @@ np.random.seed(1)
 
 from bernn.dl.train.train_ae import TrainAE
 
+
+def keep_top_features(data, path, args):
+    """
+    Keeps the top features according to the precalculated scores
+    Args:
+        data: The data to be used to keep the top features
+
+    Returns:
+        data: The data with only the top features
+    """
+    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
+    for group in ['all', 'train', 'valid', 'test']:
+        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
+
+    return data
+
+def binarize_labels(data, controls):
+    """
+    Binarizes the labels to be used in the classification loss
+    Args:
+        labels: The labels to be binarized
+        controls: The control labels
+
+    Returns:
+        labels: The binarized labels
+    """
+    for group in ['all', 'train', 'valid', 'test']:
+        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+        data['cats'][group] = data['labels'][group]
+    return data
+
 def log_num_neurons(run, n_neurons, init_n_neurons):
     """
     Log the number of neurons in the model to Neptune.
@@ -76,6 +107,7 @@ def log_num_neurons(run, n_neurons, init_n_neurons):
             run[f"n_neurons/{layer_key}/relative_{sublayer}"].log(count / init_count)
         except (KeyError, ZeroDivisionError):
             pass
+
 
 class TrainAEThenClassifierHoldout(TrainAE):
     """
@@ -148,7 +180,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
         # params['margin'] = 0
         # params['wd'] = 0
         print(params)
-
         # Assigns the hyperparameters getting optimized
         smooth = params['smoothing']
         layer1 = params['layer1']
@@ -327,6 +358,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
             else:
                 self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
                 self.pools = self.args.pool
+            if self.args.best_features_file != '':
+                self.data = keep_top_features(self.data, self.path, self.args)
+            if self.args.controls != '':
+                self.data = binarize_labels(self.data, self.args.controls)
+                self.unique_labels = np.unique(self.data['labels']['all'])
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                 np.unique(self.data['batches']['valid']),
@@ -803,22 +839,15 @@ if __name__ == "__main__":
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
     parser.add_argument('--zinb', type=int, default=0) # TODO resolve problems, do not use
-    # parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
-    # parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
-    # parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
-    # parser.add_argument('--freeze_ae', type=int, default=0)
-    # parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
-    parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)
     parser.add_argument('--n_meta', type=int, default=0)
     parser.add_argument('--embeddings_meta', type=int, default=0)
-    parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
@@ -829,7 +858,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
-    parser.add_argument('--kan', type=int, default=1, help='')
+    # parser.add_argument('--kan', type=int, default=1, help='')
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
@@ -838,6 +867,56 @@ if __name__ == "__main__":
     parser.add_argument('--prune_network', type=float, default=1, help='')
 
     args = parser.parse_args()
+
+    # Replace argparse with a simple class to simulate arguments
+    class Args:
+        def __init__(self):
+            self.csv_file = 'adenocarcinoma_data.csv'
+            self.path = './data'
+            self.exp_id = 'default_ae_then_classifier'
+            # self.random_recs = 0  # TODO to deprecate, no longer used
+            # self.predict_tests = 0
+            # self.balanced_rec_loader = 0
+            # self.early_stop = 50
+            # self.early_warmup_stop = -1
+            # self.train_after_warmup = 0
+            # self.threshold = 0.0
+            # self.n_epochs = 1000
+            # self.n_trials = 100
+            # self.device = 'cuda:0'
+            # self.rec_loss = 'l1'
+            # self.tied_weights = 0
+            # self.random = 1
+            # self.variational = 0
+            # self.zinb = 0  # TODO resolve problems, do not use
+            # self.use_mapping = 1  # Use batch mapping for reconstruct
+            # self.bdisc = 1
+            # self.n_repeats = 5
+            # self.dloss = 'inverseTriplet'  # one of revDANN, DANN, inverseTriplet, revTriplet
+            # self.best_features_file = ''  # best_unique_genes.tsv
+            # self.bad_batches = ''  # 0;23;22;21;20;19;18;17;16;15
+            # self.remove_zeros = 0
+            # self.n_meta = 0
+            # self.embeddings_meta = 0
+            # self.features_to_keep = 'features_proteins.csv'
+            self.groupkfold = 1
+            # self.dataset = 'alzheimer'
+            # self.bs = 32  # Batch size
+            # self.exp_id = 'default_ae_then_classifier'
+            # self.strategy = 'CU_DEM'  # only for Alzheimer dataset
+            # self.n_agg = 5  # Number of trailing values to get stable valid values
+            # self.n_layers = 2  # N layers for classifier
+            # self.log1p = 1  # log1p the data? Should be 0 with zinb
+            # self.pool = 1  # only for Alzheimer dataset
+            # self.kan = 1
+            # self.update_grid = 1
+            # self.use_l1 = 1
+            # self.clip_val = 1.0
+            self.log_metrics = 1
+            self.log_plots = 1
+            # self.prune_network = 1.0
+
+    args = Args()
 
     try:
         mlflow.create_experiment(
@@ -865,7 +944,7 @@ if __name__ == "__main__":
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 1000]},
-        {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
+        # {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         # {"name": "ncols", "type": "range", "bounds": [20, 10000]},

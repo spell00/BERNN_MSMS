@@ -29,9 +29,6 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
-# try:
-#     from umap import UMAP
-# except:
 from umap.umap_ import UMAP
 
 from sklearn.manifold import TSNE
