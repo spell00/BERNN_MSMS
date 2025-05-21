@@ -199,7 +199,7 @@ class Encoder3(nn.Module):
         device (str, optional): Device to use ('cuda' or 'cpu'). Defaults to 'cuda'.
     """
 
-    def __init__(self, in_shape: int, layers: list[int], dropout: float, device: str = 'cuda'):
+    def __init__(self, in_shape: int, layers: dict, dropout: float, device: str = 'cuda'):
         super(Encoder3, self).__init__()
 
         # Build the network layers
@@ -322,51 +322,62 @@ class Decoder3(nn.Module):
 
     Args:
         in_shape (int): Input dimension
-        layers (list[int]): List of layer sizes. The last value will be the output dimension.
+        layers (dict): Dictionary of layer configurations. Each key should be a layer name,
+                      and the value should be a dict with 'size' and optional 'dropout' keys.
+                      Example: {
+                          'layer1': {'size': 256, 'dropout': 0.2},
+                          'layer2': {'size': 512, 'dropout': 0.2},
+                          'output': {'size': 784}
+                      }
         n_batches (int): Number of batch categories. If > 0, batch information will be concatenated
                          at each layer.
-        dropout (float): Dropout probability
+        dropout (float): Default dropout probability if not specified in layer config
         device (str, optional): Device to use ('cuda' or 'cpu'). Defaults to 'cuda'.
     """
 
-    def __init__(self, in_shape: int, layers: list[int], n_batches: int,
+    def __init__(self, in_shape: int, layers: dict, n_batches: int,
                  dropout: float, device: str = 'cuda'):
         super(Decoder3, self).__init__()
 
         # Build the network layers
-        self.layers = nn.ModuleList()
+        self.layers = nn.ModuleDict()
         prev_size = in_shape
 
         # Add all layers except the last one
-        for layer_size in layers[:-1]:
+        for layer_name, layer_config in list(layers.items())[:-1]:
+            layer_size = layer_config['size']
+            layer_dropout = layer_config.get('dropout', dropout)
+
             # If we have batch information, add it to the input size
             if n_batches > 0:
-                self.layers.append(nn.Sequential(
+                self.layers[layer_name] = nn.Sequential(
                     nn.Linear(prev_size + n_batches, layer_size),
                     nn.BatchNorm1d(layer_size),
-                    nn.Dropout(dropout),
+                    nn.Dropout(layer_dropout),
                     nn.ReLU(),
-                ))
+                )
             else:
-                self.layers.append(nn.Sequential(
+                self.layers[layer_name] = nn.Sequential(
                     nn.Linear(prev_size, layer_size),
                     nn.BatchNorm1d(layer_size),
-                    nn.Dropout(dropout),
+                    nn.Dropout(layer_dropout),
                     nn.ReLU(),
-                ))
+                )
             prev_size = layer_size
 
         # Add the final layer without activation
+        final_layer_name = list(layers.keys())[-1]
+        final_layer_size = layers[final_layer_name]['size']
         if n_batches > 0:
-            self.layers.append(nn.Sequential(
-                nn.Linear(prev_size + n_batches, layers[-1]),
-                nn.BatchNorm1d(layers[-1]),
-            ))
+            self.layers[final_layer_name] = nn.Sequential(
+                nn.Linear(prev_size + n_batches, final_layer_size),
+                nn.BatchNorm1d(final_layer_size),
+            )
         else:
-            self.layers.append(nn.Sequential(
-                nn.Linear(prev_size, layers[-1]),
-                nn.BatchNorm1d(layers[-1]),
-            ))
+            self.layers[final_layer_name] = nn.Sequential(
+                nn.Linear(prev_size, final_layer_size),
+                nn.BatchNorm1d(final_layer_size),
+            )
 
         self.n_batches = n_batches
         self.random_init()
@@ -379,9 +390,9 @@ class Decoder3(nn.Module):
             batches (torch.Tensor, optional): Batch information tensor of shape (batch_size, n_batches)
 
         Returns:
-            torch.Tensor: Decoded representation of shape (batch_size, layers[-1])
+            torch.Tensor: Decoded representation of shape (batch_size, layers[-1]['size'])
         """
-        for layer in self.layers:
+        for layer in self.layers.values():
             if self.n_batches > 0 and batches is not None:
                 x = torch.cat((x, batches), dim=1)
             x = layer(x)
