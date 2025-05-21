@@ -33,6 +33,8 @@ from .pytorch.utils.utils import to_categorical, get_empty_traces, \
 from .pytorch.utils.loggings import make_data
 import mlflow
 import warnings
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+import uuid
 
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
@@ -42,6 +44,36 @@ warnings.filterwarnings("ignore")
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
+
+def keep_top_features(data, path, args):
+    """
+    Keeps the top features according to the precalculated scores
+    Args:
+        data: The data to be used to keep the top features
+
+    Returns:
+        data: The data with only the top features
+    """
+    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
+    for group in ['all', 'train', 'valid', 'test']:
+        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
+
+    return data
+
+def binarize_labels(data, controls):
+    """
+    Binarizes the labels to be used in the classification loss
+    Args:
+        labels: The labels to be binarized
+        controls: The control labels
+
+    Returns:
+        labels: The binarized labels
+    """
+    for group in ['all', 'train', 'valid', 'test']:
+        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+        data['cats'][group] = data['labels'][group]
+    return data
 
 
 class TrainAE:
@@ -96,6 +128,76 @@ class TrainAE:
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
         self.load_autoencoder()
+
+    def make_params(self, params):
+        # Fixing the hyperparameters that are not optimized
+        if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
+                                   'inverseTriplet', 'normae'] or 'gamma' not in params:
+            # gamma = 0 will ensure DANN is not learned
+            params['gamma'] = 0
+        if not self.args.variational or 'beta' not in params:
+            # beta = 0 because useless outside a variational autoencoder
+            params['beta'] = 0
+        if not self.args.zinb or 'zeta' not in params:
+            # zeta = 0 because useless outside a zinb autoencoder
+            params['zeta'] = 0
+        if 1 > self.fix_thres >= 0:
+            # fixes the threshold of 0s tolerated for a feature
+            params['thres'] = self.fix_thres
+        else:
+            params['thres'] = 0
+        if not self.args.kan or not self.args.use_l1:
+            params['reg_entropy'] = 0
+        if not self.args.use_l1:
+            params['l1'] = 0
+        if not self.args.prune_network:
+            params['prune_threshold'] = 0
+        if params['prune_threshold'] > 0:
+            params['dropout'] = 0
+
+        print(params)
+
+        # Assigns the hyperparameters getting optimized
+        # scale = params['scaler']
+        self.gamma = params['gamma']
+        self.beta = params['beta']
+        self.zeta = params['zeta']
+        self.l1 = params['l1']
+        self.reg_entropy = params['reg_entropy']
+        self.args.scaler = params['scaler']
+        self.args.warmup = params['warmup']
+        self.args.disc_b_warmup = params['disc_b_warmup']
+        self.foldername = str(uuid.uuid4())
+        self.complete_log_path = f'logs/ae_classifier_holdout/{self.foldername}'
+        self.hparams_filepath = self.complete_log_path + '/hp'
+
+        return params
+
+    def get_data(self, seed):
+        """
+        Splits the data into train, valid and test sets
+        """
+        if self.args.dataset == 'alzheimer':
+            self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
+            self.pools = True
+        elif self.args.dataset in ['amide', 'adenocarcinoma']:
+            self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
+            self.pools = True
+
+        elif self.args.dataset == 'mice':
+            # This seed split the data to have n_samples in train: 96, valid:52, test: 23
+            self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
+        elif self.args.dataset == 'multi':
+            self.data, self.unique_labels, self.unique_batches = get_data3(self.path, self.args, seed=seed)
+            self.pools = self.args.pool
+        else:
+            self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
+            self.pools = self.args.pool
+        if self.args.best_features_file != '':
+            self.data = keep_top_features(self.data, self.path, self.args)
+        if self.args.controls != '':
+            self.data = binarize_labels(self.data, self.args.controls)
+            self.unique_labels = np.unique(self.data['labels']['all'])
 
     def default_params(self):
         """Initialize default parameters for the training process."""
@@ -178,7 +280,7 @@ class TrainAE:
             return updated_params
 
     def make_samples_weights(self):
-        self.n_batches = len(set(self.data['batches']['all']))
+        self.n_batches = len(set(np.concatenate((self.data['batches']['all'], self.data['batches']['urinespositives']))))
         self.class_weights = {
             label: 1 / (len(np.where(label == self.data['labels']['train'])[0]) /
                         self.data['labels']['train'].shape[0])
@@ -420,13 +522,16 @@ class TrainAE:
                 preds = ae.classifier(enc)
 
             domain_preds = ae.dann_discriminator(enc)
-            try:
+            if torch.all(labels < self.n_cats):
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
                 classif_loss = celoss(preds, cats)
-            except Exception as e:
-                print(f"Error in classif_loss: {e}")
-                cats = torch.Tensor([self.n_cats + 1 for _ in labels])
-                classif_loss = torch.Tensor([0])
+            else:
+                # print("Error in classif_loss: labels out of bounds")
+                # Create a tensor of zeros with the correct shape and device
+                cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
+                # Set the first class as 1 for all samples
+                cats[:, 0] = 1
+                classif_loss = celoss(preds, cats)
 
             if not self.args.zinb:
                 if isinstance(rec, list):
@@ -667,7 +772,7 @@ class TrainAE:
         Returns:
 
         """
-        try:
+        if hasattr(model.classifier.layers, 'layer2'):
             l1_loss = sum(
                 layer.regularization_loss(l1, reg_entropy) for layer in [
                     model.enc.layers.layer1[0], model.enc.layers.layer2[0],
@@ -676,8 +781,7 @@ class TrainAE:
                     model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
                     ]
             )
-        except Exception as e:
-            print(f"Error in reg_kan: {e}")
+        else:
             l1_loss = sum(
                 layer.regularization_loss(l1, reg_entropy) for layer in [
                     model.enc.layers.layer1[0], model.enc.layers.layer2[0],
@@ -693,7 +797,7 @@ class TrainAE:
             pass
         return l1_loss
 
-    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, best_loss, warmup, epoch,
+    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,
                     optimizer_b, values, loggers, loaders, run, mapping=True):
         lists, traces = get_empty_traces()
         ae.train()

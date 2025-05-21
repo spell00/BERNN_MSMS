@@ -110,7 +110,7 @@ class MSDataset3(Dataset):
                 not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
             ind = np.random.randint(0, self.n_labels[not_label])
             not_to_rec = self.labels_data[not_label][ind].copy()
-            meta_not_to_rec = self.labels_meta_data[not_label][ind].copy()
+            # meta_not_to_rec = self.labels_meta_data[not_label][ind].copy()
             meta_to_rec = self.meta[idx]
         else:
             to_rec = self.samples[idx].copy()
@@ -315,7 +315,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
                           data['cats']['test'], [x for x in data['batches']['test']], [x for x in data['sets']['test']],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set2 = MSDataset3(data['inputs']['test'][0][0], data['meta']['test'], data['names']['test'].to_numpy(),
+    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
                            data['cats']['test'], [x for x in data['batches']['test']],
                            [x for x in data['sets']['test']], transform=transform, crop_size=-1, random_recs=False,
                            triplet_dloss=triplet_dloss)
@@ -925,6 +925,160 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                             pin_memory=False,
                             drop_last=False),
 
+        'test2': DataLoader(test_set2,
+                            num_workers=0,
+                            shuffle=True,
+                            batch_size=bs,
+                            pin_memory=False,
+                            drop_last=True),
+        'valid2': DataLoader(valid_set2,
+                             num_workers=0,
+                             shuffle=True,
+                             batch_size=bs,
+                             pin_memory=False,
+                             drop_last=True)
+    }
+
+    # TODO NOT MODIFIED FOR POOLS
+    if ae is not None:
+        valid_cats = []
+        test_cats = []
+        valid_names = []
+        test_names = []
+        ae.eval()
+        classifier.eval()
+        for i, batch in enumerate(loaders['valid']):
+            # optimizer_ae.zero_grad()
+            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input[torch.isnan(input)] = 0
+            input = input.to(device).float()
+            enc, rec, _, kld = ae(input, domain, sampling=False)
+            preds = ae.classifier(enc)
+            domain_preds = ae.dann_discriminator(enc)
+            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_names += [names]
+        for i, batch in enumerate(loaders['test']):
+            # optimizer_ae.zero_grad()
+            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input[torch.isnan(input)] = 0
+            input = input.to(device).float()
+            # to_rec = to_rec.to(device).float()
+            enc, rec, _, kld = ae(input, domain, sampling=False)
+            # if self.one_model:
+            preds = ae.classifier(enc)
+            domain_preds = ae.dann_discriminator(enc)
+            # else:
+            #     preds = classifier(enc)
+            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_names += [names]
+
+        valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
+                                [x for x in data['batches']['valid']], sets=data['sets']['valid'], transform=transform,
+                                crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
+        test_set2 = MSDataset3(data['inputs']['test'], test_names, np.concatenate(test_cats),
+                               [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                               crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
+        loaders['valid2'] = DataLoader(valid_set2,
+                                       num_workers=0,
+                                       shuffle=True,
+                                       batch_size=bs,
+                                       pin_memory=False,
+                                       drop_last=True)
+        loaders['test2'] = DataLoader(test_set2,
+                                      num_workers=0,
+                                      shuffle=True,
+                                      batch_size=bs,
+                                      pin_memory=False,
+                                      drop_last=True)
+        all_cats = np.concatenate(
+            (data['cats']['train'], np.stack(valid_cats).reshape(-1), np.stack(test_cats).reshape(-1)))
+        all_names = np.concatenate(
+            (data['names']['train'], np.stack(valid_names).reshape(-1), np.stack(test_names).reshape(-1)))
+        all_set = MSDataset3(data['inputs']['all'], all_names, all_cats, [x for x in data['time']['all']],
+                             sets=data['sets']['all'], transform=transform, crop_size=-1, random_recs=random_recs,
+                             triplet_dloss=triplet_dloss)
+
+    else:
+        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+                             [x for x in data['batches']['all']], sets=data['sets']['all'], transform=transform,
+                             crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+
+    loaders['all'] = DataLoader(all_set,
+                                num_workers=0,
+                                shuffle=True,
+                                batch_size=bs,
+                                pin_memory=False,
+                                drop_last=True)
+
+    return loaders
+
+
+def get_loaders_bacteria(data, random_recs, samples_weights, triplet_dloss, ae=None, classifier=None, bs=64,
+                         device='cuda'):
+    """
+
+    Args:
+        data:
+        ae:
+        classifier:
+
+    Returns:
+
+    """
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        # torchvision.transforms.Normalize(0.5, 0.5),
+    ])
+
+    train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'],
+                           data['cats']['train'], [x for x in data['batches']['train']], sets=data['sets']['all'],
+                           transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
+    valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
+                           data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    upos_set = MSDataset3(data['inputs']['urinespositives'], data['meta']['urinespositives'], data['names']['urinespositives'],
+                         data['cats']['urinespositives'], [x for x in data['batches']['urinespositives']], sets=data['sets']['urinespositives'],
+                         transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
+                            data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+                          [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                          crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+                           [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
+                           crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
+
+    loaders = {
+        'train': DataLoader(train_set,
+                            num_workers=0,
+                            # shuffle=True,
+                            sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
+                                                          replacement=True),
+                            batch_size=bs,
+                            pin_memory=False,
+                            drop_last=True),
+
+        'test': DataLoader(test_set,
+                           num_workers=0,
+                           sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
+                                                         replacement=False),
+                           batch_size=bs,
+                           pin_memory=False,
+                           drop_last=False),
+        'valid': DataLoader(valid_set,
+                            num_workers=0,
+                            sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
+                                                          replacement=False),
+                            batch_size=bs,
+                            pin_memory=False,
+                            drop_last=False),
+        'urinespositives': DataLoader(upos_set,
+                                      num_workers=0,
+                                      shuffle=True,
+                                      batch_size=bs,
+                                      pin_memory=False,
+                                      drop_last=True),
         'test2': DataLoader(test_set2,
                             num_workers=0,
                             shuffle=True,

@@ -435,8 +435,8 @@ def log_explainer(model, x_df, labels, group, run, cats, log_path, device):
         shap_values_df = pd.DataFrame(shap_values[i].data.reshape(1, -1), columns=x_df.columns)
         try:
             shap_values_df.to_csv(f"{log_path}/{group}_permutation_shap_{label}.csv")
-        except:
-            pass
+        except Exception as e:
+            print("log_explainer", e)
 
     make_barplot(x_df, labels, shap_values[:, :, 0], group, run, 'Kernel')
 
@@ -462,7 +462,8 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
     make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
     make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
     make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
+    make_decision_deep(explainer.expected_value[0], shap_values[0],
+                       misclassified, x_df.columns, group, run, 'DeepExplainer')
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):
@@ -470,13 +471,13 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
         shap_values_df = pd.DataFrame(shap_values[i], columns=x_df.columns, index=x_df.index)
         try:
             shap_values_df.to_csv(f"{log_path}/{group}_deep_shap_{label}.csv")
-        except:
-            pass
+        except Exception as e:
+            print("log_deep_explainer", e)
 
     try:
         make_dependence_plot(x_df, shap_values, 'APOE', group, run, log_path, 'DeepExplainer', mlops)
-    except:
-        pass
+    except Exception as e:
+        print("log_deep_explainer", e)
 
     # mask = np.array([np.argwhere(x[0] == 1)[0][0] for x in cats])
     # make_group_difference_plot(x_df, mask, group, run, 'DeepExplainer')
@@ -485,13 +486,14 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
 def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, log_path):
     unique_labels = np.unique(labels)
 
-    f = lambda x: model.to('cpu')(torch.from_numpy(x)).detach().cpu().numpy()
+    def model_to_numpy(x):
+        return model.to('cpu')(torch.from_numpy(x)).detach().cpu().numpy()
 
     # Convert my pandas dataframe to numpy
     data = x_df.to_numpy(dtype=np.float32)
 
     # The explainer doesn't like tensors, hence the f function
-    explainer = shap.KernelExplainer(f, data)
+    explainer = shap.KernelExplainer(model_to_numpy, data)
 
     # Get the shap values from my test data
     df = pd.DataFrame(data, columns=x_df.columns)
@@ -525,11 +527,11 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
                 # np.concatenate(best_lists[group]['age']).reshape(-1, 1),
                 # np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
             ), 1)
-            X_test = torch.Tensor(X).to(device)
+            # X_test = torch.Tensor(X).to(device)
             X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
         else:
             X = np.concatenate(best_lists[group]['inputs'])
-            X_test = torch.Tensor(X).to(device)
+            # X_test = torch.Tensor(X).to(device)
             X_test_df = pd.DataFrame(X, columns=list(cols))
 
         # explainer = shap.DeepExplainer(ae, X_test)
@@ -539,41 +541,72 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
                                                               np.concatenate(best_lists[group]['cats']).argmax(1))]
         try:
             log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
-                           group, run, best_lists[group]['cats'], log_path, mlops, device
-                           )
-        except:
+                               group, run, best_lists[group]['cats'], log_path, mlops, device
+                               )
+        except Exception as e:
+            print("log_shap", e)
             pass
         if not log_deep_only:
             # TODO Problem with not enough memory...
             try:
                 log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
-                          group, run, best_lists[group]['cats'], log_path, device
-                          )
-            except:
+                              group, run, best_lists[group]['cats'], log_path, device
+                              )
+            except Exception as e:
+                print("log_shap", e)
                 pass
             try:
                 log_kernel_explainer(ae, X_test_df,
-                                 misclassified,
-                                 np.concatenate(best_lists[group]['labels']),
-                                 group, run, best_lists[group]['cats'], log_path
-                                 )
-            except:
+                                     misclassified,
+                                     np.concatenate(best_lists[group]['labels']),
+                                     group, run, best_lists[group]['cats'], log_path
+                                     )
+            except Exception as e:
+                print("log_shap", e)
                 pass
+
 
 def log_neptune(run, traces):
     if 'rec_loss' in traces:
-        if not np.isnan(traces['rec_loss']):
-            try:
-                run["rec_loss"].log(traces['rec_loss'])
-            except:
-                print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
-        if not np.isnan(traces['dom_loss']):
-            run["dom_loss"].log(traces['dom_loss'])
-        if not np.isnan(traces['dom_acc']):
-            try:
-                run["dom_acc"].log(traces['dom_acc'])
-            except:
-                run["dom_acc"].log(traces['dom_acc'][0])
+        if isinstance(traces['rec_loss'], (list, np.ndarray)):
+            if len(traces['rec_loss']) > 0:
+                if not np.isnan(traces['rec_loss'][-1]):
+                    try:
+                        run["rec_loss"].log(traces['rec_loss'])
+                    except Exception as e:
+                        print("log_neptune", e)
+                        print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+        else:
+            if not np.isnan(traces['rec_loss']):
+                try:
+                    run["rec_loss"].log(traces['rec_loss'])
+                except Exception as e:
+                    print("log_neptune", e)
+                    print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+
+        if isinstance(traces['dom_loss'], (list, np.ndarray)):
+            if len(traces['dom_loss']) > 0:
+                if not np.isnan(traces['dom_loss'][-1]):
+                    run["dom_loss"].log(traces['dom_loss'])
+        else:
+            if not np.isnan(traces['dom_loss']):
+                run["dom_loss"].log(traces['dom_loss'])
+
+        if isinstance(traces['dom_acc'], (list, np.ndarray)):
+            if len(traces['dom_acc']) > 0:
+                if not np.isnan(traces['dom_acc'][-1]):
+                    try:
+                        run["dom_acc"].log(traces['dom_acc'])
+                    except Exception as e:
+                        print("log_neptune", e)
+                        run["dom_acc"].log(traces['dom_acc'][0])
+        else:
+            if not np.isnan(traces['dom_acc']):
+                try:
+                    run["dom_acc"].log(traces['dom_acc'])
+                except Exception as e:
+                    print("log_neptune", e)
+                    run["dom_acc"].log(traces['dom_acc'])
 
     # tf.summary.scalar('qc_aPCC', metrics['pool_metrics']['encoded']['all']['qc_aPCC'], step=1)
     # tf.summary.scalar('qc_aPCC_input', metrics['pool_metrics']['inputs']['all']['qc_aPCC'], step=1)
@@ -582,14 +615,15 @@ def log_neptune(run, traces):
     # tf.summary.scalar('qc_dist_input', metrics['pool_metrics']['inputs']['all']['qc_dist'], step=1)
     # tf.summary.scalar('qc_dist_rec', metrics['pool_metrics']['recs']['all']['qc_dist'], step=1)
 
-    for g in ['train', 'valid', 'test']:
-        run[f'{g}/loss'].log(traces[f'{g}_loss'])
-        run[f'{g}/acc'].log(traces[f'{g}_acc'])
-        run[f'{g}/top3'].log(traces[f'{g}_top3'])
-        run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
+    if 'train_loss' in traces:
+        for g in ['train', 'valid', 'test']:
+            run[f'{g}/loss'].log(traces[f'{g}_loss'])
+            run[f'{g}/acc'].log(traces[f'{g}_acc'])
+            run[f'{g}/top3'].log(traces[f'{g}_top3'])
+            run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
     for rep in ['enc', 'rec']:
         for g in ['all', 'train', 'valid', 'test']:
-            try:
+            if 'enc b_euclidean/tot_eucl' in traces:
                 run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
                 run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
                 run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
@@ -598,8 +632,6 @@ def log_neptune(run, traces):
                 run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
                 run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
                 run['rec batch_entropy'].log(traces['rec batch_entropy']),
-            except:
-                pass
 
 
 def log_mlflow(traces, step):
@@ -607,14 +639,16 @@ def log_mlflow(traces, step):
         if not np.isnan(traces['rec_loss']):
             try:
                 mlflow.log_metric("rec_loss", traces['rec_loss'], step)
-            except:
+            except Exception as e:
+                print('log_mlflow', e)
                 print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
         if not np.isnan(traces['dom_loss']):
             mlflow.log_metric("dom_loss", traces['dom_loss'], step)
         if not np.isnan(traces['dom_acc']):
             try:
                 mlflow.log_metric("dom_acc", traces['dom_acc'], step)
-            except:
+            except Exception as e:
+                print('log_mlflow', e)
                 mlflow.log_metric("dom_acc", traces['dom_acc'], step)
 
     # tf.summary.scalar('qc_aPCC', metrics['pool_metrics']['encoded']['all']['qc_aPCC'], step=1)
@@ -633,15 +667,28 @@ def log_mlflow(traces, step):
         for g in ['all', 'train', 'valid', 'test']:
             try:
                 mlflow.log_metric(f"{rep} {g} batch_entropy", traces['batches'][g]['batch_entropy'][rep]['domains'][-1], step)
-                mlflow.log_metric(f"{rep} {g} adjusted_rand_score", traces['batches'][g]['adjusted_rand_score'][rep]['domains'][-1], step)
-                mlflow.log_metric(f"{rep} {g} adjusted_mutual_info_score", traces['batches'][g]['adjusted_mutual_info_score'][rep]['domains'][-1], step)
-                mlflow.log_metric(f"{rep} {g} b_euclidean/tot_eucl", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
-                mlflow.log_metric(f"{rep} {g} qc_dist/tot_eucl", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
-                mlflow.log_metric(f"{rep} {g} qc_aPCC", traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
-                mlflow.log_metric(f"{rep} {g} silhouette", traces['batches'][g]['silhouette'][rep]['domains'][-1], step)
+                mlflow.log_metric(f"{rep} {g} adjusted_rand_score",
+                                  traces['batches'][g]['adjusted_rand_score'][rep]['domains'][-1], step)
+                mlflow.log_metric(
+                    f"{rep} {g} adjusted_mutual_info_score",
+                    traces['batches'][g]['adjusted_mutual_info_score'][rep]['domains'][-1], step
+                )
+                mlflow.log_metric(
+                    f"{rep} {g} b_euclidean/tot_eucl",
+                    traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
+                mlflow.log_metric(
+                    f"{rep} {g} qc_dist/tot_eucl",
+                    traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
+                mlflow.log_metric(
+                    f"{rep} {g} qc_aPCC",
+                    traces['pool_metrics'][rep][g]['[b_euclidean/tot_eucl]'], step)
+                mlflow.log_metric(
+                    f"{rep} {g} silhouette",
+                    traces['batches'][g]['silhouette'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} lisi", traces['batches'][g]['lisi'][rep]['domains'][-1], step)
                 mlflow.log_metric(f"{rep} {g} kbet", traces['batches'][g]['kbet'][rep]['domains'][-1], step)
-            except:
+            except Exception as e:
+                print('log_mlflow', e)
                 pass
 
 
@@ -654,7 +701,7 @@ def get_metrics(lists, values, model):
     from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
     from bernn.dl.models.pytorch.utils.metrics import rKBET, rLISI
     from sklearn.neighbors import KNeighborsClassifier
-    
+
     knns = {info: {repres: KNeighborsClassifier(n_neighbors=20) for repres in ['set', 'domains', 'labels', 'times']} for
             info in ['enc', 'rec', 'inputs']}
     # classes = []
@@ -701,8 +748,8 @@ def get_metrics(lists, values, model):
                         np.concatenate(lists[group]['inputs']),
                         np.concatenate(lists[group]['classes'])
                     )
-                except:
-                    pass
+                except Exception as e:
+                    print('get_metrics', e)
 
             lists[group]['domain_proba'] = knns['inputs']['domains'].predict_proba(
                 np.concatenate(lists[group]['inputs']),

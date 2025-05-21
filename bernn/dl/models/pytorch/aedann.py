@@ -855,8 +855,7 @@ class SHAPAutoEncoder3(nn.Module):
         mean = mean * scale_factor
 
         t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (
-                    x * (torch.log(disp + eps) - torch.log(mean + eps)))
+        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
         nb_final = t1 + t2
 
         nb_case = nb_final - torch.log(1.0 - pi + eps)
@@ -872,7 +871,7 @@ class SHAPAutoEncoder3(nn.Module):
 
 
 class AutoEncoder3(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layer1, layer2, layer3, dropout, zinb=False,
+    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layers, dropout, n_layers, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
         super(AutoEncoder3, self).__init__()
         self.add_noise = add_noise
@@ -884,22 +883,22 @@ class AutoEncoder3(nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
-        self.enc = Encoder3(in_shape + n_meta, layer1, layer2, layer3, dropout)
+        self.enc = Encoder2(in_shape + n_meta, layers['layer1'], layers['layer2'], dropout)
         if conditional:
-            self.dec = Decoder3(in_shape + n_meta, n_batches, layer3, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape + n_meta, n_batches, layers['layer2'], layers['layer1'], dropout)
         else:
-            self.dec = Decoder3(in_shape + n_meta, 0, layer3, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer3)
+            self.dec = Decoder2(in_shape + n_meta, 0, layers['layer2'], layers['layer1'], dropout)
+        self.mapper = Classifier(n_batches + 1, layers['layer2'])
 
         if variational:
-            self.gaussian_sampling = GaussianSample(layer3, layer3, device)
+            self.gaussian_sampling = GaussianSample(layers['layer2'], layers['layer2'], device)
         else:
             self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(layer3, 64, n_batches)
-        self.classifier = Classifier(layer3 + n_emb, nb_classes)
-        self._dec_mean = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer2, in_shape + n_meta), nn.Sigmoid())
+        self.dann_discriminator = Classifier2(layers['layer2'], 64, n_batches)
+        self.classifier = Classifier(layers['layer2'] + n_emb, nb_classes, n_layers=n_layers)
+        self._dec_mean = nn.Sequential(nn.Linear(layers['layer1'], in_shape + n_meta), MeanAct())
+        self._dec_disp = nn.Sequential(nn.Linear(layers['layer1'], in_shape + n_meta), DispAct())
+        self._dec_pi = nn.Sequential(nn.Linear(layers['layer1'], in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0):

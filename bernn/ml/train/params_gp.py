@@ -10,7 +10,7 @@ Created on Fri May 28 2021
 from sklearn.ensemble import RandomForestClassifier
 # from sklearn.linear_model import LogisticRegression, SGDClassifier
 # from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.svm import LinearSVC # , SVC, NuSVC
+from sklearn.svm import LinearSVC  # , SVC, NuSVC
 from skopt.space import Real, Integer, Categorical
 
 sgd_space = [

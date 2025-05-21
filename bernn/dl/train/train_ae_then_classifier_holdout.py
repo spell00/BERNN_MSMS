@@ -1,14 +1,8 @@
 #!/usr/bin/python3
 
 import os
-NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
-NEPTUNE_PROJECT_NAME = "BERNN"
-
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
-
-matplotlib.use('Agg')
-CUDA_VISIBLE_DEVICES = ""
 
 import uuid
 import shutil
@@ -17,17 +11,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
-import json
 import copy
 import torch
 from torch import nn
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+from bernn.ml.train.params_gp import linsvc_space
+# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
-from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination, log_neptune
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
 from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
@@ -37,14 +30,18 @@ import neptune
 import mlflow
 import warnings
 from datetime import datetime
+from bernn.dl.train.train_ae import TrainAE
+
+matplotlib.use('Agg')
+CUDA_VISIBLE_DEVICES = ""
+NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
+NEPTUNE_PROJECT_NAME = "BERNN"
 
 warnings.filterwarnings("ignore")
 
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
-
-from bernn.dl.train.train_ae import TrainAE
 
 
 def keep_top_features(data, path, args):
@@ -62,6 +59,7 @@ def keep_top_features(data, path, args):
 
     return data
 
+
 def binarize_labels(data, controls):
     """
     Binarizes the labels to be used in the classification loss
@@ -76,6 +74,7 @@ def binarize_labels(data, controls):
         data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
         data['cats'][group] = data['labels'][group]
     return data
+
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
     """
@@ -154,7 +153,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
         start_time = datetime.now()
         # Fixing the hyperparameters that are not optimized
         if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
-                                                          'inverseTriplet', 'normae'] or 'gamma' not in params:
+                                   'inverseTriplet', 'normae'] or 'gamma' not in params:
             # gamma = 0 will ensure DANN is not learned
             params['gamma'] = 0
         if not self.args.variational or 'beta' not in params:
@@ -175,10 +174,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             params['reg_entropy'] = 0
         if not self.args.use_l1:
             params['l1'] = 0
-        # params['dropout'] = 0
         params['smoothing'] = 0
-        # params['margin'] = 0
-        # params['wd'] = 0
         print(params)
         # Assigns the hyperparameters getting optimized
         smooth = params['smoothing']
@@ -188,7 +184,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
         gamma = params['gamma']
         beta = params['beta']
         zeta = params['zeta']
-        thres = params['thres']
         wd = params['wd']
         nu = params['nu']
         lr = params['lr']
@@ -222,10 +217,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                                          zinb=self.args.zinb,
                                                          tw=self.args.tied_weights,
                                                          dloss=self.args.dloss,
-                                                         tl=0, # to remove
+                                                         tl=0,  # to remove
                                                          pseudo=self.args.predict_tests,
                                                          train_after_warmup=self.args.train_after_warmup,
-                                                         berm='no', # to remove
+                                                         berm='no',  # to remove
                                                          args=self.args)
         if self.log_neptune:
             # Create a Neptune run object
@@ -345,28 +340,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
             best_dom_acc = np.inf
             best_acc = 0
             best_mcc = -np.inf
-            if self.args.dataset == 'alzheimer':
-                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
-                self.pools = True
-            elif self.args.dataset == 'amide':
-                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
-                self.pools = True
-
-            elif self.args.dataset == 'mice':
-                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
-                self.pools = False
-            else:
-                self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
-                self.pools = self.args.pool
-            if self.args.best_features_file != '':
-                self.data = keep_top_features(self.data, self.path, self.args)
-            if self.args.controls != '':
-                self.data = binarize_labels(self.data, self.args.controls)
-                self.unique_labels = np.unique(self.data['labels']['all'])
+            self.get_data(h)
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
-                                                np.unique(self.data['batches']['valid']),
-                                                np.unique(self.data['batches']['test']))))
+                                                   np.unique(self.data['batches']['valid']),
+                                                   np.unique(self.data['batches']['test']))))
                 seed += 1
                 if combination not in combinations:
                     combinations += [combination]
@@ -394,20 +372,20 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                               None, None, bs=8)
 
             ae = self.ae(data['inputs']['all'].shape[1],
-                             n_batches=self.n_batches,
-                             nb_classes=self.n_cats,
-                             mapper=self.args.use_mapping,
-                             layer1=layer1,
-                             layer2=layer2,
-                             n_layers=self.args.n_layers,
-                             n_meta=self.args.n_meta,
-                             n_emb=self.args.embeddings_meta,
-                             dropout=dropout,
-                             variational=self.args.variational, conditional=False,
-                             zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                             use_gnn=0,
-                             prune_threshold=params['prune_threshold'],
-                             device=self.args.device).to(self.args.device)
+                         n_batches=self.n_batches,
+                         nb_classes=self.n_cats,
+                         mapper=self.args.use_mapping,
+                         layer1=layer1,
+                         layer2=layer2,
+                         n_layers=self.args.n_layers,
+                         n_meta=self.args.n_meta,
+                         n_emb=self.args.embeddings_meta,
+                         dropout=dropout,
+                         variational=self.args.variational, conditional=False,
+                         zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                         use_gnn=0,
+                         prune_threshold=params['prune_threshold'],
+                         device=self.args.device).to(self.args.device)
             self.count_neurons(ae)
             ae.mapper.to(self.args.device)
             ae.dec.to(self.args.device)
@@ -417,19 +395,19 @@ class TrainAEThenClassifierHoldout(TrainAE):
             # if self.args.embeddings_meta > 0:
             #     n_meta = self.n_meta
             shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
-                                      n_batches=self.n_batches,
-                                      nb_classes=self.n_cats,
-                                      mapper=self.args.use_mapping,
-                                      layer1=layer1,
-                                      layer2=layer2,
-                                      n_layers=self.args.n_layers,
-                                      n_meta=self.args.n_meta,
-                                      n_emb=self.args.embeddings_meta,
-                                      dropout=dropout,
-                                      variational=self.args.variational, conditional=False,
-                                      zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                      use_gnn=0, # TODO parameter to be removed
-                                      device=self.args.device).to(self.args.device)
+                                   n_batches=self.n_batches,
+                                   nb_classes=self.n_cats,
+                                   mapper=self.args.use_mapping,
+                                   layer1=layer1,
+                                   layer2=layer2,
+                                   n_layers=self.args.n_layers,
+                                   n_meta=self.args.n_meta,
+                                   n_emb=self.args.embeddings_meta,
+                                   dropout=dropout,
+                                   variational=self.args.variational, conditional=False,
+                                   zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                   use_gnn=0, # TODO parameter to be removed
+                                   device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
@@ -447,7 +425,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 data['inputs']['all'].to_csv(
                     f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                 if self.log_neptune:
-                    run[f"inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
+                    run["inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                 log_input_ordination(loggers['logger'], data, self.scaler, epoch)
                 if self.pools:
                     metrics = log_pool_metrics(data['inputs'], data['batches'], data['labels'],

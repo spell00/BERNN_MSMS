@@ -6,7 +6,6 @@ from bernn.utils.pool_metrics import log_pool_metrics
 import uuid
 import shutil
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
 import random
 # import json
@@ -18,8 +17,7 @@ from torch import nn
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+from bernn.ml.train.params_gp import linsvc_space
 from bernn.dl.train.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
 from bernn.dl.train.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.train.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
@@ -51,38 +49,6 @@ warnings.filterwarnings("ignore")
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
-
-
-def keep_top_features(data, path, args):
-    """
-    Keeps the top features according to the precalculated scores
-    Args:
-        data: The data to be used to keep the top features
-
-    Returns:
-        data: The data with only the top features
-    """
-    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
-    for group in ['all', 'train', 'valid', 'test']:
-        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
-
-    return data
-
-
-def binarize_labels(data, controls):
-    """
-    Binarizes the labels to be used in the classification loss
-    Args:
-        labels: The labels to be binarized
-        controls: The control labels
-
-    Returns:
-        labels: The binarized labels
-    """
-    for group in ['all', 'train', 'valid', 'test']:
-        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
-        data['cats'][group] = data['labels'][group]
-    return data
 
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
@@ -147,6 +113,108 @@ class TrainAEClassifierHoldout(TrainAE):
                                                        log_inputs, log_plots, log_tb, log_neptune, log_mlflow, 
                                                        groupkfold, pools)
 
+
+    # TODO SHOULD BE IN PARENT CLASS
+    def launch_mlflow(self, params):
+        mlflow.set_experiment(
+            self.args.exp_id,
+        )
+        try:
+            mlflow.start_run()
+        except Exception as e:
+            print(f"Error starting mlflow run: {e}")
+            mlflow.end_run()
+            mlflow.start_run()
+        mlflow.log_params({
+            "inputs_type": self.args.csv_file.split(".csv")[0],
+            "best_unique": self.args.best_features_file.split(".tsv")[0],
+            "tied_weights": self.args.tied_weights,
+            "random_recs": self.args.random_recs,
+            "train_after_warmup": self.args.train_after_warmup,
+            "warmup_after_warmup": self.args.warmup_after_warmup,
+            "dloss": self.args.dloss,
+            "predict_tests": self.args.predict_tests,
+            "variational": self.args.variational,
+            "zinb": self.args.zinb,
+            "threshold": self.args.threshold,
+            "rec_loss_type": self.args.rec_loss,
+            "bad_batches": self.args.bad_batches,
+            "remove_zeros": self.args.remove_zeros,
+            "parameters": params,
+            "scaler": params['scaler'],
+            "csv_file": self.args.csv_file,
+            "model_name": self.args.model_name,
+            "n_meta": self.args.n_meta,
+            "n_emb": self.args.embeddings_meta,
+            "groupkfold": self.args.groupkfold,
+            "foldername": self.foldername,
+            "use_mapping": self.args.use_mapping,
+            "dataset_name": self.args.dataset,
+            "n_agg": self.args.n_agg,
+            "lr": params['lr'],
+            "wd": params['wd'],
+            "dropout": params['dropout'],
+            "margin": params['margin'],
+            "smooth": params['smoothing'],
+            "layer1": params['layer1'],
+            "layer2": params['layer2'],
+            "gamma": self.gamma,
+            "beta": self.beta,
+            "zeta": self.zeta,
+            "thres": params['thres'],
+            "nu": params['nu'],
+            "kan": self.args.kan,
+            "l1": self.l1,
+            "reg_entropy": self.reg_entropy,
+            "use_l1": self.args.use_l1,
+            "clip_val": self.args.clip_val,
+            "update_grid": self.args.update_grid,
+            "prune_threshold": self.args.prune_threshold,
+        })
+
+    # TODO SHOULD BE IN PARENT CLASS
+    def launch_neptune(self, params):
+        # Create a Neptune run object
+        run = neptune.init_run(
+            project=NEPTUNE_PROJECT_NAME,
+            api_token=NEPTUNE_API_TOKEN,
+        )  # your credentials
+        run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
+        run["metadata"].track_files(
+            f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
+        )
+        # Track metadata and hyperparameters by assigning them to the run
+        run["inputs_type"] = self.args.csv_file.split(".csv")[0]
+        run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
+        run["use_valid"] = self.args.use_valid
+        run["use_test"] = self.args.use_test
+        run["tied_weights"] = self.args.tied_weights
+        run["random_recs"] = self.args.random_recs
+        run["train_after_warmup"] = self.args.train_after_warmup
+        run["dloss"] = self.args.dloss
+        run["predict_tests"] = self.args.predict_tests
+        run["variational"] = self.args.variational
+        run["zinb"] = self.args.zinb
+        run["threshold"] = self.args.threshold
+        run["rec_loss_type"] = self.args.rec_loss
+        run["strategy"] = self.args.strategy
+        run["bad_batches"] = self.args.bad_batches
+        run["remove_zeros"] = self.args.remove_zeros
+        run["parameters"] = params
+        run["csv_file"] = self.args.csv_file
+        run["model_name"] = 'ae_classifier_holdout'
+        run["n_meta"] = self.args.n_meta
+        run["n_emb"] = self.args.embeddings_meta
+        run["groupkfold"] = self.args.groupkfold
+        run["embeddings_meta"] = self.args.embeddings_meta
+        run["foldername"] = self.foldername
+        run["use_mapping"] = self.args.use_mapping
+        run["dataset_name"] = self.args.dataset
+        run["n_agg"] = self.args.n_agg
+        run["kan"] = self.args.kan
+
+        return run
+
     def train(self, params):
         """
         Args:
@@ -158,77 +226,17 @@ class TrainAEClassifierHoldout(TrainAE):
         """
         start_time = datetime.now()
 
-        # Fixing the hyperparameters that are not optimized
-        if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
-                              'inverseTriplet', 'normae'] or 'gamma' not in params:
-            # gamma = 0 will ensure DANN is not learned
-            params['gamma'] = 0
-        if not self.args.variational or 'beta' not in params:
-            # beta = 0 because useless outside a variational autoencoder
-            params['beta'] = 0
-        if not self.args.zinb or 'zeta' not in params:
-            # zeta = 0 because useless outside a zinb autoencoder
-            params['zeta'] = 0
-        if 1 > self.fix_thres >= 0:
-            # fixes the threshold of 0s tolerated for a feature
-            params['thres'] = self.fix_thres
-        else:
-            params['thres'] = 0
-        if not self.args.kan or not self.args.use_l1:
-            params['reg_entropy'] = 0
-        if not self.args.use_l1:
-            params['l1'] = 0
-        if not self.args.prune_network:
-            params['prune_threshold'] = 0
-        if params['prune_threshold'] > 0:
-            dropout = 0
-
-        # params['dropout'] = 0
-        # params['smoothing'] = 0
-        # params['margin'] = 0
-        # params['wd'] = 0
-        print(params)
-
-        # Assigns the hyperparameters getting optimized
-        smooth = params['smoothing']
-        layer1 = params['layer1']
-        layer2 = params['layer2']
-        scale = params['scaler']
-        self.gamma = params['gamma']
-        self.beta = params['beta']
-        self.zeta = params['zeta']
-        thres = params['thres']
-        wd = params['wd']
-        nu = params['nu']
-        lr = params['lr']
-        self.l1 = params['l1']
-        self.reg_entropy = params['reg_entropy']
-
-        dropout = params['dropout']
-        margin = params['margin']
-
-        self.args.scaler = scale
-        self.args.warmup = params['warmup']
-        self.args.disc_b_warmup = params['disc_b_warmup']
-
-        # ncols = params['ncols']
-        # if ncols > self.data['inputs']['all'].shape[1]:
-        #     ncols = self.data['inputs']['all'].shape[1]
-
+        params = self.make_params(params)
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
-        # self.log_path is where tensorboard logs are saved
-        self.foldername = str(uuid.uuid4())
-
-        self.complete_log_path = f'logs/ae_classifier_holdout/{self.foldername}'
         loggers = {'cm_logger': LogConfusionMatrix(self.complete_log_path)}
         print(f'See results using: tensorboard --logdir={self.complete_log_path} --port=6006')
 
-        hparams_filepath = self.complete_log_path + '/hp'
-        os.makedirs(hparams_filepath, exist_ok=True)
+        os.makedirs(self.hparams_filepath, exist_ok=True)
         self.args.model_name = 'ae_classifier_holdout'
         if self.log_tb:
-            loggers['tb_logging'] = TensorboardLoggingAE(hparams_filepath, params, variational=self.args.variational,
+            loggers['tb_logging'] = TensorboardLoggingAE(self.hparams_filepath, params,
+                                                         variational=self.args.variational,
                                                          zinb=self.args.zinb,
                                                          tw=self.args.tied_weights,
                                                          dloss=self.args.dloss,
@@ -242,104 +250,11 @@ class TrainAEClassifierHoldout(TrainAE):
             run = None
 
         if self.log_neptune:
-            # Create a Neptune run object
-            run = neptune.init_run(
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-            )  # your credentials
-            run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
-            run["metadata"].track_files(
-                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
-            )
-            # Track metadata and hyperparameters by assigning them to the run
-            run["inputs_type"] = self.args.csv_file.split(".csv")[0]
-            run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
-            run["use_valid"] = self.args.use_valid
-            run["use_test"] = self.args.use_test
-            run["tied_weights"] = self.args.tied_weights
-            run["random_recs"] = self.args.random_recs
-            run["train_after_warmup"] = self.args.train_after_warmup
-            run["dloss"] = self.args.dloss
-            run["predict_tests"] = self.args.predict_tests
-            run["variational"] = self.args.variational
-            run["zinb"] = self.args.zinb
-            run["threshold"] = self.args.threshold
-            run["rec_loss_type"] = self.args.rec_loss
-            run["strategy"] = self.args.strategy
-            run["bad_batches"] = self.args.bad_batches
-            run["remove_zeros"] = self.args.remove_zeros
-            run["parameters"] = params
-            run["csv_file"] = self.args.csv_file
-            run["model_name"] = 'ae_classifier_holdout'
-            run["n_meta"] = self.args.n_meta
-            run["n_emb"] = self.args.embeddings_meta
-            run["groupkfold"] = self.args.groupkfold
-            run["embeddings_meta"] = self.args.embeddings_meta
-            run["foldername"] = self.foldername
-            run["use_mapping"] = self.args.use_mapping
-            run["dataset_name"] = self.args.dataset
-            run["n_agg"] = self.args.n_agg
-            run["kan"] = self.args.kan
-        else:
-            model = None
-            run = None
+            run = self.launch_neptune(params)
 
         if self.log_mlflow:
-            mlflow.set_experiment(
-                self.args.exp_id,
-            )
-            try:
-                mlflow.start_run()
-            except:
-                mlflow.end_run()
-                mlflow.start_run()
-            mlflow.log_params({
-                "inputs_type": self.args.csv_file.split(".csv")[0],
-                "best_unique": self.args.best_features_file.split(".tsv")[0],
-                "tied_weights": self.args.tied_weights,
-                "random_recs": self.args.random_recs,
-                "train_after_warmup": self.args.train_after_warmup,
-                "warmup_after_warmup": self.args.warmup_after_warmup,
-                "dloss": self.args.dloss,
-                "predict_tests": self.args.predict_tests,
-                "variational": self.args.variational,
-                "zinb": self.args.zinb,
-                "threshold": self.args.threshold,
-                "rec_loss_type": self.args.rec_loss,
-                "bad_batches": self.args.bad_batches,
-                "remove_zeros": self.args.remove_zeros,
-                "parameters": params,
-                "scaler": params['scaler'],
-                "csv_file": self.args.csv_file,
-                "model_name": self.args.model_name,
-                "n_meta": self.args.n_meta,
-                "n_emb": self.args.embeddings_meta,
-                "groupkfold": self.args.groupkfold,
-                "foldername": self.foldername,
-                "use_mapping": self.args.use_mapping,
-                "dataset_name": self.args.dataset,
-                "n_agg": self.args.n_agg,
-                "lr": lr,
-                "wd": wd,
-                "dropout": dropout,
-                "margin": margin,
-                "smooth": smooth,
-                "layer1": layer1,
-                "layer2": layer2,
-                "gamma": self.gamma,
-                "beta": self.beta,
-                "zeta": self.zeta,
-                "thres": thres,
-                "nu": nu,
-                "kan": self.args.kan,
-                "l1": self.l1,
-                "reg_entropy": self.reg_entropy,
-                "use_l1": self.args.use_l1,
-                "clip_val": self.args.clip_val,
-                "update_grid": self.args.update_grid,
-                "prune_threshold": self.args.prune_threshold,
-            })
-        else:
+            self.launch_mlflow(params)
+        if not self.log_mlflow and not self.log_neptune:
             model = None
             run = None
         seed = 0
@@ -364,36 +279,12 @@ class TrainAEClassifierHoldout(TrainAE):
             # best_mcc = -1
             # warmup_counter = 0
             # warmup_b_counter = 0
-            if self.args.warmup > 0:
-                warmup = True
-            else:
-                warmup = False
-            if self.args.dataset == 'alzheimer':
-                self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
-                self.pools = True
-            elif self.args.dataset in ['amide', 'adenocarcinoma']:
-                self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
-                self.pools = True
-
-            elif self.args.dataset == 'mice':
-                # This seed split the data to have n_samples in train: 96, valid:52, test: 23
-                self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
-            elif self.args.dataset == 'multi':
-                self.data, self.unique_labels, self.unique_batches = get_data3(self.path, self.args, seed=seed)
-                self.pools = self.args.pool
-            else:
-                self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
-                self.pools = self.args.pool
-            if self.args.best_features_file != '':
-                self.data = keep_top_features(self.data, self.path, self.args)
-            if self.args.controls != '':
-                self.data = binarize_labels(self.data, self.args.controls)
-                self.unique_labels = np.unique(self.data['labels']['all'])
+            self.get_data(h)
             self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
-                                                np.unique(self.data['batches']['valid']),
-                                                np.unique(self.data['batches']['test']))))
+                                                   np.unique(self.data['batches']['valid']),
+                                                   np.unique(self.data['batches']['test']))))
                 seed += 1
                 if combination not in combinations:
                     combinations += [combination]
@@ -405,7 +296,7 @@ class TrainAEClassifierHoldout(TrainAE):
             self.make_samples_weights()
             # event_acc is used to verify if the hparams have already been tested. If they were,
             # the best classification loss is retrieved and we go to the next trial
-            event_acc = EventAccumulator(hparams_filepath)
+            event_acc = EventAccumulator(self.hparams_filepath)
             event_acc.Reload()
             if len(event_acc.Tags()['tensors']) > 2 and self.load_tb:
                 # try:
@@ -418,7 +309,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                 # Transform the data with the chosen scaler
                 data = copy.deepcopy(self.data)
-                data, self.scaler = scale_data(scale, data, self.args.device)
+                data, self.scaler = scale_data(params['scaler'], data, self.args.device)
 
                 # feature_selection = get_feature_selection_method('mutual_info_classif')
                 # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
@@ -427,7 +318,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 # Gets all the pytorch dataloaders to train the models
                 if self.pools:
                     loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                        None, bs=64)
+                                          None, bs=64)
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
@@ -435,22 +326,22 @@ class TrainAEClassifierHoldout(TrainAE):
                 if h == 1 or self.args.kan == 1:
 
                     ae = self.ae(data['inputs']['all'].shape[1],
-                                    n_batches=self.n_batches,
-                                    nb_classes=self.n_cats,
-                                    mapper=self.args.use_mapping,
-                                    layer1=layer1,
-                                    layer2=layer2,
-                                    n_layers=self.args.n_layers,
-                                    n_meta=self.args.n_meta,
-                                    n_emb=self.args.embeddings_meta,
-                                    dropout=dropout,
-                                    variational=self.args.variational, conditional=False,
-                                    zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                    use_gnn=0,  # TODO to remove
-                                    device=self.args.device,
-                                    prune_threshold=params['prune_threshold'],
-                                    update_grid=self.args.update_grid
-                                    ).to(self.args.device)
+                                 n_batches=self.n_batches,
+                                 nb_classes=self.n_cats,
+                                 mapper=self.args.use_mapping,
+                                 layer1=params['layer1'],
+                                 layer2=params['layer2'],
+                                 n_layers=self.args.n_layers,
+                                 n_meta=self.args.n_meta,
+                                 n_emb=self.args.embeddings_meta,
+                                 dropout=params['dropout'],
+                                 variational=self.args.variational, conditional=False,
+                                 zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                 use_gnn=0,  # TODO to remove
+                                 device=self.args.device,
+                                 prune_threshold=params['prune_threshold'],
+                                 update_grid=self.args.update_grid
+                                 ).to(self.args.device)
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
                     n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
@@ -458,28 +349,30 @@ class TrainAEClassifierHoldout(TrainAE):
                     # if self.args.embeddings_meta > 0:
                     #     n_meta = self.n_meta
                     shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
-                                            n_batches=self.n_batches,
-                                            nb_classes=self.n_cats,
-                                            mapper=self.args.use_mapping,
-                                            layer1=layer1,
-                                            layer2=layer2,
-                                            n_layers=self.args.n_layers,
-                                            n_meta=self.args.n_meta,
-                                            n_emb=self.args.embeddings_meta,
-                                            dropout=dropout,
-                                            variational=self.args.variational, conditional=False,
-                                            zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                            use_gnn=0,  # TODO remove this
-                                            device=self.args.device).to(self.args.device)
+                                           n_batches=self.n_batches,
+                                           nb_classes=self.n_cats,
+                                           mapper=self.args.use_mapping,
+                                           layer1=params['layer1'],
+                                           layer2=params['layer2'],
+                                           n_layers=self.args.n_layers,
+                                           n_meta=self.args.n_meta,
+                                           n_emb=self.args.embeddings_meta,
+                                           dropout=params['dropout'],
+                                           variational=self.args.variational, conditional=False,
+                                           zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                           use_gnn=0,  # TODO remove this
+                                           device=self.args.device).to(self.args.device)
                     shap_ae.mapper.to(self.args.device)
                     shap_ae.dec.to(self.args.device)
                 else:
                     ae.random_init(nn.init.xavier_uniform_)
                 loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
                 loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-                sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, self.args.dloss)
+                sceloss, celoss, mseloss, triplet_loss = self.get_losses(
+                    params['scaler'], params['smoothing'], params['margin'], self.args.dloss
+                )
 
-                optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
+                optimizer_ae = get_optimizer(ae, params['lr'], params['wd'], optimizer_type)
 
                 # Used only if bdisc==1
                 optimizer_b = get_optimizer(ae.dann_discriminator, 1e-2, 0, optimizer_type)
@@ -489,7 +382,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     data['inputs']['all'].to_csv(
                         f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                     if self.log_neptune:
-                        run[f"inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
+                        run["inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                     log_input_ordination(loggers['logger'], data, self.scaler, epoch)
                     if self.pools:
                         metrics = log_pool_metrics(data['inputs'], data['batches'], data['labels'], loggers, epoch,
@@ -502,12 +395,12 @@ class TrainAEClassifierHoldout(TrainAE):
                 best_vals = values
                 if h > 1:  # or warmup_counter == 100:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
-                    print(f"\n\nNO WARMUP\n\n")
+                    print("\n\nNO WARMUP\n\n")
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
-                        no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
-                                         self.best_loss, True, epoch,
-                                         optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+                        no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
+                                                    optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+
                         if not no_error:
                             break
                 for epoch in range(0, self.args.n_epochs):
@@ -519,13 +412,13 @@ class TrainAEClassifierHoldout(TrainAE):
 
                     if self.args.warmup_after_warmup:
                         self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
-                                            self.best_loss, False, epoch,
-                                            optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+                                         True, epoch,
+                                         optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
                         ae = self.freeze_all_but_clayers(ae)
                     closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                            loaders['train'], lists, traces, nu=nu)
-            
+                                            loaders['train'], lists, traces, nu=params['nu'])
+
                     if torch.isnan(closs):
                         print("NAN LOSS")
                         break
@@ -537,9 +430,10 @@ class TrainAEClassifierHoldout(TrainAE):
                         for group in list(data['inputs'].keys()):
                             if group in ['all', 'all_pool']:
                                 continue
-                            closs, lists, traces = self.loop(group, optimizer_, ae, sceloss, loaders[group], lists, traces, nu=0)
+                            closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
+                                                             loaders[group], lists, traces, nu=0)
                         closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                                loaders['train'], lists, traces, nu=nu)
+                                                loaders['train'], lists, traces, nu=0)
                     # Below is the loop for all sets
                     # with torch.no_grad():
                     #     for group in list(data['inputs'].keys()):
@@ -562,16 +456,15 @@ class TrainAEClassifierHoldout(TrainAE):
                     #         self.args.prune_threshold *= 10
                     #         print(f"Pruning threshold: {self.args.prune_threshold}")
 
-                                
                     traces = self.get_mccs(lists, traces)
                     values = log_traces(traces, values)
                     if self.log_tb:
                         try:
                             add_to_logger(values, loggers['logger'], epoch)
-                        except:
-                            print("Problem with add_to_logger!")
+                        except Exception as e:
+                            print(f"Problem with add_to_logger: {e}")
                     if self.log_neptune:
-                        add_to_neptune(values, run, epoch)
+                        add_to_neptune(run, values)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
@@ -650,11 +543,12 @@ class TrainAEClassifierHoldout(TrainAE):
                         #     continue
                         closs, best_lists, traces = self.loop(group, None, ae, sceloss,
                                                               loaders[group], best_lists, traces, nu=0, mapping=False)
-                if self.log_neptune:
-                    model["model"].upload(f'{self.complete_log_path}/model_{h}_state.pth')
-                    model["validation/closs"].log(self.best_closs)
+                # if self.log_neptune:
+                #     model["model"].upload(f'{self.complete_log_path}/model_{h}_state.pth')
+                #     model["validation/closs"].log(self.best_closs)
                 best_closses += [self.best_closs]
-                # logs things in the background. This could be problematic if the logging takes more time than each iteration of repetitive holdout
+                # logs things in the background. This could be problematic if the logging
+                # takes more time than each iteration of repetitive holdout
                 # daemon = Thread(target=self.log_rep, daemon=True, name='Monitor',
                 #                 args=[best_lists, best_vals, best_values, traces, model, metrics, run, cm_logger, ae,
                 #                       shap_ae, h,
@@ -668,13 +562,16 @@ class TrainAEClassifierHoldout(TrainAE):
         if np.mean(best_mccs) > self.best_mcc:
             try:
                 if os.path.exists(
-                        f'logs/best_models/ae_classifier_holdout/{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}'):
+                        f'logs/best_models/ae_classifier_holdout/{self.args.dataset}/'
+                        f'{self.args.dloss}_vae{self.args.variational}'
+                ):
                     shutil.rmtree(
-                        f'logs/best_models/ae_classifier_holdout/{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}',
+                        f'logs/best_models/ae_classifier_holdout/{self.args.dataset}/'
+                        f'{self.args.dloss}_vae{self.args.variational}',
                         ignore_errors=True)
-                # os.makedirs(f'logs/best_models/ae_classifier_holdout/{self.args.dloss}_vae{self.args.variational}', exist_ok=True)
                 shutil.copytree(f'{self.complete_log_path}',
-                                f'logs/best_models/ae_classifier_holdout/{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}')
+                                f'logs/best_models/ae_classifier_holdout/'
+                                f'{self.args.dataset}/{self.args.dloss}_vae{self.args.variational}')
                 # print("File copied successfully.")
 
             # If source and destination are same
@@ -726,6 +623,7 @@ class TrainAEClassifierHoldout(TrainAE):
         else:
             self.args.prune_threshold *= 10
 
+
 if __name__ == "__main__":
     import argparse
 
@@ -752,7 +650,7 @@ if __name__ == "__main__":
     parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
-    parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
+    parser.add_argument('--dloss', type=str, default='inverseTriplet')
     parser.add_argument('--csv_file', type=str, default='matrix.csv')
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
@@ -790,14 +688,19 @@ if __name__ == "__main__":
             # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),
             # tags={"version": "v1", "priority": "P1"},
         )
-    except:
+    except Exception as e:
+        print(f"Error creating experiment: {e}")
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
 
     # args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
 
-    train = TrainAEClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False, log_metrics=args.log_metrics, keep_models=False,
-                    log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,
-                    log_mlflow=True, groupkfold=args.groupkfold)
+    train = TrainAEClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False,
+                                     log_metrics=args.log_metrics,
+                                     keep_models=False, log_inputs=False,
+                                     log_plots=args.log_plots, log_tb=False,
+                                     log_neptune=True,
+                                     log_mlflow=True, groupkfold=args.groupkfold,
+                                     pools=args.pool)
 
     # List of hyperparameters getting optimized
     parameters = [

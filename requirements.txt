@@ -51,6 +51,7 @@ requests==2.31.0  # Downgraded to satisfy conda-repo-cli
 PyYAML==6.0.1  # Downgraded to satisfy conda-repo-cli
 python-dateutil==2.8.2  # Downgraded to satisfy conda-repo-cli
 nbformat==5.9.2  # Downgraded to satisfy conda-repo-cli
+tensorboardX
 # R packages:
 # install.packages("harmony")
 # install.packages("sva")

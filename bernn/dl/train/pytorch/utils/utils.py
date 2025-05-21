@@ -10,7 +10,7 @@ from sklearn import metrics
 from itertools import cycle
 from matplotlib import pyplot as plt, cm
 from sklearn.metrics import roc_auc_score, PrecisionRecallDisplay
-from bernn.ml.train.params_gp import *
+from bernn.ml.train.params_gp import rfc_space, RandomForestClassifier
 from bernn.ml.train.sklearn_train_nocv import Train
 from skopt import gp_minimize
 from sklearn.preprocessing import label_binarize, OneHotEncoder
@@ -38,9 +38,9 @@ def get_optimizer(model, learning_rate, weight_decay, optimizer_type, momentum=0
                                      )
     elif optimizer_type == 'radam':
         optimizer = torch.optim.RAdam(params=model.parameters(),
-                                     lr=learning_rate,
-                                     weight_decay=weight_decay,
-                                     )
+                                      lr=learning_rate,
+                                      weight_decay=weight_decay,
+                                      )
     elif optimizer_type == 'adamw':
         optimizer = torch.optim.RAdam(params=model.parameters(),
                                       lr=learning_rate,
@@ -133,8 +133,8 @@ class LogConfusionMatrix:
             self.encs[group] += [np.concatenate(lists[group]['encoded_values'][:n_mini_batches])]
             try:
                 self.recs[group] += [np.concatenate(lists[group]['rec_values'][:n_mini_batches])]
-            except:
-                pass
+            except Exception as e:
+                print(f'{e}')
             self.cats[group] += [np.concatenate(lists[group]['cats'][:n_mini_batches])]
             self.batches[group] += [np.concatenate(lists[group]['domains'][:n_mini_batches])]
 
@@ -147,8 +147,11 @@ class LogConfusionMatrix:
             acc = np.mean([0 if pred != c else 1 for pred, c in zip(preds, classes)])
 
             try:
-                figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc)
-            except:
+                figure = plot_confusion_matrix(
+                    cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc
+                )
+            except Exception as e:
+                print(f'{e}')
                 figure = plot_confusion_matrix(cm, class_names=unique_labels, acc=acc)
             if mlops == "tensorboard":
                 logger.add_figure(f"CM_{group}_all", figure, epoch)
@@ -254,15 +257,15 @@ def save_roc_curve(model, x_test, y_test, unique_labels, name, binary, acc, mlop
             try:
                 plt.savefig(f'{dirs}/ROC.png')
                 stuck = False
-            except:
-                print('stuck...')
+            except Exception as e:
+                print(f'stuck... {e}')
         plt.close()
     else:
         # Compute ROC curve and ROC area for each class
-        from sklearn.preprocessing import label_binarize
+        # from sklearn.preprocessing import label_binarize
         try:
             y_pred_proba = model.predict_proba(x_test)
-        except:
+        except Exception as e:
             y_pred_proba = model.classifier(x_test)
 
         y_preds = model.predict_proba(x_test)
@@ -297,8 +300,8 @@ def save_roc_curve(model, x_test, y_test, unique_labels, name, binary, acc, mlop
             try:
                 plt.savefig(f'{dirs}/ROC.png')
                 stuck = False
-            except:
-                print('stuck...')
+            except Exception as e:
+                print(f'stuck... {e}')
 
         if logger is not None:
             if mlops == 'tensorboard':
@@ -339,19 +342,19 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
             try:
                 plt.savefig(f'{dirs}/Precision-Recall.png')
                 stuck = False
-            except:
-                print('stuck...')
+            except Exception as e:
+                print(f'stuck... {e}')
         plt.close()
 
     else:
         # Compute Precision-Recall curve and Precision-Recall area for each class
         y_pred_proba = model.predict_proba(x_test)
-        y_preds = model.predict(x_test)
+        # y_preds = model.predict(x_test)
         n_classes = len(unique_labels) - 1
         precisions = dict()
         recalls = dict()
         average_precision = dict()
-        classes = np.arange(n_classes)
+        # classes = np.arange(n_classes)
         y_test_bin = OneHotEncoder().fit_transform(y_test.reshape(-1, 1)).toarray()
         for i in range(n_classes):
             y_true = y_test_bin[:, i]
@@ -376,8 +379,8 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
             try:
                 plt.savefig(f'{dirs}/PRC.png')
                 stuck = False
-            except:
-                print('stuck...')
+            except Exception as e:
+                print(f'stuck... {e}')
         display.plot()
         fig = display.figure_
         if logger is not None:
@@ -726,17 +729,15 @@ def add_to_neptune(run, values):
         if not np.isnan(values['dom_acc'][-1]):
             run["dom_acc"].log(values['dom_acc'][-1])
     for group in list(values.keys())[4:]:
-        try:
+        if len(values[group]['closs']) > 0:
             if not np.isnan(values[group]['closs'][-1]):
                 run[f'/closs/{group}'].log(values[group]['closs'][-1])
-            if not np.isnan(values[group]['acc'][-1]):
-                run[f'/acc/{group}/all_concentrations'].log(values[group]['acc'][-1])
-            if not np.isnan(values[group]['mcc'][-1]):
-                run[f'/mcc/{group}/all_concentrations'].log(values[group]['mcc'][-1])
-            if not np.isnan(values[group]['top3'][-1]):
-                run[f'/top3/{group}/all_concentrations'].log(values[group]['top3'][-1])
-        except:
-            pass
+            if len(values[group]['acc']) > 0:
+                if not np.isnan(values[group]['acc'][-1]):
+                    run[f'/acc/{group}/all_concentrations'].log(values[group]['acc'][-1])
+            if len(values[group]['mcc']) > 0:
+                if not np.isnan(values[group]['mcc'][-1]):
+                    run[f'/mcc/{group}/all_concentrations'].log(values[group]['mcc'][-1])
 
 
 def add_to_mlflow(values, epoch):

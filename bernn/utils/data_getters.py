@@ -474,31 +474,26 @@ def get_mice(path, args, seed=42):
 
 def get_data(path, args, seed=42):
     """
-
     Args:
-        path: Path where the csvs can be loaded. The folder designated by path needs to contain at least
-                   one file named train_inputs.csv (when using --use_valid=0 and --use_test=0). When using
-                   --use_valid=1 and --use_test=1, it must also contain valid_inputs.csv and test_inputs.csv.
+        path: Path where data is located.
+        args: arguments from the command line to be used in the data getter
 
     Returns:
-        data
+        data, unique_labels, unique_batches
     """
     data = {}
-    # batch_cols = args.batch_columns
     unique_labels = np.array([])
     for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
     for group in ['train', 'valid']:
-        # print('GROUP:', group)
         if group == 'valid':
             if args.groupkfold:
                 skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
                 # Remove samples from unwanted batches
                 splitter = skf.split(train_nums, data['labels']['train'], data['batches']['train'])
-
             else:
                 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                 train_nums = np.arange(0, len(data['labels']['train']))
@@ -528,8 +523,7 @@ def get_data(path, args, seed=42):
                     skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
                     pool_splitter = skf.split(train_nums_pool, data['labels']['train_pool'],
-                                                    data['batches']['train_pool'])
-
+                                                   data['batches']['train_pool'])
                 else:
                     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
                     train_nums_pool = np.arange(0, len(data['labels']['train_pool']))
@@ -544,10 +538,10 @@ def get_data(path, args, seed=42):
                     data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
                 data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
                     data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
-                data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
-                    data['names']['train_pool'][valid_inds], data['names']['train_pool'][test_inds]
-                data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'][train_inds], \
-                    data['orders']['train_pool'][valid_inds], data['orders']['train_pool'][test_inds]
+                data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'].iloc[train_inds], \
+                    data['names']['train_pool'].iloc[valid_inds], data['names']['train_pool'].iloc[test_inds]
+                data['orders']['train_pool'], data['orders']['valid_pool'], data['orders']['test_pool'], = data['orders']['train_pool'].iloc[train_inds], \
+                    data['orders']['train_pool'].iloc[valid_inds], data['orders']['train_pool'].iloc[test_inds]
                 data['batches']['train_pool'], data['batches']['valid_pool'], data['batches']['test_pool'], = data['batches']['train_pool'][train_inds], \
                     data['batches']['train_pool'][valid_inds], data['batches']['train_pool'][test_inds]
                 data['cats']['train_pool'], data['cats']['valid_pool'], data['cats']['test_pool'], = data['cats']['train_pool'][train_inds], data['cats']['train_pool'][
@@ -569,41 +563,16 @@ def get_data(path, args, seed=42):
                 matrix = matrix.loc[:, mask1]
             if args.log1p:
                 matrix.iloc[:] = np.log1p(matrix.values)
-            # pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
             pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
             data['names'][group] = names
             data['labels'][group] = labels.to_numpy()[pos]
             data['batches'][group] = batches[pos]
-            # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
             data['meta'][group] = data['inputs'][group].iloc[:, :2]
             data['orders'][group] = orders[pos]
-
-            # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
             unique_labels = get_unique_labels(data['labels'][group])
             data['cats'][group] = data['labels'][group]
 
-            if args.pool:
-                pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-                data['inputs'][f"{group}_pool"] = matrix.iloc[pool_pos]
-                data['names'][f"{group}_pool"] = np.array([f'pool_{i}' for i, _ in enumerate(pool_pos)])
-                data['labels'][f"{group}_pool"] = np.array([f'pool' for _ in pool_pos])
-                data['batches'][f"{group}_pool"] = batches[pool_pos]
-
-                # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-                data['meta'][f"{group}_pool"] = data['inputs'][f"{group}_pool"].iloc[:, :2]
-                data['orders'][f"{group}_pool"] = orders[pool_pos]
-                data['cats'][f"{group}_pool"] = np.array(
-                    [len(np.unique(data['labels'][group])) for _ in batches[pool_pos]])
-
-                data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
-                unique_labels = np.concatenate((get_unique_labels(data['labels'][group]), np.array(['pool'])))
-            data['cats'][group] = np.array(
-                [np.where(x == unique_labels)[0][0] for i, x in enumerate(data['labels'][group])])
-
-    for key in list(data['names'].keys()):
-        data['sets'][key] = np.array([key for _ in data['names'][key]])
-        # print(key, data['sets'][key])
     if not args.pool:
         for key in list(data.keys()):
             if key in ['inputs', 'meta']:
@@ -619,9 +588,7 @@ def get_data(path, args, seed=42):
         for group in ['train', 'valid', 'test', 'all']:
             data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
     else:
-        # print('POOL!!')
         for key in list(data.keys()):
-            # print('key', key)
             if key in ['inputs', 'meta']:
                 data[key]['all'] = pd.concat((
                     data[key]['train'], data[key]['valid'], data[key]['test'],
