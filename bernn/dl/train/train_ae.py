@@ -1,16 +1,3 @@
-# import os
-# import json
-# import copy
-# import uuid
-# import shutil
-# import matplotlib.pyplot as plt
-# from tensorboardX import SummaryWriter
-# from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-# from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
-# from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-# from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-# from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
-
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
 import pandas as pd
@@ -21,7 +8,7 @@ from torch import nn
 from sklearn import metrics
 from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
-from ...ml.train.params_gp import *
+# from ...ml.train.params_gp import *
 from .pytorch.aedann import ReverseLayerF
 from .pytorch.aeekandann import KANAutoencoder2
 from .pytorch.ekan.src.efficient_kan.kan import KANLinear
@@ -45,6 +32,7 @@ random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
 
+
 def keep_top_features(data, path, args):
     """
     Keeps the top features according to the precalculated scores
@@ -59,6 +47,7 @@ def keep_top_features(data, path, args):
         data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
 
     return data
+
 
 def binarize_labels(data, controls):
     """
@@ -187,9 +176,6 @@ class TrainAE:
         elif self.args.dataset == 'mice':
             # This seed split the data to have n_samples in train: 96, valid:52, test: 23
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
-        elif self.args.dataset == 'multi':
-            self.data, self.unique_labels, self.unique_batches = get_data3(self.path, self.args, seed=seed)
-            self.pools = self.args.pool
         else:
             self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
             self.pools = self.args.pool
@@ -280,7 +266,9 @@ class TrainAE:
             return updated_params
 
     def make_samples_weights(self):
-        self.n_batches = len(set(np.concatenate((self.data['batches']['all'], self.data['batches']['urinespositives']))))
+        self.n_batches = len(
+            set(np.concatenate((self.data['batches']['all'], self.data['batches']['urinespositives'])))
+        )
         self.class_weights = {
             label: 1 / (len(np.where(label == self.data['labels']['train'])[0]) /
                         self.data['labels']['train'].shape[0])

@@ -113,7 +113,6 @@ class TrainAEClassifierHoldout(TrainAE):
                                                        log_inputs, log_plots, log_tb, log_neptune, log_mlflow, 
                                                        groupkfold, pools)
 
-
     # TODO SHOULD BE IN PARENT CLASS
     def launch_mlflow(self, params):
         mlflow.set_experiment(

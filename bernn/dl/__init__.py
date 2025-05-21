@@ -9,6 +9,8 @@ from .models.pytorch import (
     SHAPAutoEncoder2,
     KANAutoencoder2,
     SHAPKANAutoencoder2,
+    Autoencoder3,
+    SHAPAutoencoder3,
 )
 
 # Training modules
@@ -27,12 +29,14 @@ __all__ = [
     "SHAPAutoEncoder2",
     "KANAutoencoder2",
     "SHAPKANAutoencoder2",
-    
+    "Autoencoder3",
+    "SHAPAutoencoder3",
+
     # Training
     "TrainAE",
     "TrainAEClassifierHoldout",
     "TrainAEThenClassifierHoldout",
-    
+
     # KAN
     "KANLinear",
     "KAN"
