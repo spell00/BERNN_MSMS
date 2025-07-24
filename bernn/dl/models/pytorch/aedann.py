@@ -49,8 +49,9 @@ def grad_reverse(x: torch.Tensor) -> torch.Tensor:
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2) -> None:
+    def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2, use_softmax: bool = True) -> None:
         super(Classifier, self).__init__()
+        self.use_softmax = use_softmax
         if n_layers == 2:
             self.linear2 = nn.Sequential(
                 nn.Linear(in_shape, in_shape),
@@ -70,6 +71,8 @@ class Classifier(nn.Module):
         x = self.linear2(x)
         if self.n_layers == 2:
             x = self.linear3(x)
+        if self.use_softmax:
+            x = F.softmax(x, dim=1)
         return x
 
     def random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
@@ -90,8 +93,9 @@ class Classifier(nn.Module):
 
 
 class Classifier2(nn.Module):
-    def __init__(self, in_shape: int = 64, hidden: int = 64, out_shape: int = 9) -> None:
+    def __init__(self, in_shape: int = 64, hidden: int = 64, out_shape: int = 9, use_softmax: bool = True) -> None:
         super(Classifier2, self).__init__()
+        self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, hidden),
             nn.BatchNorm1d(hidden),
@@ -106,6 +110,8 @@ class Classifier2(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.linear1(x)
         x = self.linear2(x)
+        if self.use_softmax:
+            x = F.softmax(x, dim=1)
         return x
 
     def random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
@@ -1021,9 +1027,10 @@ class AutoEncoder3(nn.Module):
             layers[list(layers.keys())[-1]],
             64, n_batches)
         self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), nn.Sigmoid())
+        if self.zinb:
+            self._dec_mean = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), MeanAct())
+            self._dec_disp = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), DispAct())
+            self._dec_pi = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x: torch.Tensor, to_rec: torch.Tensor,
@@ -1104,10 +1111,12 @@ class AutoEncoder3(nn.Module):
             #     nn.init.constant_(m.weight, 0.975)
             #     nn.init.constant_(m.bias, 0.125)
 
-    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+    def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
         return self.classifier(x).detach().cpu().numpy()
 
-    def predict(self, x: torch.Tensor) -> np.ndarray:
+    def predict(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
         return self.classifier(x).argmax(1).detach().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
