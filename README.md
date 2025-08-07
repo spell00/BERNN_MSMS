@@ -33,15 +33,36 @@ Everything should take only a few minutes to install,
 though it could be longer depending on your internet connection. <br/>
 The package was tested on Windows 10 and Ubuntu 20.04.4 LTS with Python 3.10.11 and R 4.2.2. 
 
-## Install python dependencies
+## Quick Installation (Recommended)
+For most users, install the package directly from PyPI:
+
+```bash
+# Minimal installation (core functionality only)
+pip install bernn
+
+# Full installation (all dependencies)
+pip install bernn[full]
+
+# Specific features only
+pip install bernn[deep-learning,experiment-tracking]
+
+# Python 3.8 with modern packages (resolves typing-extensions conflicts)
+pip install bernn[python38-full]
+```
+
+See [INSTALLATION.md](INSTALLATION.md) for detailed installation options and conflict resolution.
+
+## Development Installation
+
+### Install python dependencies
 `pip install -r requirements.txt`
 
-## Install R dependencies
+### Install R dependencies
 `install.packages("harmony")`
 `install.packages("sva")`
 `devtools::install_github("immunogenomics/lisi")`
 
-## Install package
+### Install package
 `pip install -e .`
 
 ## Other requirements

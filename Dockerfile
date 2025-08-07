@@ -1,14 +1,15 @@
 FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04 
 
+# Build argument for Python version
+ARG PYTHON_VERSION=3.10
+
 # Set environment variables to prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Toronto
-# Combine all apt-get commands into a single RUN to reduce layers
+
+# Install different Python versions based on build arg
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3.8 \
-        python3.8-dev \
-        python3.8-distutils \
         curl \
         libssl-dev \
         libcurl4-openssl-dev \
@@ -16,11 +17,26 @@ RUN apt-get update && \
         r-base \
         r-base-dev \
         r-cran-devtools \
-        python3-pip \
         python3-dev \
         software-properties-common \
         linux-modules-nvidia-525-generic && \
-    ln -sf /usr/bin/python3.8 /usr/bin/python && \
+    if [ "$PYTHON_VERSION" = "3.8" ]; then \
+        apt-get install -y --no-install-recommends python3.8 python3.8-dev python3.8-distutils python3-pip && \
+        ln -sf /usr/bin/python3.8 /usr/bin/python && \
+        ln -sf /usr/bin/python3.8 /usr/bin/python3; \
+    elif [ "$PYTHON_VERSION" = "3.10" ]; then \
+        apt-get install -y --no-install-recommends python3.10 python3.10-dev python3.10-distutils python3-pip && \
+        ln -sf /usr/bin/python3.10 /usr/bin/python && \
+        ln -sf /usr/bin/python3.10 /usr/bin/python3; \
+    elif [ "$PYTHON_VERSION" = "3.12" ]; then \
+        add-apt-repository ppa:deadsnakes/ppa && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-distutils python3-pip && \
+        ln -sf /usr/bin/python3.12 /usr/bin/python && \
+        ln -sf /usr/bin/python3.12 /usr/bin/python3; \
+    else \
+        apt-get install -y --no-install-recommends python3 python3-dev python3-distutils python3-pip; \
+    fi && \
     curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python && \
     pip install --upgrade pip && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
@@ -35,8 +51,12 @@ ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
 ADD bernn ./bernn/
 ADD tests ./tests/
+ADD test_python_versions.py ./
+ADD resolve_python38_conflicts.py ./
+ADD resolve_conflicts.py ./
 COPY requirements.txt ./requirements.txt
 COPY README.md ./README.md
+COPY INSTALLATION.md ./INSTALLATION.md
 # ADD data ./data/
 # ADD notebooks ./notebooks/
 
@@ -55,11 +75,30 @@ RUN R -e "install.packages('devtools')"
 # RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
 RUN R -e "install.packages('BiocManager')" 
 
-# Install Python packages
-RUN python -m pip install -r requirements.txt && \
-    python setup.py build && \
-    python setup.py install && \
-    python -m pip install .
+# Install Python packages with version-specific logic
+RUN echo "Installing for Python $PYTHON_VERSION" && \
+    python -m pip install -r requirements.txt && \
+    if [ "$PYTHON_VERSION" = "3.8" ]; then \
+        echo "Installing Python 3.8 specific packages..." && \
+        python setup.py build && \
+        python setup.py install && \
+        python -m pip install .[python38-full]; \
+    elif [ "$PYTHON_VERSION" = "3.10" ]; then \
+        echo "Installing Python 3.10 specific packages..." && \
+        python setup.py build && \
+        python setup.py install && \
+        python -m pip install .[full]; \
+    elif [ "$PYTHON_VERSION" = "3.12" ]; then \
+        echo "Installing Python 3.12 specific packages..." && \
+        python setup.py build && \
+        python setup.py install && \
+        python -m pip install .[py312+]; \
+    else \
+        echo "Installing default packages..." && \
+        python setup.py build && \
+        python setup.py install && \
+        python -m pip install .; \
+    fi
 
 ENV R_HOME=/usr/lib/R
 ENV LD_LIBRARY_PATH=/usr/lib/R/lib:${LD_LIBRARY_PATH}
