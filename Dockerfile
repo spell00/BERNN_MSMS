@@ -61,7 +61,7 @@ ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
 ADD bernn ./bernn/
 ADD tests ./tests/
-ADD test_python_versions.py ./test_python_versions.py
+ADD test_python_versions.py ./
 # ADD resolve_python38_conflicts.py ./
 # ADD resolve_conflicts.py ./
 COPY requirements.txt ./requirements.txt
