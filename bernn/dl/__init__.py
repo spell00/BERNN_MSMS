@@ -31,6 +31,8 @@ __all__ = [
     "SHAPKANAutoencoder2",
     "AutoEncoder3",
     "SHAPAutoEncoder3",
+    "KANAutoencoder3",
+    "SHAPKANAutoencoder3",
 
     # Training
     "TrainAE",

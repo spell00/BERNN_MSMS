@@ -1,4 +1,4 @@
-"""Configuration classes for BERNN project."""
+"""Configuration module for BERNN."""
 
 from .training_config import TrainingConfig
 

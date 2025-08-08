@@ -29,6 +29,8 @@ import warnings
 import neptune
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
+from typing import Union
+from bernn.config.training_config import TrainingConfig
 
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
@@ -84,34 +86,42 @@ def log_num_neurons(run, n_neurons, init_n_neurons):
 
 
 class TrainAEClassifierHoldout(TrainAE):
-
-    def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True, pools=True):
+    def __init__(self,
+                 config: Union[TrainingConfig, object, None] = None,
+                 path: str = './data',
+                 fix_thres: float = -1,
+                 load_tb: bool = False,
+                 log_metrics: bool = False,
+                 keep_models: bool = True,
+                 log_inputs: bool = False,
+                 log_plots: bool = False,
+                 log_tb: bool = False,
+                 log_neptune: bool = False,
+                 log_mlflow: bool = False,
+                 groupkfold: bool = True,
+                 pools: bool = False,
+                 **kwargs):
         """
-
         Args:
-            args: contains multiple arguments passed in the command line
-            log_path (str): Path where the tensorboard logs are saved
-            path (str): Path to the data (in .csv format)
-            fix_thres (float): If 1 > fix_thres >= 0 then the threshold is fixed to that value.
-                       any other value means the threshold won't be fixed and will be
-                       learned as an hyperparameter
-            load_tb (bool): If True, loads previous runs already saved
-            log_metrics (bool): Whether or not to keep the batch effect metrics
-            keep_models (bool): Whether or not to save the models trained
-                                (can take a lot of space if training a lot of models)
-            log_inputs (bool): Whether or not to log graphs or batch effect metrics
-                                of the scaled inputs
-            log_plots (bool): For each optimization iteration, on the first iteration, wether or
-                              not to plot PCA, UMAP, CCA and LDA of the encoded and reconstructed
-                              representations.
-            log_tb (bool): Whether or not to use tensorboard.
-            log_mlflow (bool): Wether or not to use mlflow.
+            config: TrainingConfig object, legacy args, or None
+            path: Path to the data
+            ... (other args as before)
         """
-
-        super(TrainAEClassifierHoldout, self).__init__(args, path, fix_thres, load_tb, log_metrics, keep_models,
-                                                       log_inputs, log_plots, log_tb, log_neptune, log_mlflow, 
-                                                       groupkfold, pools)
+        if config is None:
+            self.config = TrainingConfig(**kwargs)
+            args = self.config
+        elif isinstance(config, TrainingConfig):
+            self.config = config
+            args = config
+        else:
+            try:
+                self.config = TrainingConfig.from_args(config)
+                args = config
+            except Exception:
+                args = config
+                self.config = TrainingConfig()
+        super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
+                         log_neptune, log_mlflow, groupkfold, pools)
 
     # TODO SHOULD BE IN PARENT CLASS
     def launch_mlflow(self, params):
@@ -213,6 +223,21 @@ class TrainAEClassifierHoldout(TrainAE):
         run["kan"] = self.args.kan
 
         return run
+
+    def get_ordered_layers(self, params):
+        """Extract layer parameters from params dictionary, order them, and store in a new dictionary.
+
+        Args:
+            params (dict): Dictionary containing model parameters including layer sizes
+
+        Returns:
+            dict: Ordered dictionary of layer parameters
+        """
+        # Extract layer parameters and sort them
+        layer_params = {k: v for k, v in params.items() if k.startswith('layer')}
+        ordered_layers = dict(sorted(layer_params.items(),
+                                     key=lambda x: int(x[0].replace('layer', ''))))
+        return ordered_layers
 
     def train(self, params):
         """
@@ -325,11 +350,11 @@ class TrainAEClassifierHoldout(TrainAE):
                 if h == 1 or self.args.kan == 1:
 
                     ae = self.ae(data['inputs']['all'].shape[1],
+                                 is_sigmoid=self.args.use_sigmoid,
                                  n_batches=self.n_batches,
                                  nb_classes=self.n_cats,
                                  mapper=self.args.use_mapping,
-                                 layer1=params['layer1'],
-                                 layer2=params['layer2'],
+                                 layers=self.get_ordered_layers(params),
                                  n_layers=self.args.n_layers,
                                  n_meta=self.args.n_meta,
                                  n_emb=self.args.embeddings_meta,
@@ -351,8 +376,7 @@ class TrainAEClassifierHoldout(TrainAE):
                                            n_batches=self.n_batches,
                                            nb_classes=self.n_cats,
                                            mapper=self.args.use_mapping,
-                                           layer1=params['layer1'],
-                                           layer2=params['layer2'],
+                                           layers=self.get_ordered_layers(params),
                                            n_layers=self.args.n_layers,
                                            n_meta=self.args.n_meta,
                                            n_emb=self.args.embeddings_meta,
@@ -625,7 +649,6 @@ class TrainAEClassifierHoldout(TrainAE):
 
 if __name__ == "__main__":
     import argparse
-
     parser = argparse.ArgumentParser()
     # parser.add_argument('--batch_columns', type=str, default='2,3')
     parser.add_argument('--random_recs', type=int, default=0)
@@ -678,9 +701,55 @@ if __name__ == "__main__":
     parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
     parser.add_argument('--prune_network', type=float, default=1, help='')
+    parser.add_argument('--log_inputs', type=int, default=0, help='')
+    parser.add_argument('--log_neptune', type=int, default=0, help='')
+    parser.add_argument('--log_mlflow', type=int, default=0, help='')
+    parser.add_argument('--log_tb', type=int, default=0, help='')
+    parser.add_argument('--keep_models', type=int, default=0, help='')
 
     args = parser.parse_args()
     
+    # 1. RECOMMENDED: Modern approach with TrainingConfig
+    print("=== Modern Configuration Class Approach ===")
+    config = TrainingConfig(
+        csv_file=args.csv_file,
+        exp_id='modern_ae_then_classifier',
+        dloss=args.dloss,
+        variational=args.variational,
+        n_epochs=args.n_epochs,
+        device=args.device,
+        groupkfold=args.groupkfold,
+        n_meta=args.n_meta,
+        embeddings_meta=args.embeddings_meta,
+        n_layers=args.n_layers,
+        n_agg=args.n_agg,
+        bad_batches=args.bad_batches,
+        remove_zeros=args.remove_zeros,
+        dataset=args.dataset,
+        # path=args.path,
+        bs=args.bs,
+        strategy=args.strategy,
+        log1p=args.log1p,
+        pool=args.pool,
+        update_grid=args.update_grid,
+        use_l1=args.use_l1,
+        clip_val=args.clip_val,
+    )
+
+    # Clean, type-safe instantiation
+    trainer_modern = TrainAEClassifierHoldout(
+        config=config,
+        path='./data',
+        log_metrics=args.log_metrics,
+        keep_models=args.keep_models,
+        log_inputs=args.log_inputs,
+        log_plots=args.log_plots,
+        log_tb=args.log_tb,
+        log_neptune=args.log_neptune,
+        log_mlflow=args.log_mlflow,
+        pools=False  # TODO redundancy with args.pool
+    )
+
     try:
         mlflow.create_experiment(
             args.exp_id,
@@ -704,7 +773,7 @@ if __name__ == "__main__":
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
-        {"name": "lr", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True},
+        {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},

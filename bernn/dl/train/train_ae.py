@@ -243,6 +243,16 @@ class TrainAE:
             'log_metrics': 1,
             'log_plots': 1,
             'prune_network': 1,
+            'prune_threshold': 0,  # Threshold for pruning the network
+            'dropout': 0,  # Dropout rate for the network
+            'use_sigmoid': 0,  # Use sigmoid activation in the last layer of the AE
+            'scaler': 'standard',  # Set during training
+            'warmup': 100,  # Set during training
+            'disc_b_warmup': 0,  # Set during training
+            # 'hparams_filepath': '',  # Path to save hyperparameters
+            # 'foldername': '',  # Unique folder name for the run
+            # 'complete_log_path': '',  # Complete path for logging 
+
         }
 
     def fill_missing_params_with_default(self, params):
@@ -315,12 +325,18 @@ class TrainAE:
         self.scaler = None
 
     def load_autoencoder(self):
+        # if not self.args.kan:
+        #     from .pytorch.aedann import AutoEncoder2 as AutoEncoder
+        #     from .pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+        # elif self.args.kan == 1:
+        #     from .pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
+        #     from .pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
         if not self.args.kan:
-            from .pytorch.aedann import AutoEncoder2 as AutoEncoder
-            from .pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
+            from bernn import AutoEncoder3 as AutoEncoder
+            from bernn import SHAPAutoEncoder3 as SHAPAutoEncoder
         elif self.args.kan == 1:
-            from .pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-            from .pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
+            from bernn import KANAutoencoder3 as AutoEncoder
+            from bernn import SHAPKANAutoencoder3 as SHAPAutoEncoder
         self.ae = AutoEncoder
         self.shap_ae = SHAPAutoEncoder
 
@@ -780,31 +796,34 @@ class TrainAE:
             reg_entropy: Entropy regularization
 
         Returns:
-
+            l1_loss: Regularization loss
         """
-        if hasattr(model.classifier.layers, 'layer2'):
-            l1_loss = sum(
-                layer.regularization_loss(l1, reg_entropy) for layer in [
-                    model.enc.layers.layer1[0], model.enc.layers.layer2[0],
-                    model.dec.layers.layer1[0], model.dec.layers.layer2[0],
-                    model.classifier.layers.layer1[0], model.classifier.layers.layer2[0],
-                    model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
-                    ]
-            )
-        else:
-            l1_loss = sum(
-                layer.regularization_loss(l1, reg_entropy) for layer in [
-                    model.enc.layers.layer1[0], model.enc.layers.layer2[0],
-                    model.dec.layers.layer1[0], model.dec.layers.layer2[0],
-                    model.classifier.layers.layer1[0],
-                    model.dann_discriminator.layers.layer1[0], model.dann_discriminator.layers.layer2[0]
-                    ]
-            )
+        # Collect all layers dynamically
+        layers = []
+
+        # Add encoder layers dynamically
+        if hasattr(model.enc, 'kan_layers'):
+            layers.extend(model.enc.kan_layers)
+
+        # Add decoder layers dynamically
+        if hasattr(model.dec, 'kan_layers'):
+            layers.extend(model.dec.kan_layers)
+
+        # Add classifier layers dynamically
+        if hasattr(model.classifier, 'linear1'):
+            layers.extend([layer for layer in model.classifier.modules() if isinstance(layer, KANLinear)])
+
+        # Add discriminator layers dynamically
+        if hasattr(model.dann_discriminator, 'linear1'):
+            layers.extend([layer for layer in model.dann_discriminator.modules() if isinstance(layer, KANLinear)])
+
+        # Compute regularization loss for all layers
+        l1_loss = sum(layer.regularization_loss(l1, reg_entropy) for layer in layers)
+
+        # Handle NaN values in the regularization loss
         if torch.isnan(l1_loss):
-            # print("NAN in regularization!")
             l1_loss = torch.zeros(1).to(self.args.device)[0]
-        else:
-            pass
+
         return l1_loss
 
     def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,

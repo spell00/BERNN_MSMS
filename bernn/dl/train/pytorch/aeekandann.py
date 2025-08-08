@@ -685,516 +685,219 @@ class KANAutoencoder2(nn.Module):
         result = torch.mean(result)
         return result
 
-    # def prune_model(self, weight_threshold):
-    #     total = 0
-    #     layers = {}
-    #     for idx, layer in enumerate(self.children()):
-    #         try:
-    #             layers[layer.name] = {}
-    #         except Exception as e:
-    #             continue
-    #         for idx2, layer2 in enumerate(layer.children()):
-    #             if isinstance(layer2, KANLinear):
-    #                 layer2.prune_neurons(weight_threshold)
-    #                 n = layer2.mask.sum().item()
-    #                 total += n
-    #                 layers[layer2.name] = n
-    #             # If subscriptable
-    #             for layer3 in layer2.keys():
-    #                 if isinstance(layer2[layer3][0], KANLinear):
-    #                     if not (layer.name == 'decoder2' and layer3 == 'layer2') \
-    #                         and not (layer.name == 'classifier' and layer3 == 'layer2') \
-    #                             and not (layer.name == 'dann_discriminator' and layer3 == 'layer2'):
-    #                         layer2[layer3][0].prune_neurons(weight_threshold)
-    #                         n = layer2[layer3][0].mask.sum().item()
-    #                         total += n
-    #                         layers[layer.name][layer3] = n
-    #     layers['total'] = total
-    #     return layers
 
-    def prune_model(self, weight_threshold):
-        """
-        Iterates through all KANLinear layers and prunes neurons using node-level pruning
-        based on incoming and outgoing spline weights (Eq. 2.21 of the KAN paper).
-        """
-        total = 0
-        layers = {}
+class KANAutoencoder3(nn.Module):
+    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layers: dict,
+                 dropout, n_layers, prune_threshold, zinb=False, conditional=True, add_noise=False,
+                 tied_weights=0, update_grid=False, use_gnn=False, device='cuda', is_sigmoid=False):
+        super(KANAutoencoder3, self).__init__()
+        self.add_noise = add_noise
+        self.device = device
+        self.use_gnn = use_gnn
+        self.use_mapper = mapper
+        self.n_batches = n_batches
+        self.zinb = zinb
+        self.tied_weights = tied_weights
+        self.flow_type = 'vanilla'
+        self.n_emb = n_emb
+        self.n_meta = n_meta
+        self.prune_threshold = prune_threshold
+        self.update_grid = update_grid
+        self.is_sigmoid = is_sigmoid  # Store the parameter for potential use
 
-        for module in self.children().layers:
-            if not hasattr(module, "name"):
-                continue
-
-            layers[module.name] = {}
-            prev_kan = None
-            prev_name = None
-
-            # Flatten submodules
-            if isinstance(module, nn.ModuleDict):
-                sublayers = list(module.values())
-            elif isinstance(module, nn.Sequential):
-                sublayers = [module]
-            else:
-                sublayers = list(module.children())
-
-            for name, sub in enumerate(sublayers):
-                if isinstance(sub, nn.Sequential):
-                    sub = sub[0]  # grab KANLinear from Sequential
-
-                if not isinstance(sub, KANLinear):
-                    continue
-
-                if prev_kan is not None:
-                    prev_kan.prune_neurons(weight_threshold, next_layer_weights=sub.scaled_spline_weight)
-                    n = prev_kan.mask.sum().item()
-                    layers[module.name][prev_name] = n
-                    total += n
-
-                prev_kan = sub
-                prev_name = f"layer{name}"
-
-            # Prune the last one
-            if prev_kan is not None:
-                prev_kan.prune_neurons(weight_threshold, next_layer_weights=None)
-                n = prev_kan.mask.sum().item()
-                layers[module.name][prev_name] = n
-                total += n
-
-        layers["total"] = total
-        return layers
-
-    @torch.no_grad()
-    def prune_model_paperwise(self, is_classification, is_dann, weight_threshold: float = 1e-2) -> dict:
-        summary = {}
-        total_remaining = 0
-
-        # Collect all KANLinear layers across parts
-        all_layers = {}
-        for part_name in ['enc', 'dec', 'classifier', 'mapper', 'dann_discriminator']:
-            part = getattr(self, part_name, None)
-            if part is None or not hasattr(part, 'layers'):
-                continue
-            for lname, seq in part.layers.items():
-                layer = seq[0]
-                if isinstance(layer, KANLinear):
-                    full_name = f"{part_name}.{lname}"
-                    all_layers[full_name] = layer
-
-        for full_name, layer in all_layers.items():
-            part_name, layer_name = full_name.split(".")
-
-            outgoing_total = []
-
-            # Determine target next layers
-            if full_name == 'enc.layer2':
-                next_targets = ['dec.layer1', 'classifier.layer1']
-            elif full_name == 'mapper.layer2':
-                next_targets = ['dec.layer1']
-            else:
-                # Try to find the next layer in the same part
-                part = getattr(self, part_name)
-                layer_names = list(part.layers.keys())
-                idx = layer_names.index(layer_name)
-                if idx + 1 < len(layer_names):
-                    next_layer_name = layer_names[idx + 1]
-                    next_targets = [f"{part_name}.{next_layer_name}"]
-                else:
-                    next_targets = []
-
-            # Accumulate outgoing weights from the next target layer(s)
-            for next_name in next_targets:
-                next_layer = all_layers.get(next_name)
-                if next_layer is None:
-                    continue
-                if next_layer.in_features == layer.out_features:
-                    out = next_layer.base_weight.abs().mean(dim=0)
-                    if hasattr(next_layer, "scaled_spline_weight"):
-                        out += next_layer.scaled_spline_weight.abs().mean(dim=(0, 2))
-                    # print(f"{full_name} → {next_name}: {out.shape}")
-                    outgoing_total += [out]
-            if len(outgoing_total) > 0 and not (part_name == 'classifier' and not is_classification):
-                outgoing_total = torch.max(torch.stack(outgoing_total, axis=0), axis=0).values
-                mask = (outgoing_total >= weight_threshold)
-            else:
-                mask = torch.ones_like(layer.mask, dtype=torch.bool)
-
-            mask = mask & layer.mask
-
-            if mask.sum() == 0:
-                pass
-
-            kept = int(mask.sum().item())
-
-            summary[full_name] = kept
-            total_remaining += kept
-
-            if (part_name == 'classifier' and not is_classification) or (part_name == 'dann_discriminator' and is_dann):
-                continue
-            if part_name == 'classifier' and is_classification:
-                is_classification = True
-            else:
-                is_classification = is_classification
-            if hasattr(layer, "mask"):
-                layer.mask.copy_(mask.to(layer.mask.device))
-                # part.layers[layer_name] = nn.Sequential(layer)
-                if mask.sum() == 0:
-                    pass
-                #     topk = importance.topk(1).indices
-                #     mask[topk] = True
-
-        summary["total_remaining"] = total_remaining
-        return summary
-
-    def prune_model_pathwise(self, weight_threshold):
-        total = 0
-        layers = {}
-
-        # Run enc first
-        # Init at 1 to avoid unbalanced importance
-        # weights = {
-        #     'decoder2': {
-        #         'layer2': np.ones_like(self.dec.layers['layer2'][0].counts),
-        #         'layer1': np.zeros_like(self.dec.layers['layer1'][0].counts),
-        #     },
-        #     'encoder2': {
-        #         'layer2': np.zeros_like(self.enc.layers['layer2'][0].counts),
-        #         'layer1': np.zeros_like(self.enc.layers['layer1'][0].counts),
-        #     },
-        #     'classifier': {
-        #         'layer2': np.ones_like(self.classifier.layers['layer2'][0].counts),
-        #         'layer1': np.zeros_like(self.classifier.layers['layer1'][0].counts),
-        #     },
-        #     'mapper': {
-        #         'layer2': np.ones_like(self.mapper.layers['layer2'][0].counts),
-        #         'layer1': np.zeros_like(self.mapper.layers['layer1'][0].counts),
-        #     },
-        #     # TODO make this part for when normAE or DANN only
-        #     # 'dann_discriminator': {
-        #     #     'layer2': np.zeros_like(self.dann_discriminator.layers['layer2'][0].counts),
-        #     #     'layer1': np.zeros_like(self.dann_discriminator.layers['layer1'][0].counts),
-        #     # },
-        # }
-        accumulated_n = {
-            'decoder2': 1,
-            'encoder2': 1,
-            'classifier': 1,
-            'mapper': 1,
-            # TODO make this part for when normAE or DANN only
-            # 'dann_discriminator': {
-            #     'layer2': np.zeros_like(self.dann_discriminator.layers['layer2'][0].counts),
-            #     'layer1': np.zeros_like(self.dann_discriminator.layers['layer1'][0].counts),
-            # },
-        }
-        prev_layer = ''
-        layers['decoder2'] = {}
-        for idx, layer in enumerate(reversed(list(self.dec.layers.keys()))):
-            if isinstance(self.dec.layers[layer][0], KANLinear):
-                if not layer == 'layer2':
-                    base = self.dec.layers[prev_layer][0].base_weight.detach().abs().cpu()
-                    spline = self.dec.layers[prev_layer][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                    W = (base + spline).numpy()
-                    n = len(self.dec.layers[layer][0].mask)
-                    self.dec.layers[layer][0].counts = ((W * self.dec.layers[layer][0].counts)).mean(0)
-                    total += self.dec.layers[layer][0].mask.sum().item()
-                    self.dec.layers[layer][0].prune_neurons(weight_threshold)
-                    layers['decoder2'][layer] = self.dec.layers[layer][0].mask.sum().item()
-                else:
-                    n = self.dec.layers[layer][0].n
-                accumulated_n['decoder2'] *= n
-                prev_layer = layer
-
-        prev_layer = ''
-        layers['classifier'] = {}
-        for idx, layer in enumerate(reversed(list(self.classifier.layers.keys()))):
-            if isinstance(self.classifier.layers[layer][0], KANLinear):
-                if not layer == 'layer2':
-                    base = self.classifier.layers[prev_layer][0].base_weight.detach().abs().cpu()
-                    spline = self.classifier.layers[prev_layer][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                    W = (base + spline).numpy()
-                    n = len(self.classifier.layers[layer][0].mask)
-                    self.classifier.layers[layer][0].counts = ((W * self.classifier.layers[layer][0].counts)).mean(0)
-                    total += self.classifier.layers[layer][0].mask.sum().item()
-                    self.classifier.layers[layer][0].prune_neurons(weight_threshold)
-                    layers['classifier'][layer] = self.classifier.layers[layer][0].mask.sum().item()
-                else:
-                    n = len(self.classifier.layers[layer][0].mask)
-                accumulated_n['classifier'] *= n
-                prev_layer = layer
-
-        # prev_layer = ''
-        # layers['mapper'] = {}
-        # for idx, layer in enumerate(reversed(list(self.mapper.layers.keys()))):
-        #     if isinstance(self.mapper.layers[layer][0], KANLinear):
-        #         if not layer == 'layer2':
-        #             base = self.mapper.layers[prev_layer][0].base_weight.detach().abs().cpu()
-        #             spline = self.mapper.layers[prev_layer][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-        #             W = (base + spline).numpy()
-        #             # n = len(self.mapper.layers[layer][0].mask) * self.mapper.layers[layer][0].n
-        #             n = self.mapper.layers[layer][0].n
-        #             self.mapper.layers[layer][0].counts =\
-        #  (weights['mapper'][prev_layer] @ W * self.mapper.layers[layer][0].counts) / (n * accumulated_n['mapper'])
-        #             weights['mapper'][layer] = self.mapper.layers[layer][0].counts
-        #             total += n
-        #             self.mapper.layers[layer][0].prune_neurons(weight_threshold)
-        #             layers['mapper'][layer] = n
-        #         else:
-        #             # n = len(self.mapper.layers[layer][0].mask) * self.mapper.layers[layer][0].n
-        #             n = self.mapper.layers[layer][0].n
-        #             weights['mapper'][layer] = self.mapper.layers[layer][0].counts / n
-        #             total += n
-        #             self.mapper.layers[layer][0].prune_neurons(weight_threshold)
-        #             layers['mapper'][layer] = n
-        #         accumulated_n['mapper'] += n
-        #         prev_layer = layer
-
-        prev_layer = ''
-        layers['encoder2'] = {}
-        for idx, layer in enumerate(reversed(list(self.enc.layers.keys()))):
-            if isinstance(self.enc.layers[layer][0], KANLinear):
-                if not layer == 'layer2':
-                    base = self.enc.layers[prev_layer][0].base_weight.detach().abs().cpu()
-                    spline = self.enc.layers[prev_layer][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                    W = (base + spline).numpy()
-                    # n = len(self.enc.layers[layer][0].mask) * self.enc.layers[layer][0].n
-                    n = len(self.enc.layers[layer][0].mask)
-                    # self.enc.layers[layer][0].counts =
-                    # (weights['encoder2'][prev_layer] @ W * self.enc.layers[layer][0].counts) /
-                    #  self.enc.layers[layer][0].n
-                    self.enc.layers[layer][0].counts = ((W * self.enc.layers[layer][0].counts)).mean(0)
-                    # self.enc.layers[layer][0].counts =
-                    # (weights['encoder2'][prev_layer] @ W * self.enc.layers[layer][0].counts) / n
-                    # weights['encoder2'][layer] = self.enc.layers[layer][0].counts
-                    total += self.enc.layers[layer][0].mask.sum().item()
-                    self.enc.layers[layer][0].prune_neurons(weight_threshold)
-                    layers['encoder2'][layer] = self.enc.layers[layer][0].mask.sum().item()
-                else:
-                    # base_mapper = self.mapper.layers['layer1'][0].base_weight.detach().abs().cpu()
-                    # spline_mapper = self.mapper.layers['layer1'][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                    # W_mapper = (base_mapper + spline_mapper).numpy()
-
-                    base_dec = self.dec.layers['layer1'][0].base_weight.detach().abs().cpu()
-                    spline_dec = self.dec.layers['layer1'][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                    W_dec = (base_dec + spline_dec).numpy()
-
-                    if self.n_emb > 0:
-                        base_classifier = self.classifier.layers[
-                            'layer1'][0].base_weight.detach().abs().cpu()[:-self.n_emb, :-self.n_emb]
-                        spline_classifier = self.classifier.layers[
-                            'layer1'][0].scaled_spline_weight.detach().abs().mean(-1).cpu()[:-self.n_emb, :-self.n_emb]
-                        # weights_classif_layer1 = weights['classifier']['layer1'][:-self.n_emb]
-                    else:
-                        base_classifier = self.classifier.layers['layer1'][0].base_weight.detach().abs().cpu()
-                        spline_classifier = self.classifier.layers[
-                            'layer1'][0].scaled_spline_weight.detach().abs().mean(-1).cpu()
-                        # weights_classif_layer1 = weights['classifier']['layer1']
-
-                    W_classifier = (base_classifier + spline_classifier).numpy()
-                    # classif_val = ((weights_classif_layer1 @ W_classifier *
-                    # self.enc.layers[layer][0].counts) / (n * accumulated_n['classifier']))
-                    classif_val = ((W_classifier * self.enc.layers[layer][0].counts)).mean(0)
-                    if np.isnan(classif_val.sum()):
-                        classif_val = 0
-                    n = len(self.enc.layers[layer][0].mask)
-                    # n = len(self.enc.layers[layer][0].mask) * self.enc.layers[layer][0].n
-                    # weights['encoder2'][layer] = self.enc.layers[layer][0].counts
-                    self.enc.layers[layer][0].counts = \
-                        classif_val + ((W_dec * self.enc.layers[layer][0].counts)).mean(0)
-                    # self.enc.layers[layer][0].counts = \
-                    #     classif_val + ((weights['decoder2']['layer1'] @ W_dec * self.enc.layers[layer][0].counts) /
-                    # (accumulated_n['decoder2'] * self.enc.layers[layer][0].n))
-                    total += self.enc.layers[layer][0].mask.sum().item()
-                    self.enc.layers[layer][0].prune_neurons(weight_threshold)
-                    layers['encoder2'][layer] = self.enc.layers[layer][0].mask.sum().item()
-
-                accumulated_n['encoder2'] *= n
-                prev_layer = layer
-
-        return layers
-
-    def prune(self, threshold=1e-4, mode="auto", active_neurons_id=None):
-        '''
-        pruning KAN on the node level. If a node has small incoming or outgoing connection, it will be pruned away.
-
-        Args:
-        -----
-            threshold : float
-                the threshold used to determine whether a node is small enough
-            mode : str
-                "auto" or "manual". If "auto", the thresold will be used to automatically prune away nodes.
-                If "manual", active_neuron_id is needed to specify which neurons are kept (others are thrown away).
-            active_neuron_id : list of id lists
-                For example, [[0,1],[0,2,3]] means keeping the 0/1 neuron in the 1st hidden layer and the 0/2/3
-                neuron in the 2nd hidden layer. Pruning input and output neurons is not supported yet.
-
-        Returns:
-        --------
-            model2 : KAN
-                pruned model
-
-        Example
-        -------
-        >>> # for more interactive examples, please see demos
-        >>> from utils import create_dataset
-        >>> model = KAN(width=[2,5,1], grid=5, k=3, noise_scale=0.1, seed=0)
-        >>> f = lambda x: torch.exp(torch.sin(torch.pi*x[:,[0]]) + x[:,[1]]**2)
-        >>> dataset = create_dataset(f, n_var=2)
-        >>> model.train(dataset, opt='LBFGS', steps=50, lamb=0.01);
-        >>> model.prune()
-        >>> model.plot(mask=True)
-        '''
-        mask = [torch.ones(self.width[0], )]
-        active_neurons = [list(range(self.width[0]))]
-        for i in range(len(self.acts_scale) - 1):
-            if mode == "auto":
-                in_important = torch.max(self.acts_scale[i], dim=1)[0] > threshold
-                out_important = torch.max(self.acts_scale[i + 1], dim=0)[0] > threshold
-                overall_important = in_important * out_important
-            elif mode == "manual":
-                overall_important = torch.zeros(self.width[i + 1], dtype=torch.bool)
-                overall_important[active_neurons_id[i + 1]] = True
-            mask.append(overall_important.float())
-            active_neurons.append(torch.where(overall_important)[0])
-        active_neurons.append(list(range(self.width[-1])))
-        mask.append(torch.ones(self.width[-1], ))
-
-        self.mask = mask  # this is neuron mask for the whole model
-
-        # update act_fun[l].mask
-        for j in range(len(self.acts_scale) - 1):
-            for i in range(self.width[j + 1]):
-                if i not in active_neurons[j + 1]:
-                    self.remove_node(j + 1, i)
-
-        model2 = KANAutoencoder2(copy.deepcopy(self.width), self.grid, self.k,
-                                 base_fun=self.base_fun, device=self.device)
-        model2.load_state_dict(self.state_dict())
-        for i in range(len(self.acts_scale)):
-            if i < len(self.acts_scale) - 1:
-                model2.biases[i].weight.data = model2.biases[i].weight.data[:, active_neurons[i + 1]]
-
-            model2.act_fun[i] = model2.act_fun[i].get_subset(active_neurons[i], active_neurons[i + 1])
-            model2.width[i] = len(active_neurons[i])
-            model2.symbolic_fun[i] = self.symbolic_fun[i].get_subset(active_neurons[i], active_neurons[i + 1])
-
-        return model2
-
-    def remove_edge(self, k, i, j):
-        '''
-        remove activtion phi(k,i,j) (set its mask to zero)
-
-        Args:
-        -----
-            k : int
-                layer index
-            i : int
-                input neuron index
-            j : int
-                output neuron index
-
-        Returns:
-        --------
-            None
-        '''
-        self.act_fun[k].mask[j * self.width[k] + i] = 0.
-
-    def remove_node(self, k, i):
-        '''
-        remove neuron (l,i) (set the masks of all incoming and outgoing activation functions to zero)
-
-        Args:
-        -----
-            k : int
-                layer index
-            i : int
-                neuron index
-
-        Returns:
-        --------
-            None
-        '''
-        self.act_fun[k - 1].mask[i * self.width[k - 1] + torch.arange(self.width[k - 1])] = 0.
-        self.act_fun[k].mask[torch.arange(self.width[k + 1]) * self.width[k] + i] = 0.
-        self.symbolic_fun[k - 1].mask[i, :] *= 0.
-        self.symbolic_fun[k].mask[:, i] *= 0.
-
-    def increase_pruning_threshold(self):
-        '''
-        increase the pruning threshold
-
-        Args:
-        -----
-            threshold : float
-                the amount of increase
-
-        Returns:
-        --------
-            None
-        '''
-        if self.prune_threshold == 0:
-            self.prune_threshold = 1e-8
+        # Encoder and Decoder using KAN layers
+        self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
+        if conditional:
+            self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
         else:
-            self.prune_threshold *= 10
+            self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
 
-    def count_n_neurons(self):
-        '''
-        count the number of neurons in the model
+        # Mapper for batch effect removal
+        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], device=device)
 
-        Args:
-        -----
-            None
+        # Variational sampling
+        if variational:
+            self.gaussian_sampling = GaussianSample(layers[list(layers.keys())[-1]], layers[list(layers.keys())[-1]], device)
+        else:
+            self.gaussian_sampling = None
 
-        Returns:
-        --------
-            n_neurons : int
-                number of neurons
-        '''
-        total = 0
-        layers = {}
-        for idx, layer in enumerate(self.children()):
+        # Discriminator and classifier
+        self.dann_discriminator = Classifier2(layers[list(layers.keys())[-1]], 128, n_batches, device=device)
+        self.classifier = Classifier2(layers[list(layers.keys())[-1]] + n_emb, 128, nb_classes, device=device)
+
+        # ZINB layers if needed
+        if zinb:
+            self._dec_mean = nn.Sequential(
+                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), MeanAct())
+            self._dec_disp = nn.Sequential(
+                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), DispAct())
+            self._dec_pi = nn.Sequential(
+                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), nn.Sigmoid())
+
+        self.random_init(nn.init.kaiming_uniform_)
+
+    def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
+        rec = {}
+        if self.add_noise:
+            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
+        enc = self.enc(x)
+        if self.gaussian_sampling is not None:
+            if sampling:
+                enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
+                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), axis=1)
+            else:
+                enc, _, _ = self.gaussian_sampling(enc, train=False)
+                kl = torch.Tensor([0])
+        else:
+            kl = torch.Tensor([0])
+        if self.use_mapper and mapping:
+            bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
+            enc_be = enc + self.mapper(bs).squeeze()
+        else:
+            enc_be = enc
+        if not self.tied_weights:
             try:
-                layers[layer.name] = {}
+                bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
             except Exception as e:
-                print(e)
-                continue
-            for idx2, layer2 in enumerate(layer.children()):
-                if isinstance(layer2, KANLinear):
-                    n = layer2.mask.sum().item()
-                    total += n
-                    layers[layer2.name] = n
-                # If subscriptable
-                for layer3 in layer2.keys():
-                    if isinstance(layer2[layer3][0], KANLinear):
-                        if not (layer.name == 'decoder2' and layer3 == 'layer2') \
-                            and not (layer.name == 'classifier' and layer3 == 'layer2') \
-                                and not (layer.name == 'dann_discriminator' and layer3 == 'layer2'):
-                            n = layer2[layer3][0].mask.sum().item()
-                            total += n
-                            layers[layer.name][layer3] = n
+                print(f'{e}')
+                bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
+            rec = {"mean": self.dec(enc_be, bs)}
+        elif not self.zinb:
+            rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
+            rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
+            rec = {"mean": rec}
+        elif self.zinb:
+            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]}
 
-        layers['total'] = total
-        return layers
+        if self.zinb:
+            _mean = self._dec_mean(rec['mean'][0])
+            _disp = self._dec_disp(rec['mean'][0])
+            _pi = self._dec_pi(rec['mean'][0])
+            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
+            rec = {'mean': _mean, 'rec': to_rec}
+        else:
+            zinb_loss = torch.Tensor([0])
+
+        return [enc, rec, zinb_loss, kl]
+
+    def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
+        print("Pruning not available for this model")
+        return 0
+
+    def count_n_neurons(self) -> int:
+        total = 0
+        layer_counts = {}
+        for name, module in self.named_modules():
+            if isinstance(module, KANLinear):
+                layer_counts[name] = module.out_features
+                total += module.out_features
+        return {"total": total, "layers": layer_counts}
+
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, KANLinear) or isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+    def predict_proba(self, x):
+        enc = self.enc(x)
+        return self.classifier(enc).detach().cpu().numpy()
+
+    def predict(self, x):
+        enc = self.enc(x)
+        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+
+    def _kld(self, z, q_param, h_last=None, p_param=None):
+        if len(z.shape) == 1:
+            z = z.view(1, -1)
+        (mu, log_var) = q_param
+        qz = log_normal_diag(z, mu, log_var)
+        if p_param is None:
+            pz = log_normal_standard(z)
+        else:
+            (mu, log_var) = p_param
+            pz = log_gaussian(z, mu, log_var)
+        kl = -(pz - qz)
+        return kl
+
+    def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
+        eps = 1e-10
+        mean = mean * scale_factor
+        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
+        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
+        nb_final = t1 + t2
+        nb_case = nb_final - torch.log(1.0 - pi + eps)
+        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
+        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
+        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
+        if ridge_lambda > 0:
+            ridge = ridge_lambda * torch.square(pi)
+            result += ridge
+        result = torch.mean(result)
+        return result
 
 
-def log_zinb_positive(x, mu, theta, pi, eps=1e-8):
-    """
-    log likelihood (scalar) of a minibatch according to a zinb model.
-    Notes:
-    We parametrize the bernouilli using the logits, hence the softplus functions appearing
+class Encoder3(nn.Module):
+    def __init__(self, in_shape, layers: dict, dropout, device='cuda'):
+        super().__init__()
+        self.device = device
+        self.layer_names = list(layers.keys())
+        self.n_layers = len(self.layer_names)
+        self.kan_layers = nn.ModuleList()
+        self.dropouts = nn.ModuleList()
+        prev_shape = in_shape
+        for i, name in enumerate(self.layer_names):
+            out_shape = layers[name]
+            self.kan_layers.append(KANLinear(prev_shape, out_shape, name=f'encoder3_{name}'))
+            self.dropouts.append(nn.Dropout(dropout))
+            prev_shape = out_shape
+        self.random_init()
 
-    Variables:
-    mu: mean of the negative binomial (has to be positive support) (shape: minibatch x genes)
-    theta: inverse dispersion parameter (has to be positive support) (shape: minibatch x genes)
-    pi: logit of the dropout parameter (real support) (shape: minibatch x genes)
-    eps: numerical stability constant
-    """
-    case_zero = F.softplus(- pi + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps)) \
-        - F.softplus(-pi)
-    case_non_zero = - pi - F.softplus(- pi) \
-        + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps) \
-        + x * torch.log(mu + eps) - x * torch.log(theta + mu + eps) \
-        + torch.lgamma(x + theta) - torch.lgamma(theta) - torch.lgamma(x + 1)
+    def forward(self, x):
+        for kan, drop in zip(self.kan_layers, self.dropouts):
+            x = kan(x)
+            x = drop(x)
+        return x
 
-    # mask = tf.cast(torch.less(x, eps), torch.float32)
-    mask = torch.less(x, eps).float()
-    res = torch.multiply(mask, case_zero) + torch.multiply(1 - mask, case_non_zero)
-    res = torch.nan_to_num(res, 0)
-    return torch.sum(res, axis=-1)
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, KANLinear):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+
+class Decoder3(nn.Module):
+    def __init__(self, in_shape, n_batches, layers: dict, dropout, device='cuda'):
+        super().__init__()
+        self.device = device
+        self.n_batches = n_batches
+        self.layer_names = list(layers.keys())
+        self.n_layers = len(self.layer_names)
+        self.kan_layers = nn.ModuleList()
+        self.dropouts = nn.ModuleList()
+        prev_shape = layers[self.layer_names[-1]] + n_batches if n_batches > 0 else layers[self.layer_names[-1]]
+        for name in reversed(self.layer_names):
+            out_shape = layers[name]
+            self.kan_layers.append(KANLinear(prev_shape, out_shape, name=f'decoder3_{name}'))
+            self.dropouts.append(nn.Dropout(dropout))
+            prev_shape = out_shape
+        self.kan_layers.append(KANLinear(prev_shape, in_shape, name='decoder3_out'))
+        self.random_init()
+
+    def forward(self, x, batches=None):
+        if batches is not None and self.n_batches > 0:
+            x = torch.cat((x, batches), dim=1)
+        for kan, drop in zip(self.kan_layers, self.dropouts):
+            x = kan(x)
+            x = drop(x)
+        x = self.kan_layers[-1](x)
+        return x
+
+    def random_init(self, init_func=nn.init.kaiming_uniform_):
+        for m in self.modules():
+            if isinstance(m, KANLinear):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()

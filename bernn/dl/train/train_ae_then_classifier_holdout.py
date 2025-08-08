@@ -13,7 +13,7 @@ import sys
 # Add the project root to the path
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
 
-from config.training_config import TrainingConfig
+from ...config.training_config import TrainingConfig
 
 import matplotlib.pyplot as plt
 import pandas as pd

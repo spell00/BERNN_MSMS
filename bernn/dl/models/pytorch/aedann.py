@@ -1012,7 +1012,7 @@ class AutoEncoder3(nn.Module):
                  n_emb: int, mapper: bool, variational: bool, layers: dict,
                  dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, use_gnn: bool = False, device: str = 'cuda') -> None:
+                 update_grid: bool = False, use_gnn: bool = False, device: str = 'cuda', is_sigmoid: bool = False) -> None:
         """
         TODO MAKE DESCRIPTION
         """
@@ -1024,6 +1024,7 @@ class AutoEncoder3(nn.Module):
         self.n_batches = n_batches
         self.zinb = zinb
         self.tied_weights = tied_weights
+        self.is_sigmoid = is_sigmoid
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
         self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
@@ -1104,7 +1105,8 @@ class AutoEncoder3(nn.Module):
             rec = {'mean': _mean, 'rec': to_rec}
         else:
             zinb_loss = torch.Tensor([0])
-
+        if self.is_sigmoid:
+            rec['mean'] = torch.sigmoid(rec['mean'])
         # reverse = ReverseLayerF.apply(enc, alpha)
         # b_preds = self.classifier(reverse)
         # rec[-1] = torch.clamp(rec[-1], min=0, max=1)

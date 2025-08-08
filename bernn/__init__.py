@@ -4,18 +4,18 @@ This package provides tools for removing batch effects from mass spectrometry da
 using deep learning approaches.
 """
 
-__version__ = "0.1.18"
+__version__ = "0.2.1"
 __author__ = "Simon Pelletier"
 __license__ = "MIT"
 
-# Core training modules
-from .dl.train import (
-    TrainAE,
-    TrainAEClassifierHoldout,
-    TrainAEThenClassifierHoldout,
-)
+# Import configuration
+from . import config
 
-# Model definitions
+# Import other modules
+from .utils import *
+from .dl import models
+
+# Import models explicitly so they are available for direct import
 from .dl.models.pytorch import (
     AutoEncoder2,
     SHAPAutoEncoder2,
@@ -23,10 +23,19 @@ from .dl.models.pytorch import (
     SHAPKANAutoencoder2,
     AutoEncoder3,
     SHAPAutoEncoder3,
+    KANAutoencoder3,
+    SHAPKANAutoencoder3,
 )
 
-# KAN modules
-from .dl.train.pytorch.ekan import KANLinear, KAN
+# Optionally expose trainers
+try:
+    from .dl.train import (
+        TrainAE,
+        TrainAEClassifierHoldout, 
+        TrainAEThenClassifierHoldout,
+    )
+except Exception:
+    TrainAE = TrainAEClassifierHoldout = TrainAEThenClassifierHoldout = None
 
 __all__ = [
     # Training
@@ -41,6 +50,8 @@ __all__ = [
     "SHAPKANAutoencoder2",
     "AutoEncoder3",
     "SHAPAutoEncoder3",
+    "KANAutoencoder3",
+    "SHAPKANAutoencoder3",
 
     # KAN
     "KANLinear",

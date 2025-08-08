@@ -36,6 +36,7 @@ class TrainingConfig:
     train_after_warmup: bool = False
     warmup: int = 100  # Set during training
     device: str = 'cuda:0'
+    use_sigmoid: bool = False  # Use sigmoid activation in the last layer of the AE
 
     # Loss and regularization
     rec_loss: str = 'l1'
@@ -73,8 +74,8 @@ class TrainingConfig:
 
     def __post_init__(self):
         """Validate configuration after initialization."""
-        if self.dloss not in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
-            raise ValueError(f"Invalid dloss: {self.dloss}. Must be one of: revTriplet, revDANN, DANN, inverseTriplet, normae")
+        if self.dloss not in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae', 'no']:
+            raise ValueError(f"Invalid dloss: {self.dloss}. Must be one of: revTriplet, revDANN, DANN, inverseTriplet, normae, no")
 
         if self.device not in ['cpu', 'cuda', 'cuda:0', 'cuda:1', 'cuda:2', 'cuda:3']:
             # Allow any device string that starts with 'cuda:'
