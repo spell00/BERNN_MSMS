@@ -145,7 +145,7 @@ class MSDataset3(Dataset):
         if self.add_noise:
             if np.random.random() > 0.5:
                 x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
+        return x, meta_to_rec, name, int(label), batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
             meta_pos_batch_sample, meta_neg_batch_sample, set
 
 

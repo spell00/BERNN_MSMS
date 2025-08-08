@@ -207,7 +207,7 @@ else:
 if is_python312_or_later:
     tools_requirements = [
         # Exclude ax-platform for Python 3.12+ due to conflicts
-        # "ax-platform>=0.3.5",  # Causes too many conflicts
+        "ax-platform>=1.0.0",  # Causes too many conflicts
         "packaging>=21.0",
         "python-dateutil>=2.8.2",
         "PyYAML>=6.0.1",
@@ -261,7 +261,7 @@ python38_modern_requirements = [
 # Python 3.8 minimal ML setup without conflicting experiment tracking
 python38_ml_minimal_requirements = [
     "torch>=2.0.1",
-    "torchvision>=0.15.2", 
+    "torchvision>=0.15.2",
     "torch-geometric",
     # Skip TensorFlow to avoid typing-extensions conflicts
     "scikit-learn>=1.0.2,<1.2.0",
@@ -275,7 +275,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.1.18',
+    version='0.2.1',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -332,7 +332,7 @@ setup(
         ),
 
         # Full installs
-        'full': (
+        'full-no-ax': (
             optional_requirements +
             compatibility_requirements +
             deep_learning_requirements +
@@ -343,7 +343,7 @@ setup(
             r_integration_requirements +
             special_requirements
         ),
-        'full-with-ax': (  # Full install WITH ax-platform (may have conflicts)
+        'full': (  # Full install WITH ax-platform (may have conflicts)
             optional_requirements +
             compatibility_requirements +
             deep_learning_requirements +
@@ -370,10 +370,10 @@ setup(
         'py39': [] if not is_python39_or_earlier else (
             deep_learning_requirements + experiment_tracking_requirements
         ),
-        'py310+': [] if is_python39_or_earlier else (
+        'py310-plus': [] if is_python39_or_earlier else (
             deep_learning_requirements + experiment_tracking_requirements
         ),
-        'py312+': [] if not is_python312_or_later else (
+        'py312-plus': [] if not is_python312_or_later else (
             deep_learning_requirements + experiment_tracking_requirements
         ),
     },

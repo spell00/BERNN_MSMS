@@ -6,7 +6,12 @@ from itertools import cycle
 
 # Third-party imports
 import torch
-import mlflow
+try:
+    import mlflow
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
 import sklearn
 import numpy as np
 import tensorflow as tf
@@ -160,7 +165,8 @@ class LogConfusionMatrix:
             elif mlops == "neptune":
                 logger[f"CM_{group}_all"].upload(figure)
             elif mlops == "mlflow":
-                mlflow.log_figure(figure, f"CM_{group}_all.png")
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_figure(figure, f"CM_{group}_all.png")
             plt.close(figure)
         del cm, figure
 
@@ -212,7 +218,8 @@ def log_confusion_matrix(logger, epoch, lists, unique_labels, traces, mlops):
         elif mlops == "neptune":
             logger[f"CM_{values}_all"].upload(figure)
         elif mlops == "mlflow":
-            mlflow.log_figure(figure, f"CM_{values}_all")
+            if MLFLOW_AVAILABLE:
+                mlflow.log_figure(figure, f"CM_{values}_all")
         plt.close(figure)
         del cm, figure
 
@@ -310,7 +317,8 @@ def save_roc_curve(model, x_test, y_test, unique_labels, name, binary, acc, mlop
             if mlops == 'neptune':
                 logger[name].log(fig)
             if mlops == 'mlflow':
-                mlflow.log_figure(fig, name)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_figure(fig, name)
                 
         plt.close(fig)
 
@@ -390,7 +398,8 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
             if mlops == 'neptune':
                 logger[name].log(fig)
             if mlops == 'mlops':
-                mlflow.log_figure(fig, name)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_figure(fig, name)
         # setup plot details
         colors = cycle(["navy", "turquoise", "darkorange", "cornflowerblue", "teal"])
         viridis = cm.get_cmap('viridis', 256)
@@ -437,7 +446,8 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
             if mlops == 'neptune':
                 logger[f'{name}_multiclass'].log(fig)
             if mlops == 'mlflow':
-                mlflow.log_figure(fig, f'{name}_multiclass')
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_figure(fig, f'{name}_multiclass')
 
         plt.close(fig)
 
@@ -754,23 +764,30 @@ def add_to_mlflow(values, epoch):
     """
     if len(values['rec_loss']) > 0:
         if not np.isnan(values['rec_loss'][-1]):
-            mlflow.log_metric("rec_loss", values['rec_loss'][-1], epoch)
+            if MLFLOW_AVAILABLE:
+                mlflow.log_metric("rec_loss", values['rec_loss'][-1], epoch)
     if len(values['dom_loss']) > 0:
         if not np.isnan(values['dom_loss'][-1]):
-            mlflow.log_metric("dom_loss", values['dom_loss'][-1], epoch)
+            if MLFLOW_AVAILABLE:
+                mlflow.log_metric("dom_loss", values['dom_loss'][-1], epoch)
     if len(values['dom_acc']) > 0:
         if not np.isnan(values['dom_acc'][-1]):
-            mlflow.log_metric("dom_acc", values['dom_acc'][-1], epoch)
+            if MLFLOW_AVAILABLE:
+                mlflow.log_metric("dom_acc", values['dom_acc'][-1], epoch)
     for group in list(values.keys())[4:]:
         try:
             if not np.isnan(values[group]['closs'][-1]):
-                mlflow.log_metric(f'closs/{group}', values[group]['closs'][-1], epoch)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_metric(f'closs/{group}', values[group]['closs'][-1], epoch)
             if not np.isnan(values[group]['acc'][-1]):
-                mlflow.log_metric(f'acc/{group}/all_concentrations', values[group]['acc'][-1], epoch)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_metric(f'acc/{group}/all_concentrations', values[group]['acc'][-1], epoch)
             if not np.isnan(values[group]['mcc'][-1]):
-                mlflow.log_metric(f'mcc/{group}/all_concentrations', values[group]['mcc'][-1], epoch)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_metric(f'mcc/{group}/all_concentrations', values[group]['mcc'][-1], epoch)
             if not np.isnan(values[group]['top3'][-1]):
-                mlflow.log_metric(f'top3/{group}/all_concentrations', values[group]['top3'][-1], epoch)
+                if MLFLOW_AVAILABLE:
+                    mlflow.log_metric(f'top3/{group}/all_concentrations', values[group]['top3'][-1], epoch)
         except:
             pass
 

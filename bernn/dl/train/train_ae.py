@@ -6,7 +6,18 @@ import random
 import torch
 from torch import nn
 from sklearn import metrics
-from ax.service.managed_loop import optimize
+
+# Handle ax-platform import with graceful fallback
+try:
+    from ax.service.managed_loop import optimize
+    AX_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: ax-platform not available or incompatible: {e}")
+    print("Hyperparameter optimization features will be disabled.")
+    AX_AVAILABLE = False
+    def optimize(*args, **kwargs):
+        raise ImportError("ax-platform is not available. Please install with: pip install ax-platform==0.3.7")
+
 from sklearn.metrics import matthews_corrcoef as MCC
 # from ...ml.train.params_gp import *
 from .pytorch.aedann import ReverseLayerF
@@ -20,7 +31,7 @@ from .pytorch.utils.utils import to_categorical, get_empty_traces, \
 from .pytorch.utils.loggings import make_data
 import mlflow
 import warnings
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_dummy
 import uuid
 
 matplotlib.use('Agg')
@@ -176,6 +187,8 @@ class TrainAE:
         elif self.args.dataset == 'mice':
             # This seed split the data to have n_samples in train: 96, valid:52, test: 23
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
+        elif self.args.dataset == 'dummy':
+            self.data, self.unique_labels, self.unique_batches = get_dummy(self.args, seed=seed)
         else:
             self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
             self.pools = self.args.pool

@@ -6,6 +6,14 @@ from bernn.utils.pool_metrics import log_pool_metrics
 
 import uuid
 import shutil
+from pathlib import Path
+from typing import Union
+import sys
+
+# Add the project root to the path
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
+
+from config.training_config import TrainingConfig
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -15,7 +23,18 @@ import copy
 import torch
 from torch import nn
 from tensorboardX import SummaryWriter
-from ax.service.managed_loop import optimize
+
+# Handle ax-platform import with graceful fallback
+try:
+    from ax.service.managed_loop import optimize
+    AX_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: ax-platform not available or incompatible: {e}")
+    print("Hyperparameter optimization features will be disabled.")
+    AX_AVAILABLE = False
+    def optimize(*args, **kwargs):
+        raise ImportError("ax-platform is not available. Please install with: pip install ax-platform==0.3.7")
+
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import linsvc_space
 # from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
@@ -111,32 +130,103 @@ def log_num_neurons(run, n_neurons, init_n_neurons):
 class TrainAEThenClassifierHoldout(TrainAE):
     """
     This class was previously named TrainAEClassifierHoldout. It is now TrainAEThenClassifierHoldout.
+
+    Modern usage with configuration class (recommended):
+        config = TrainingConfig(
+            csv_file='my_data.csv',
+            dloss='DANN',
+            variational=True,
+            n_epochs=500
+        )
+        trainer = TrainAEThenClassifierHoldout(config, path='./data')
+
+    Legacy usage (still supported):
+        trainer = TrainAEThenClassifierHoldout(args, path='./data')
     """
 
-    def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True, pools=True):
+    def __init__(self,
+                 config: Union[TrainingConfig, object, None] = None,
+                 path: str = './data',
+                 fix_thres: float = -1,
+                 load_tb: bool = False,
+                 log_metrics: bool = False,
+                 keep_models: bool = True,
+                 log_inputs: bool = False,
+                 log_plots: bool = False,
+                 log_tb: bool = False,
+                 log_neptune: bool = False,
+                 log_mlflow: bool = False,
+                 groupkfold: bool = True,
+                 pools: bool = False,
+                 **kwargs):
         """
+        Initialize the TrainAEThenClassifierHoldout trainer.
 
         Args:
-            args: contains multiple arguments passed in the command line
-            log_path (str): Path where the tensorboard logs are saved
-            path (str): Path to the data (in .csv format)
-            fix_thres (float): If 1 > fix_thres >= 0 then the threshold is fixed to that value.
+            config: TrainingConfig object with training parameters, or legacy args object, or None
+            path: Path to the data (in .csv format)
+            fix_thres: If 1 > fix_thres >= 0 then the threshold is fixed to that value.
                        any other value means the threshold won't be fixed and will be
                        learned as an hyperparameter
-            load_tb (bool): If True, loads previous runs already saved
-            log_metrics (bool): Wether or not to keep the batch effect metrics
-            keep_models (bool): Wether or not to save the models trained
-                                (can take a lot of space if training a lot of models)
-            log_inputs (bool): Wether or not to log graphs or batch effect metrics
-                                of the scaled inputs
-            log_plots (bool): For each optimization iteration, on the first iteration, wether or
-                              not to plot PCA, UMAP, CCA and LDA of the encoded and reconstructed
-                              representations.
-            log_tb (bool): Wether or not to use tensorboard.
-            log_mlflow (bool): Wether or not to use mlflow.
+            load_tb: If True, loads previous runs already saved
+            log_metrics: Whether or not to keep the batch effect metrics
+            keep_models: Whether or not to save the models trained
+                         (can take a lot of space if training a lot of models)
+            log_inputs: Whether or not to log graphs or batch effect metrics
+                        of the scaled inputs
+            log_plots: For each optimization iteration, on the first iteration, whether or
+                       not to plot PCA, UMAP, CCA and LDA of the encoded and reconstructed
+                       representations.
+            log_tb: Whether or not to use tensorboard.
+            log_neptune: Whether or not to use neptune.
+            log_mlflow: Whether or not to use mlflow.
+            groupkfold: Whether to use group k-fold cross validation.
+            pools: Whether to use data pooling.
+            **kwargs: Additional arguments for creating TrainingConfig if config is None
 
+        Examples:
+            # Modern approach with configuration class
+            config = TrainingConfig(
+                csv_file='adenocarcinoma_data.csv',
+                dloss='DANN',
+                variational=True,
+                n_epochs=500,
+                device='cuda:0'
+            )
+            trainer = TrainAEThenClassifierHoldout(config, './data')
+
+            # Quick setup with kwargs
+            trainer = TrainAEThenClassifierHoldout(
+                None, './data',
+                csv_file='my_data.csv',
+                dloss='inverseTriplet',
+                n_epochs=1000
+            )
+
+            # Legacy approach (still supported)
+            trainer = TrainAEThenClassifierHoldout(args, './data')
         """
+
+        # Handle different input types
+        if config is None:
+            # Create config from kwargs
+            self.config = TrainingConfig(**kwargs)
+            # Convert to args-like object for parent class compatibility
+            args = self.config
+        elif isinstance(config, TrainingConfig):
+            # Already a TrainingConfig
+            self.config = config
+            args = config
+        else:
+            # Legacy args object - convert to TrainingConfig
+            try:
+                self.config = TrainingConfig.from_args(config)
+                args = config  # Keep original for parent class
+            except Exception:
+                # If conversion fails, keep original args and create default config
+                args = config
+                self.config = TrainingConfig()
+
         super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
                          log_neptune, log_mlflow, groupkfold, pools)
 
@@ -423,7 +513,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             self.hparams_names = [x.name for x in linsvc_space]
             if self.log_inputs and not self.logged_inputs:
                 data['inputs']['all'].to_csv(
-                    f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
+                    f'{self.complete_log_path}/{self.args.berm}_inputs.csv')  # TODO berm (batch effect removal method) has been removed. change this
                 if self.log_neptune:
                     run["inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                 log_input_ordination(loggers['logger'], data, self.scaler, epoch)
@@ -562,7 +652,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             # If save neptune is True, save the model
                             if self.log_neptune:
                                 log_num_neurons(run, n_neurons, init_n_neurons)
-                                
+
                     else:
                         ae = self.freeze_ae(ae)
 
@@ -722,7 +812,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             best_mccs += [best_mcc]
 
             # Running the loop one last time to register the reconstructions without batch effects.
-            # In the previous loop, when mapping=True, the reconstructions have batch effects to make 
+            # In the previous loop, when mapping=True, the reconstructions have batch effects to make
             # The reconstructions more accurate. This is necessary when we want to get batch-free reconstructions
             best_lists, traces = get_empty_traces()
             # Loading best model that was saved during training
@@ -842,80 +932,111 @@ if __name__ == "__main__":
     parser.add_argument('--clip_val', type=float, default=1, help='')
     parser.add_argument('--log_metrics', type=int, default=1, help='')
     parser.add_argument('--log_plots', type=int, default=1, help='')
+    parser.add_argument('--log_inputs', type=int, default=0, help='')
     parser.add_argument('--prune_network', type=float, default=1, help='')
+    parser.add_argument('--log_neptune', type=int, default=0, help='')
+    parser.add_argument('--log_mlflow', type=int, default=0, help='')
+    parser.add_argument('--log_tb', type=int, default=0, help='')
+    parser.add_argument('--keep_models', type=int, default=0, help='')
 
     args = parser.parse_args()
 
-    # Replace argparse with a simple class to simulate arguments
-    class Args:
-        def __init__(self):
-            self.csv_file = 'adenocarcinoma_data.csv'
-            self.path = './data'
-            self.exp_id = 'default_ae_then_classifier'
-            # self.random_recs = 0  # TODO to deprecate, no longer used
-            # self.predict_tests = 0
-            # self.balanced_rec_loader = 0
-            # self.early_stop = 50
-            # self.early_warmup_stop = -1
-            # self.train_after_warmup = 0
-            # self.threshold = 0.0
-            # self.n_epochs = 1000
-            # self.n_trials = 100
-            # self.device = 'cuda:0'
-            # self.rec_loss = 'l1'
-            # self.tied_weights = 0
-            # self.random = 1
-            # self.variational = 0
-            # self.zinb = 0  # TODO resolve problems, do not use
-            # self.use_mapping = 1  # Use batch mapping for reconstruct
-            # self.bdisc = 1
-            # self.n_repeats = 5
-            # self.dloss = 'inverseTriplet'  # one of revDANN, DANN, inverseTriplet, revTriplet
-            # self.best_features_file = ''  # best_unique_genes.tsv
-            # self.bad_batches = ''  # 0;23;22;21;20;19;18;17;16;15
-            # self.remove_zeros = 0
-            # self.n_meta = 0
-            # self.embeddings_meta = 0
-            # self.features_to_keep = 'features_proteins.csv'
-            self.groupkfold = 1
-            # self.dataset = 'alzheimer'
-            # self.bs = 32  # Batch size
-            # self.exp_id = 'default_ae_then_classifier'
-            # self.strategy = 'CU_DEM'  # only for Alzheimer dataset
-            # self.n_agg = 5  # Number of trailing values to get stable valid values
-            # self.n_layers = 2  # N layers for classifier
-            # self.log1p = 1  # log1p the data? Should be 0 with zinb
-            # self.pool = 1  # only for Alzheimer dataset
-            # self.kan = 1
-            # self.update_grid = 1
-            # self.use_l1 = 1
-            # self.clip_val = 1.0
-            self.log_metrics = 1
-            self.log_plots = 1
-            # self.prune_network = 1.0
+    # Example usage showing different approaches:
 
-    args = Args()
+    # 1. RECOMMENDED: Modern approach with TrainingConfig
+    print("=== Modern Configuration Class Approach ===")
+    config = TrainingConfig(
+        csv_file=args.csv_file,
+        exp_id='modern_ae_then_classifier',
+        dloss=args.dloss,
+        variational=args.variational,
+        n_epochs=args.n_epochs,
+        device=args.device,
+        groupkfold=args.groupkfold,
+        n_meta=args.n_meta,
+        embeddings_meta=args.embeddings_meta,
+        n_layers=args.n_layers,
+        n_agg=args.n_agg,
+        bad_batches=args.bad_batches,
+        remove_zeros=args.remove_zeros,
+        dataset=args.dataset,
+        # path=args.path,
+        bs=args.bs,
+        strategy=args.strategy,
+        log1p=args.log1p,
+        pool=args.pool,
+        update_grid=args.update_grid,
+        use_l1=args.use_l1,
+        clip_val=args.clip_val,
+    )
 
     try:
-        mlflow.create_experiment(
-            args.exp_id,
-            # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),
-            # tags={"version": "v1", "priority": "P1"},
-        )
+        mlflow.create_experiment(config.exp_id)
     except:
-        print(f"\n\nExperiment {args.exp_id} already exists\n\n")
-    train = TrainAEThenClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False, 
-                                         log_metrics=args.log_metrics, keep_models=False,
-                                         log_inputs=False, log_plots=args.log_plots,
-                                         log_tb=False, log_neptune=True, log_mlflow=True, 
-                                         groupkfold=args.groupkfold, pools=True)
+        print(f"Experiment {config.exp_id} already exists")
+
+    # Clean, type-safe instantiation
+    trainer_modern = TrainAEThenClassifierHoldout(
+        config=config,
+        path='./data',
+        log_metrics=args.log_metrics,
+        keep_models=args.keep_models,
+        log_inputs=args.log_inputs,
+        log_plots=args.log_plots,
+        log_tb=args.log_tb,
+        log_neptune=args.log_neptune,
+        log_mlflow=args.log_mlflow,
+        pools=False  # TODO redundancy with args.pool
+    )
+
+
+    # 2. Quick setup with kwargs (also modern)
+    # print("=== Quick Setup with kwargs ===")
+    # trainer_quick = TrainAEThenClassifierHoldout(
+    #     config=None,  # Will create TrainingConfig from kwargs
+    #     path='./data',
+    #     csv_file='adenocarcinoma_data.csv',
+    #     exp_id='quick_setup_experiment',
+    #     dloss='DANN',
+    #     variational=True,
+    #     n_epochs=500,
+    #     keep_models=False,
+    #     log_mlflow=True
+    # )
+
+    # 3. Legacy approach (still supported for backwards compatibility)
+    # print("=== Legacy Args Approach (backwards compatibility) ===")
+    # class LegacyArgs:
+    #     def __init__(self):
+    #         self.csv_file = 'adenocarcinoma_data.csv'
+    #         self.exp_id = 'legacy_ae_then_classifier'
+    #         self.groupkfold = 1
+    #         self.log_metrics = 1
+    #         self.log_plots = 1
+
+    # legacy_args = LegacyArgs()
+    # trainer_legacy = TrainAEThenClassifierHoldout(
+    #     config=legacy_args,
+    #     path='./data',
+    #     log_metrics=True,
+    #     keep_models=False,
+    #     log_inputs=False,
+    #     log_plots=True,
+    #     log_tb=False,
+    #     log_neptune=True,
+    #     log_mlflow=True,
+    #     pools=True
+    # )
+
+    # Use the modern trainer for the actual experiment
+    train = trainer_modern
 
     # train.train()
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        {"name": "wd", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": True},
         # {"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         # {"name": "lr_b", "type": "range", "bounds": [1e-6, 1e-1], "log_scale": True},
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
@@ -933,25 +1054,25 @@ if __name__ == "__main__":
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},
         # {"name": "layer2", "type": "range", "bounds": [32, 64]},
         # {"name": "layer1", "type": "range", "bounds": [64, 128]},
-        
+
     ]
 
     # Some hyperparameters are not always required. They are set to a default value in Train.train()
-    if args.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
+    if train.config.dloss in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae']:
         # gamma = 0 will ensure DANN is not learned
         parameters += [{"name": "gamma", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.variational:
+    if train.config.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.zinb:
+    if train.config.zinb:
         # zeta = 0 because useless outside a zinb autoencoder
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.kan and args.use_l1:
-        # zeta = 0 because useless outside a zinb autoencoder
+    if train.config.kan and train.config.use_l1:
+        # reg_entropy for KAN regularization
         parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True}]
-    if args.use_l1:
+    if train.config.use_l1:
         parameters += [{"name": "l1", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True}]
-    if args.prune_network:
+    if train.config.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
@@ -959,14 +1080,17 @@ if __name__ == "__main__":
         evaluation_function=train.train,
         objective_name='mcc',
         minimize=False,
-        total_trials=args.n_trials,
+        total_trials=train.config.n_trials,
         random_seed=41,
-
     )
+
+    # Example of how to access results
+    print("=== Optimization Results ===")
+    print(f'Best MCC: {values[0]["mcc"]}')
+    print('Best Parameters:')
+    for param, value in best_parameters.items():
+        print(f'  {param}: {value}')
 
     # fig = plt.figure()
     # render(plot_contour(model=model, param_x="learning_rate", param_y="weight_decay", metric_name='Loss'))
     # fig.savefig('test.jpg')
-    # print('Best Loss:', values[0]['loss'])
-    # print('Best Parameters:')
-    # print(json.dumps(best_parameters, indent=4))

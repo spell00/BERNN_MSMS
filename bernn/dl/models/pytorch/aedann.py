@@ -1,9 +1,23 @@
-import torch
-from torch import nn
-from torch.autograd import Variable
-import torch.nn.functional as F
-from torch.autograd import Function
-from typing import Optional, Tuple, Any, List
+from typing import Any, Optional, Tuple, List
+
+try:
+    import torch
+    from torch import nn
+    from torch.autograd import Variable
+    import torch.nn.functional as F
+    from torch.autograd import Function
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+def _check_torch_available():
+    """Check if PyTorch is available and raise helpful error if not."""
+    if not TORCH_AVAILABLE:
+        raise ImportError(
+            "PyTorch is not installed. To use deep learning features, please install with: "
+            "pip install bernn[deep-learning] or pip install torch"
+        )
+
 from bernn.dl.models.pytorch.utils.stochastic import GaussianSample
 from bernn.dl.models.pytorch.utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from bernn.dl.models.pytorch.utils.utils import to_categorical
@@ -14,6 +28,7 @@ import numpy as np
 # https://github.com/DHUDBlab/scDSC/blob/1247a63aac17bdfb9cd833e3dbe175c4c92c26be/layers.py#L43
 class MeanAct(nn.Module):
     def __init__(self) -> None:
+        _check_torch_available()
         super(MeanAct, self).__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -23,6 +38,7 @@ class MeanAct(nn.Module):
 # https://github.com/DHUDBlab/scDSC/blob/1247a63aac17bdfb9cd833e3dbe175c4c92c26be/layers.py#L43
 class DispAct(nn.Module):
     def __init__(self) -> None:
+        _check_torch_available()
         super(DispAct, self).__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -45,11 +61,13 @@ class ReverseLayerF(Function):
 
 
 def grad_reverse(x: torch.Tensor) -> torch.Tensor:
+    _check_torch_available()
     return ReverseLayerF()(x)
 
 
 class Classifier(nn.Module):
     def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2, use_softmax: bool = True) -> None:
+        _check_torch_available()
         super(Classifier, self).__init__()
         self.use_softmax = use_softmax
         if n_layers == 2:

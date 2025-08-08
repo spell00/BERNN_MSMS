@@ -616,7 +616,7 @@ def get_data(path, args, seed=42):
                 data[key]['all'] = np.concatenate((
                     data[key]['train'], data[key]['valid'], data[key]['test']
                 ), 0)
-        
+
         unique_batches = np.unique(data['batches']['all'])
         for group in ['train', 'valid', 'test', 'all']:
             data['batches'][group] = np.array([np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]])
@@ -971,6 +971,109 @@ def get_bacteria_images_ms2(path, args, seed=42):
     #         (data['names']['train'], data['names'][group][blks_to_move])), data['names'][group][not_to_move]
     #     data['sets']['train'], data['sets'][group] = np.concatenate(
     #         (data['sets']['train'], data['sets'][group][blks_to_move])), data['sets'][group][not_to_move]
+
+    return data, unique_labels, unique_batches
+
+
+def get_dummy(path, args, seed=42):
+    """
+    Generate a small synthetic dataset with the expected structure.
+
+    Returns:
+        data, unique_labels, unique_batches
+    """
+    rng = np.random.RandomState(seed)
+
+    # Config (kept small by default)
+    n_features = getattr(args, 'dummy_features', 32)
+    n_classes = getattr(args, 'dummy_classes', 3)
+    n_batches = getattr(args, 'dummy_batches', 4)
+    sizes = {
+        'train': getattr(args, 'dummy_train', 60),
+        'valid': getattr(args, 'dummy_valid', 20),
+        'test': getattr(args, 'dummy_test', 20),
+    }
+
+    class_names = np.array([f'class{i}' for i in range(n_classes)])
+    feature_names = [f'f{i}' for i in range(n_features)]
+
+    data = {}
+    unique_labels = np.array([])
+    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+        data[info] = {}
+        for group in ['all', 'train', 'test', 'valid']:
+            data[info][group] = np.array([])
+
+    # Create class centers
+    centers = rng.normal(loc=0.0, scale=3.0, size=(n_classes, n_features))
+
+    for group in ['train', 'valid', 'test']:
+        n = sizes[group]
+        # Stratified labels (roughly balanced)
+        y_idx = np.tile(np.arange(n_classes), int(np.ceil(n / n_classes)))[:n]
+        rng.shuffle(y_idx)
+        y = class_names[y_idx]
+
+        # Generate features per class
+        X = np.vstack([
+            centers[y_i_idx] + rng.normal(0, 1.0, size=n_features)
+            for y_i_idx in y_idx
+        ])
+
+        # Batches (round-robin)
+        batches = np.array([i % n_batches for i in range(n)], dtype=int)
+        rng.shuffle(batches)
+
+        # Names and orders
+        names = np.array([f'{group}_{i:04d}' for i in range(n)])
+        orders = np.arange(n, dtype=int)
+
+        # Build inputs/meta
+        inputs_df = pd.DataFrame(X, columns=feature_names, index=names)
+        meta_df = pd.DataFrame(
+            {
+                'm1': rng.normal(0, 1, size=n),
+                'm2': rng.uniform(0, 1, size=n),
+            },
+            index=names,
+        )
+
+        data['inputs'][group] = inputs_df
+        data['meta'][group] = meta_df
+        data['names'][group] = names
+        data['labels'][group] = y
+        data['batches'][group] = batches
+        data['orders'][group] = orders
+        data['sets'][group] = np.array([group for _ in range(n)])
+
+    # Sets for keys created above
+    for key in list(data['names'].keys()):
+        data['sets'][key] = np.array([key for _ in data['names'][key]])
+
+    # Concatenate ALL groups
+    for key in list(data.keys()):
+        if key in ['inputs', 'meta']:
+            data[key]['all'] = pd.concat((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+        else:
+            data[key]['all'] = np.concatenate((
+                data[key]['train'], data[key]['valid'], data[key]['test']
+            ), 0)
+
+    # Unique labels and classes mapping (cats)
+    unique_labels = get_unique_labels(data['labels']['all'])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['cats'][group] = np.array([
+            np.where(lbl == unique_labels)[0][0] for lbl in data['labels'][group]
+        ])
+
+    # Batch remapping to contiguous indices across ALL
+    unique_batches = np.unique(data['batches']['all'])
+    for group in ['train', 'valid', 'test', 'all']:
+        data['batches'][group] = np.array([
+            np.argwhere(unique_batches == x)[0][0] for x in data['batches'][group]
+        ])
 
     return data, unique_labels, unique_batches
 

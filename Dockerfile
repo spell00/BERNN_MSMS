@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04 
+FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04
 
 # Build argument for Python version
 ARG PYTHON_VERSION=3.10
@@ -14,6 +14,14 @@ RUN apt-get update && \
         libssl-dev \
         libcurl4-openssl-dev \
         libfontconfig1-dev \
+        libfreetype6-dev \
+        libpng-dev \
+        libtiff5-dev \
+        libjpeg-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libxml2-dev \
+        libgit2-dev \
         r-base \
         r-base-dev \
         r-cran-devtools \
@@ -25,6 +33,8 @@ RUN apt-get update && \
         ln -sf /usr/bin/python3.8 /usr/bin/python && \
         ln -sf /usr/bin/python3.8 /usr/bin/python3; \
     elif [ "$PYTHON_VERSION" = "3.10" ]; then \
+        add-apt-repository ppa:deadsnakes/ppa && \
+        apt-get update && \
         apt-get install -y --no-install-recommends python3.10 python3.10-dev python3.10-distutils python3-pip && \
         ln -sf /usr/bin/python3.10 /usr/bin/python && \
         ln -sf /usr/bin/python3.10 /usr/bin/python3; \
@@ -37,7 +47,7 @@ RUN apt-get update && \
     else \
         apt-get install -y --no-install-recommends python3 python3-dev python3-distutils python3-pip; \
     fi && \
-    curl -sS https://bootstrap.pypa.io/pip/3.8/get-pip.py | python && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python && \
     pip install --upgrade pip && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
@@ -51,9 +61,9 @@ ADD launch_train_ae_then_classifier_holdout_experiments.sh ./
 ADD mlflow_eval_runs.py ./
 ADD bernn ./bernn/
 ADD tests ./tests/
-ADD test_python_versions.py ./
-ADD resolve_python38_conflicts.py ./
-ADD resolve_conflicts.py ./
+# ADD test_python_versions.py ./
+# ADD resolve_python38_conflicts.py ./
+# ADD resolve_conflicts.py ./
 COPY requirements.txt ./requirements.txt
 COPY README.md ./README.md
 COPY INSTALLATION.md ./INSTALLATION.md
@@ -64,20 +74,12 @@ COPY INSTALLATION.md ./INSTALLATION.md
 RUN chmod +x launch_train_ae_classifier_holdout_experiments.sh && \
     chmod +x launch_train_ae_then_classifier_holdout_experiments.sh
 
-# Install R packages
-RUN R -e "install.packages('ragg')" 
-RUN R -e "install.packages('pkgdown')" 
-RUN R -e "install.packages('devtools')"
-# RUN R -e "devtools::install_github('immunogenomics/lisi', host='https://api.github.com')"
-# RUN R -e 'devtools::install_github("dengkuistat/WaveICA", host="https://api.github.com")'
-# RUN R -e "devtools::install_github('zinbwave')"
-# RUN R -e "BiocManager::install_github('zinbwave')"
-# RUN R -e "install.packages('harmony',dependencies=TRUE, repos='http://cran.rstudio.com/')"
-RUN R -e "install.packages('BiocManager')" 
+# Install R packages with proper dependency handling
+RUN R -e "install.packages(c('cpp11', 'systemfonts', 'textshaping', 'ragg', 'pkgdown', 'devtools', 'BiocManager'), dependencies=TRUE, repos='https://cloud.r-project.org/')"
 
 # Install Python packages with version-specific logic
 RUN echo "Installing for Python $PYTHON_VERSION" && \
-    python -m pip install -r requirements.txt && \
+    # python -m pip install -r requirements.txt && \
     if [ "$PYTHON_VERSION" = "3.8" ]; then \
         echo "Installing Python 3.8 specific packages..." && \
         python setup.py build && \
@@ -92,7 +94,7 @@ RUN echo "Installing for Python $PYTHON_VERSION" && \
         echo "Installing Python 3.12 specific packages..." && \
         python setup.py build && \
         python setup.py install && \
-        python -m pip install .[py312+]; \
+        python -m pip install .[py312-plus]; \
     else \
         echo "Installing default packages..." && \
         python setup.py build && \
@@ -108,8 +110,8 @@ ENV LD_LIBRARY_PATH=/usr/lib/R/lib:${LD_LIBRARY_PATH}
 
 
 
-# RUN R -e "BiocManager::install('sva')" 
-# RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')" 
+# RUN R -e "BiocManager::install('sva')"
+# RUN R -e "install.packages('sva',dependencies=TRUE, repos='http://cran.rstudio.com/')"
 # BiocManager::install(c("GenomeInfoDb", "Biostrings", "KEGGREST", "AnnotationDbi", "annotate", "genefilter"))
 # BiocManager::install("sva")
 # RUN R -e "install.packages('factor',dependencies=TRUE, repos='http://cran.rstudio.com/')"
