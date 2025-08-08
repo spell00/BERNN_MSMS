@@ -97,13 +97,8 @@ def test_autoencoder_training_step(request, model_fixture, sample_data):
     assert loss.item() > 0, f"{model_fixture}: Loss should be positive"
 
 @pytest.mark.unit
-def test_autoencoder_device_transfer_autoencoder():
-    if not torch.cuda.is_available():
-        device = 'cpu'
-    else:
-        # Set CUDA device
-        device = 'cuda:0'
-       
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda:0", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))])
+def test_autoencoder_device_transfer_autoencoder(device):
     model = AutoEncoder2(
         100,
         n_batches=3, 
@@ -122,22 +117,17 @@ def test_autoencoder_device_transfer_autoencoder():
         tied_weights=False,
         use_gnn=0,
         device=device,
-        prune_threshold=0.001  # not actually implemented pruning but need to be there  
+        prune_threshold=0.001
     ).to(device)
     
-    if device == 'cuda':
+    if device == 'cuda:0':
         assert next(model.parameters()).is_cuda, f"{AutoEncoder2.__name__}: Model should be on CUDA"
     else:
         assert not next(model.parameters()).is_cuda, f"{AutoEncoder2.__name__}: Model should be on CPU"
 
 @pytest.mark.unit
-def test_autoencoder_device_transfer_kan():
-    if not torch.cuda.is_available():
-        device = 'cpu'
-    else:
-        # Set CUDA device
-        device = 'cuda:0'
-        
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda:0", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))])
+def test_autoencoder_device_transfer_kan(device):
     model = KANAutoencoder2(
         100,
         n_batches=3, 
@@ -159,14 +149,13 @@ def test_autoencoder_device_transfer_kan():
         prune_threshold=0.001
     ).to(device)
     
-    if device == 'cuda':
+    if device == 'cuda:0':
         assert next(model.parameters()).is_cuda, f"{KANAutoencoder2.__name__}: Model should be on CUDA"
     else:
         assert not next(model.parameters()).is_cuda, f"{KANAutoencoder2.__name__}: Model should be on CPU"
 
 @pytest.mark.unit
 def test_model_prune_autoencoder():
-    # Test model pruning functionality
     model = AutoEncoder2(
         100,
         n_batches=3, 
@@ -185,20 +174,24 @@ def test_model_prune_autoencoder():
         tied_weights=False,
         use_gnn=0,
         device='cpu',
-        prune_threshold=0.001  # not actually implemented pruning but need to be there 
+        prune_threshold=0.001
     )
     
-    # Set prune threshold after model creation
     if hasattr(model, 'prune_threshold'):
         model.prune_threshold = 0.001
     
-    # Store initial parameter count
     initial_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
+    try:
+        n_neurons = model.prune_model_paperwise(False, False, weight_threshold=0.001)
+        assert isinstance(n_neurons, dict), f"{AutoEncoder2.__name__}: Pruning should return a dictionary"
+        assert "total" in n_neurons, f"{AutoEncoder2.__name__}: Pruning results should include total neurons"
+        assert isinstance(n_neurons["total"], int), f"{AutoEncoder2.__name__}: Total neurons should be an integer"
+    except (AttributeError, TypeError) as e:
+        pytest.skip(f"Model {AutoEncoder2.__name__} does not support pruning: {str(e)}")
 
 @pytest.mark.unit
 def test_model_prune_kan():
-    # Test model pruning functionality
     model = KANAutoencoder2(
         100,
         n_batches=3, 
@@ -220,20 +213,14 @@ def test_model_prune_kan():
         prune_threshold=0.001
     )
     
-    # Set prune threshold after model creation
     if hasattr(model, 'prune_threshold'):
         model.prune_threshold = 0.001
     
-    # Store initial parameter count
     initial_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     
-    # Call pruning method
     try:
         n_neurons = model.prune_model_paperwise(False, False, weight_threshold=0.001)
-        
-        # Verify pruning results if succeeded
         assert isinstance(n_neurons, dict), f"{KANAutoencoder2.__name__}: Pruning should return a dictionary"
         assert "total_remaining" in n_neurons, f"{KANAutoencoder2.__name__}: Pruning results should include total remaining neurons"
     except (AttributeError, TypeError) as e:
-        # If pruning is not implemented, skip this test
-        pytest.skip(f"Model {KANAutoencoder2.__name__} does not support pruning: {str(e)}") 
+        pytest.skip(f"Model {KANAutoencoder2.__name__} does not support pruning: {str(e)}")

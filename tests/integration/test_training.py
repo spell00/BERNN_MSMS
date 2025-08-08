@@ -58,31 +58,31 @@ def sample_data():
         pd.DataFrame(data['labels']['all'].reshape(len(data['labels']['all']), 1)),
         pd.DataFrame(data['batches']['all'].reshape(len(data['batches']['all']), 1)),
         data['inputs']['all']
-    ), 1)
+    ), axis=1)
     data['inputs']['train'] = pd.concat((
         pd.DataFrame(data['names']['train'].reshape(len(data['names']['train']), 1)),
         pd.DataFrame(data['labels']['train'].reshape(len(data['labels']['train']), 1)),
         pd.DataFrame(data['batches']['train'].reshape(len(data['batches']['train']), 1)),
         data['inputs']['train']
-    ), 1)
+    ), axis=1)
     data['inputs']['valid'] = pd.concat((
         pd.DataFrame(data['names']['valid'].reshape(len(data['names']['valid']), 1)),
         pd.DataFrame(data['labels']['valid'].reshape(len(data['labels']['valid']), 1)),
         pd.DataFrame(data['batches']['valid'].reshape(len(data['batches']['valid']), 1)),
         data['inputs']['valid']
-    ), 1)
+    ), axis=1)
     data['inputs']['test'] = pd.concat((
         pd.DataFrame(data['names']['test'].reshape(len(data['names']['test']), 1)),
         pd.DataFrame(data['labels']['test'].reshape(len(data['labels']['test']), 1)),
         pd.DataFrame(data['batches']['test'].reshape(len(data['batches']['test']), 1)),
         data['inputs']['test']
-    ), 1)
+    ), axis=1)
     for split in ['all', 'train', 'valid', 'test']:
         df = data['inputs'][split]
         cols = df.columns.tolist()
         cols[:3] = ['names', 'labels', 'batches']
-        df.set_axis(cols, axis=1, inplace=True)
-        print(df.columns[:5])
+        data['inputs'][split] = df.set_axis(cols, axis=1)  # Reassign the DataFrame after setting the axis
+        print(data['inputs'][split].columns[:5])
     return data
 
 
