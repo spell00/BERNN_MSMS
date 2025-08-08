@@ -22,7 +22,7 @@ if is_python312_or_later:
     # For Python 3.12+ - use newer versions that support Python 3.12
     minimal_requirements = [
         "scikit-learn>=1.3.0",  # Python 3.12 compatible
-        "pandas>=2.0.0",  # Python 3.12 compatible
+        "pandas>=2.2.0",  # Python 3.12 compatible
         "scikit-optimize>=0.9.0",
         "matplotlib>=3.7.0",  # Python 3.12 compatible
         "seaborn>=0.12.2",
@@ -125,6 +125,7 @@ if is_python312_or_later:
         "tensorflow-estimator>=2.15.0",
         "typing-extensions>=4.9.0",  # Updated for compatibility
         "numpy<2.3,>=1.24",
+        "six>=1.16.0",  # Updated for compatibility
     ]
 elif is_python39_or_earlier:
     # For Python 3.8-3.9 - use TensorFlow 2.13 but with flexible typing-extensions
@@ -157,7 +158,7 @@ if is_python312_or_later:
         "tensorboard-data-server>=0.7.0",
         "tensorboardX",
         "neptune",
-        "mlflow[extras]>=2.8.0",  # Python 3.12 compatible
+        "mlflow[extras]>=2.12.1",  # Python 3.12 compatible
         "sqlalchemy>=2.0.0",
         "urllib3>=1.26.7",
     ]
@@ -397,3 +398,24 @@ setup(
         ],
     }
 )
+
+
+docker run --rm bernn:py3.12 python -c "
+import sys
+print(f'Python version: {sys.version}')
+import numpy
+print(f'NumPy: {numpy.__version__}')
+import torch
+print(f'PyTorch: {torch.__version__}')
+try:
+  import tensorflow as tf
+  print(f'TensorFlow: {tf.__version__}')
+except ImportError as e:
+  print(f'TensorFlow not available: {e}')
+try:
+  import mlflow
+  print(f'MLflow: {mlflow.__version__}')
+except ImportError as e:
+  print(f'MLflow not available: {e}')
+print('Core dependencies test completed')
+"
