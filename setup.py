@@ -276,7 +276,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.1',
+    version='0.2.2',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -400,22 +400,3 @@ setup(
 )
 
 
-docker run --rm bernn:py3.12 python -c "
-import sys
-print(f'Python version: {sys.version}')
-import numpy
-print(f'NumPy: {numpy.__version__}')
-import torch
-print(f'PyTorch: {torch.__version__}')
-try:
-  import tensorflow as tf
-  print(f'TensorFlow: {tf.__version__}')
-except ImportError as e:
-  print(f'TensorFlow not available: {e}')
-try:
-  import mlflow
-  print(f'MLflow: {mlflow.__version__}')
-except ImportError as e:
-  print(f'MLflow not available: {e}')
-print('Core dependencies test completed')
-"
