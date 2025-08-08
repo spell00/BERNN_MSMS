@@ -41,7 +41,7 @@ RUN apt-get update && \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update && \
-        apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-distutils python3-pip && \
+        apt-get install -y --no-install-recommends python3.12 python3.12-dev python3-pip && \
         ln -sf /usr/bin/python3.12 /usr/bin/python && \
         ln -sf /usr/bin/python3.12 /usr/bin/python3; \
     else \
@@ -79,27 +79,19 @@ RUN R -e "install.packages(c('cpp11', 'systemfonts', 'textshaping', 'ragg', 'pkg
 
 # Install Python packages with version-specific logic
 RUN echo "Installing for Python $PYTHON_VERSION" && \
-    # python -m pip install -r requirements.txt && \
+    pip install --upgrade pip setuptools wheel && \
     if [ "$PYTHON_VERSION" = "3.8" ]; then \
         echo "Installing Python 3.8 specific packages..." && \
-        python setup.py build && \
-        python setup.py install && \
-        python -m pip install .[python38-full]; \
+        pip install .[python38-full]; \
     elif [ "$PYTHON_VERSION" = "3.10" ]; then \
         echo "Installing Python 3.10 specific packages..." && \
-        python setup.py build && \
-        python setup.py install && \
-        python -m pip install .[full]; \
+        pip install .[full]; \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         echo "Installing Python 3.12 specific packages..." && \
-        python setup.py build && \
-        python setup.py install && \
-        python -m pip install .[py312-plus]; \
+        pip install .[py312-plus]; \
     else \
         echo "Installing default packages..." && \
-        python setup.py build && \
-        python setup.py install && \
-        python -m pip install .; \
+        pip install .; \
     fi
 
 ENV R_HOME=/usr/lib/R

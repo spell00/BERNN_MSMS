@@ -124,7 +124,7 @@ if is_python312_or_later:
         "tensorflow>=2.15.0",  # Python 3.12 compatible
         "tensorflow-estimator>=2.15.0",
         "typing-extensions>=4.9.0",  # Updated for compatibility
-        "numpy>=1.24",
+        "numpy<2.3,>=1.24",
     ]
 elif is_python39_or_earlier:
     # For Python 3.8-3.9 - use TensorFlow 2.13 but with flexible typing-extensions
@@ -135,7 +135,7 @@ elif is_python39_or_earlier:
         "tensorflow>=2.13.0,<2.14.0",  # TensorFlow 2.13 for Python 3.8 compatibility
         "tensorflow-estimator>=2.13.0,<2.14.0",
         "typing-extensions>=4.5.0",  # Flexible constraint - let pip resolve
-        "numpy>=1.22,<1.24",  # Compatible with TensorFlow 2.13
+        "numpy<2.3,>=1.24",  # Compatible with TensorFlow 2.13
         "gast>=0.2.1,<=0.4.0",  # TensorFlow requirement
     ]
 else:
