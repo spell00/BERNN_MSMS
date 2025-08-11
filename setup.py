@@ -388,6 +388,8 @@ setup(
         'experiment-tracking': experiment_tracking_requirements,
         'notebooks': notebook_requirements,
         'tools': tools_requirements,
+        # Python 3.11 specific install option
+        'python311-plus': deep_learning_requirements + experiment_tracking_requirements,
         'tools-with-ax': tools_requirements + conflict_prone_requirements,  # Include ax-platform
         'web': web_requirements,
         'web-dev': web_dev_requirements,  # Modern web dev with spotdl compatibility
