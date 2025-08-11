@@ -11,7 +11,6 @@ import random
 # import json
 import copy
 import torch
-# torch.set_default_dtype(torch.float64)
 from torch import nn
 # from sklearn import metrics
 from tensorboardX import SummaryWriter
@@ -242,14 +241,11 @@ class TrainAEClassifierHoldout(TrainAE):
     def train(self, params):
         """
         Args:
-            params: Contains the hyperparameters to be optimized
-
+            params: hyperparameters
         Returns:
-            best_closs: The best classification loss on the valid set
-
+            best valid classification loss (float) for Ax (minimize)
         """
         start_time = datetime.now()
-
         params = self.make_params(params)
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
@@ -342,7 +338,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 # Gets all the pytorch dataloaders to train the models
                 if self.pools:
                     loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                          None, bs=64)
+                                          None, bs=self.args.bs)
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
@@ -372,19 +368,24 @@ class TrainAEClassifierHoldout(TrainAE):
                     init_n_neurons = ae.count_n_neurons()
                     # if self.args.embeddings_meta > 0:
                     #     n_meta = self.n_meta
-                    shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
-                                           n_batches=self.n_batches,
-                                           nb_classes=self.n_cats,
-                                           mapper=self.args.use_mapping,
-                                           layers=self.get_ordered_layers(params),
-                                           n_layers=self.args.n_layers,
-                                           n_meta=self.args.n_meta,
-                                           n_emb=self.args.embeddings_meta,
-                                           dropout=params['dropout'],
-                                           variational=self.args.variational, conditional=False,
-                                           zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                           use_gnn=0,  # TODO remove this
-                                           device=self.args.device).to(self.args.device)
+                    shap_ae = self.shap_ae(
+                        data['inputs']['all'].shape[1],
+                        is_sigmoid=self.args.use_sigmoid,
+                        n_batches=self.n_batches,
+                        nb_classes=self.n_cats,
+                        mapper=self.args.use_mapping,
+                        layers=self.get_ordered_layers(params),
+                        n_layers=self.args.n_layers,
+                        n_meta=self.args.n_meta,
+                        n_emb=self.args.embeddings_meta,
+                        dropout=params['dropout'],
+                        variational=self.args.variational, conditional=False,
+                        zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                        use_gnn=0,  # TODO to remove
+                        device=self.args.device,
+                        # prune_threshold=params['prune_threshold'],
+                        # update_grid=self.args.update_grid
+                    ).to(self.args.device)
                     shap_ae.mapper.to(self.args.device)
                     shap_ae.dec.to(self.args.device)
                 else:
@@ -440,7 +441,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                     if self.args.warmup_after_warmup:
                         self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
-                                         True, epoch,
+                                         False, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
                         ae = self.freeze_all_but_clayers(ae)
@@ -553,8 +554,8 @@ class TrainAEClassifierHoldout(TrainAE):
                 
                 # Verify the model exists
                 if not os.path.exists(f'{self.complete_log_path}/model_{h}_state.pth'):
-                    return -1
-                
+                    # Return a large penalty instead of -1 (keeps Ax consistent)
+                    return 1e9
                 # Loading best model that was saved during training
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # Need another model because the other cant be use to get shap values
@@ -705,13 +706,13 @@ if __name__ == "__main__":
     parser.add_argument('--clip_val', type=float, default=1, help='')
     parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
-    parser.add_argument('--prune_network', type=float, default=1, help='')
+    parser.add_argument('--prune_network', type=float, default=0, help='')
     parser.add_argument('--log_inputs', type=int, default=0, help='')
     parser.add_argument('--log_neptune', type=int, default=0, help='')
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
-    passer.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
+    parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
 
     args = parser.parse_args()
 
@@ -776,20 +777,20 @@ if __name__ == "__main__":
 
     train = TrainAEClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False,
                                      log_metrics=args.log_metrics,
-                                     keep_models=False, log_inputs=False,
-                                     log_plots=args.log_plots, log_tb=False,
-                                     log_neptune=True,
-                                     log_mlflow=True, groupkfold=args.groupkfold,
+                                     keep_models=args.keep_models, log_inputs=args.log_inputs,
+                                     log_plots=args.log_plots, log_tb=args.log_tb,
+                                     log_neptune=args.log_neptune,
+                                     log_mlflow=args.log_mlflow, groupkfold=args.groupkfold,
                                      pools=args.pool)
 
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 1000]},
+        {"name": "warmup", "type": "range", "bounds": [1, 10]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
@@ -811,15 +812,31 @@ if __name__ == "__main__":
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
     if args.kan and args.use_l1:
         # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
+        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
     if args.use_l1:
-        parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
+        parameters += [{"name": "l1", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
     if args.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
+    # Wrapper for Ax
+    def ax_eval(parameterization):
+        try:
+            # Ax may give numpy types; ensure plain Python
+            param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
+                           for k, v in parameterization.items()}
+            loss = train.train(param_clean)
+            # Guarantee numeric
+            loss = float(loss)
+        except Exception as e:
+            print(f"[AX WARN] Trial failed: {e}")
+            loss = 1e9
+        # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
+        # but explicit dict form is more robust; returning scalar is also fine. Choose one:
+        return loss  # scalar OK because objective_name='closs'
+
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,
-        evaluation_function=train.train,
+        evaluation_function=ax_eval,
         objective_name='closs',
         minimize=True,
         total_trials=args.n_trials,

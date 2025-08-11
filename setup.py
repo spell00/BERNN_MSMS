@@ -118,7 +118,7 @@ web_requirements = [
 if is_python312_or_later:
     # For Python 3.12+ - use latest versions
     deep_learning_requirements = [
-        "torch>=2.1.0",  # Python 3.12 compatible
+        "torch>=2.4.1",  # Python 3.12 compatible
         "torchvision>=0.16.0",
         "torch-geometric",
         "tensorflow>=2.15.0",  # Python 3.12 compatible
@@ -142,8 +142,8 @@ elif is_python39_or_earlier:
 else:
     # For Python 3.10-3.11 - use newer versions
     deep_learning_requirements = [
-        "torch>=2.1.0",  # Newer version for Python 3.10+
-        "torchvision>=0.16.0",
+        "torch>=2.4.1",  # Newer version for Python 3.10+
+        "torchvision>=0.19.1",
         "torch-geometric",
         "tensorflow>=2.15.0",  # Newer TensorFlow for Python 3.10+
         "tensorflow-estimator>=2.15.0",
@@ -276,7 +276,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.2',
+    version='0.2.6',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license

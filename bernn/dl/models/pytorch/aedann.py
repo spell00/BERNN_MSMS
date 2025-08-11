@@ -612,9 +612,10 @@ class SHAPAutoEncoder3(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int, n_meta: int,
                  mapper: bool, variational: bool, layers: dict, dropout: float, n_layers: int,
                  zinb: bool = False, conditional: bool = True, add_noise: bool = False,
-                 tied_weights: int = 0, use_gnn: bool = False, device: str = 'cuda'):
+                 tied_weights: int = 0, use_gnn: bool = False, device: str = 'cuda', is_sigmoid: bool = False) -> None:
         super(SHAPAutoEncoder3, self).__init__()
         self.n_emb = n_emb
+        self.is_sigmoid = is_sigmoid
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
