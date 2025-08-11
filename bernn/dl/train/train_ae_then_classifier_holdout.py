@@ -2,7 +2,6 @@
 
 import os
 import matplotlib
-from bernn.utils.pool_metrics import log_pool_metrics
 
 import uuid
 import shutil
@@ -13,7 +12,8 @@ import sys
 # Add the project root to the path
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
 
-from ...config.training_config import TrainingConfig
+from bernn.config.training_config import TrainingConfig
+from bernn.utils.pool_metrics import log_pool_metrics
 
 import matplotlib.pyplot as plt
 import pandas as pd
