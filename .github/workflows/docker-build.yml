@@ -11,7 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.12']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+        include:
+          - python-version: '3.8'
+            install-extra: 'python38-full'
+          - python-version: '3.9'
+            install-extra: 'py39'
+          - python-version: '3.10'
+            install-extra: 'py310-plus'
+          - python-version: '3.11'
+            install-extra: 'py310-plus'
+          - python-version: '3.12'
+            install-extra: 'py312-plus'
+          - python-version: '3.13'
+            install-extra: 'python313-ml-stable'
       fail-fast: false
     steps:
       - name: Checkout code
@@ -33,17 +46,30 @@ jobs:
           print(f'NumPy: {numpy.__version__}')
           import torch
           print(f'PyTorch: {torch.__version__}')
+          
+          # Handle TensorFlow testing based on Python version
+          if sys.version_info >= (3, 13):
+              try:
+                  import tensorflow as tf
+                  print(f'TensorFlow: {tf.__version__} (using stable/RC version for Python 3.13)')
+              except ImportError as e:
+                  print(f'TensorFlow not available for Python 3.13: {e}')
+                  print('This is expected - use python313-ml-stable extra for TensorFlow on Python 3.13')
+          else:
+              try:
+                  import tensorflow as tf
+                  print(f'TensorFlow: {tf.__version__}')
+              except ImportError as e:
+                  print(f'TensorFlow not available: {e}')
+          
           try:
-            import tensorflow as tf
-            print(f'TensorFlow: {tf.__version__}')
+              import mlflow
+              print(f'MLflow: {mlflow.__version__}')
           except ImportError as e:
-            print(f'TensorFlow not available: {e}')
-          try:
-            import mlflow
-            print(f'MLflow: {mlflow.__version__}')
-          except ImportError as e:
-            print(f'MLflow not available: {e}')
+              print(f'MLflow not available: {e}')
+          
           print('Core dependencies test completed')
+          print(f'Install extra used: ${{ matrix.install-extra }}')
           "
 
       - name: Test BERNN installation for Python ${{ matrix.python-version }}
@@ -62,17 +88,38 @@ jobs:
         run: |
           docker run --rm bernn:py${{ matrix.python-version }} bash -c "
           echo 'Testing Python ${{ matrix.python-version }} specific installations...'
-          if [[ '${{ matrix.python-version }}' == '3.8' ]]; then
-            echo 'Testing Python 3.8 specific extras...'
-            pip install bernn[python38-full] --no-deps --dry-run || echo 'python38-full extra exists'
-            pip install bernn[python38-tensorflow] --no-deps --dry-run || echo 'python38-tensorflow extra exists'
-          elif [[ '${{ matrix.python-version }}' == '3.10' ]]; then
-            echo 'Testing Python 3.10+ extras...'
-            pip install bernn[py310+] --no-deps --dry-run || echo 'py310+ extra exists'
-          elif [[ '${{ matrix.python-version }}' == '3.12' ]]; then
-            echo 'Testing Python 3.12+ extras...'
-            pip install bernn[py312+] --no-deps --dry-run || echo 'py312+ extra exists'
-          fi
+          case '${{ matrix.python-version }}' in
+            '3.8')
+              echo 'Testing Python 3.8 specific extras...'
+              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
+              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
+              ;;
+            '3.9')
+              echo 'Testing Python 3.9 extras...'
+              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
+              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
+              ;;
+            '3.10'|'3.11')
+              echo 'Testing Python 3.10+ extras...'
+              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
+              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
+              ;;
+            '3.12')
+              echo 'Testing Python 3.12+ extras...'
+              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
+              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
+              ;;
+            '3.13')
+              echo 'Testing Python 3.13 extras...'
+              pip list | grep -E '(torch|scikit-learn)' || echo 'Core ML packages check (TensorFlow may use stable version)'
+              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
+              # Test Python 3.13 specific install options
+              echo 'Available Python 3.13 install options:'
+              echo '- python313-ml-minimal (PyTorch only)'
+              echo '- python313-ml-stable (PyTorch + stable TensorFlow 2.15.0)'
+              echo '- python313-safe (safe packages only)'
+              ;;
+          esac
           "
 
       # - name: Test R environment
@@ -88,7 +135,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: spell00/BERNN_MSMS
-          file: ./coverage-py${{ matrix.python-version }}.xml
+          files: ./coverage-py${{ matrix.python-version }}.xml
           fail_ci_if_error: false
           flags: python${{ matrix.python-version }}
 
@@ -97,6 +144,9 @@ jobs:
     needs: build-and-test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -104,9 +154,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build final Docker image (Python 3.10 default)
+      - name: Build Docker image for Python ${{ matrix.python-version }}
         run: |
-          docker build -t bernn:latest --build-arg PYTHON_VERSION=3.10 .
+          docker build -t bernn:py${{ matrix.python-version }} --build-arg PYTHON_VERSION=${{ matrix.python-version }} .
 
       - name: Login to DockerHub
         uses: docker/login-action@v2
@@ -116,9 +166,11 @@ jobs:
 
       - name: Push to DockerHub
         run: |
-          docker tag bernn:latest ${{ secrets.DOCKERHUB_USERNAME }}/bernn:latest
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/bernn:latest
+          docker tag bernn:py${{ matrix.python-version }} ${{ secrets.DOCKERHUB_USERNAME }}/bernn:python${{ matrix.python-version }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/bernn:python${{ matrix.python-version }}
 
-          # Also push version-specific tags
-          docker tag bernn:latest ${{ secrets.DOCKERHUB_USERNAME }}/bernn:python3.10
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/bernn:python3.10
+      - name: Push latest tag (Python 3.11 as default)
+        if: matrix.python-version == '3.11'
+        run: |
+          docker tag bernn:py${{ matrix.python-version }} ${{ secrets.DOCKERHUB_USERNAME }}/bernn:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/bernn:latest

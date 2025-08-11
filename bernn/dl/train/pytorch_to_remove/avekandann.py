@@ -331,10 +331,10 @@ class Decoder(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPKANAutoencoder2(nn.Module):
+class SHAPKANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, dropout,
                  n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPKANAutoencoder2, self).__init__()
+        super(SHAPKANAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
@@ -466,12 +466,12 @@ class SHAPKANAutoencoder2(nn.Module):
         return result
 
 
-class KANAutoencoder2(nn.Module):
+class KANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, 
                  variational, layer1, layer2, dropout, n_layers, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, 
                  use_gnn=False, update_grid=False, device='cuda'):
-        super(KANAutoencoder2, self).__init__()
+        super(KANAutoEncoder2, self).__init__()
         self.add_noise = add_noise
         self.device = device
         self.use_gnn = use_gnn
@@ -683,7 +683,7 @@ class KANAutoencoder2(nn.Module):
                 if i not in active_neurons[l + 1]:
                     self.remove_node(l + 1, i)
 
-        model2 = KANAutoencoder2(copy.deepcopy(self.width), self.grid, self.k, base_fun=self.base_fun, device=self.device)
+        model2 = KANAutoEncoder2(copy.deepcopy(self.width), self.grid, self.k, base_fun=self.base_fun, device=self.device)
         model2.load_state_dict(self.state_dict())
         for i in range(len(self.acts_scale)):
             if i < len(self.acts_scale) - 1:
@@ -820,10 +820,10 @@ class Decoder3(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPKANAutoencoder3(nn.Module):
+class SHAPKANAutoEncoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, layer3, dropout, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPKANAutoencoder3, self).__init__()
+        super(SHAPKANAutoEncoder3, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
@@ -987,10 +987,10 @@ class SHAPKANAutoencoder3(nn.Module):
         return result
 
 
-class KANAutoencoder3(nn.Module):
+class KANAutoEncoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layer1, layer2, layer3, dropout, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(KANAutoencoder3, self).__init__()
+        super(KANAutoEncoder3, self).__init__()
         self.add_noise = add_noise
         self.device = device
         self.use_gnn = use_gnn

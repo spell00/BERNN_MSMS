@@ -20,16 +20,15 @@ except ImportError as e:
 
 from sklearn.metrics import matthews_corrcoef as MCC
 # from ...ml.train.params_gp import *
-from .pytorch.aedann import ReverseLayerF
-from .pytorch.aeekandann import KANAutoencoder2
-from .pytorch.ekan.src.efficient_kan.kan import KANLinear
-from .pytorch.utils.loggings import log_metrics, \
+from ..models.pytorch.aedann import ReverseLayerF
+from ..models.pytorch.aeekandann import KANAutoEncoder2
+from ..models.pytorch.ekan.src.efficient_kan.kan import KANLinear
+from ..models.pytorch.utils.loggings import log_metrics, \
     log_plots, log_neptune, log_shap, log_mlflow
 from bernn.utils.utils import to_csv
-from .pytorch.utils.utils import to_categorical, get_empty_traces, \
+from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
-from .pytorch.utils.loggings import make_data
-import mlflow
+from ..models.pytorch.utils.loggings import make_data
 import warnings
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_dummy
 import uuid
@@ -325,18 +324,12 @@ class TrainAE:
         self.scaler = None
 
     def load_autoencoder(self):
-        # if not self.args.kan:
-        #     from .pytorch.aedann import AutoEncoder2 as AutoEncoder
-        #     from .pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-        # elif self.args.kan == 1:
-        #     from .pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-        #     from .pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
         if not self.args.kan:
             from bernn import AutoEncoder3 as AutoEncoder
             from bernn import SHAPAutoEncoder3 as SHAPAutoEncoder
         elif self.args.kan == 1:
-            from bernn import KANAutoencoder3 as AutoEncoder
-            from bernn import SHAPKANAutoencoder3 as SHAPAutoEncoder
+            from bernn import KANAutoEncoder3 as AutoEncoder
+            from bernn import SHAPKANAutoEncoder3 as SHAPAutoEncoder
         self.ae = AutoEncoder
         self.shap_ae = SHAPAutoEncoder
 
@@ -1040,7 +1033,7 @@ class TrainAE:
     #         ae: AutoEncoder object
     #     """
     #     for m in ae.modules():
-    #         if isinstance(m, KANAutoencoder2):
+    #         if isinstance(m, KANAutoEncoder2):
     #             for n in m.modules():
     #                 for i in n.modules():
     #                     if isinstance(i, KANLinear):
@@ -1057,7 +1050,7 @@ class TrainAE:
         """
         neurons = 0
         for m in ae.modules():
-            if isinstance(m, KANAutoencoder2):
+            if isinstance(m, KANAutoEncoder2):
                 for n in m.modules():
                     for i in n.modules():
                         if isinstance(i, KANLinear):
@@ -1106,6 +1099,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        import mlflow
         mlflow.create_experiment(
             args.exp_id,
             # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),

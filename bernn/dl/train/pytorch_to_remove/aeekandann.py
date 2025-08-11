@@ -7,7 +7,7 @@ from .utils.stochastic import GaussianSample
 from .utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from .utils.utils import to_categorical
 import pandas as pd
-from .ekan.src.efficient_kan.kan import KANLinear
+from ...models.pytorch.ekan.src.efficient_kan.kan import KANLinear
 import copy
 import numpy as np
 
@@ -362,11 +362,11 @@ class Decoder(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPKANAutoencoder2(nn.Module):
+class SHAPKANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational,
                  layer1, layer2, dropout, n_layers, zinb=False, conditional=False,
                  add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPKANAutoencoder2, self).__init__()
+        super(SHAPKANAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
@@ -505,12 +505,12 @@ class SHAPKANAutoencoder2(nn.Module):
         return result
 
 
-class KANAutoencoder2(nn.Module):
+class KANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper,
                  variational, layer1, layer2, dropout, n_layers, prune_threshold, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0,
                  use_gnn=False, update_grid=False, device='cuda'):
-        super(KANAutoencoder2, self).__init__()
+        super(KANAutoEncoder2, self).__init__()
         self.prune_threshold = prune_threshold
         self.add_noise = add_noise
         self.device = device
@@ -686,11 +686,11 @@ class KANAutoencoder2(nn.Module):
         return result
 
 
-class KANAutoencoder3(nn.Module):
+class KANAutoEncoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layers: dict,
                  dropout, n_layers, prune_threshold, zinb=False, conditional=True, add_noise=False,
                  tied_weights=0, update_grid=False, use_gnn=False, device='cuda', is_sigmoid=False):
-        super(KANAutoencoder3, self).__init__()
+        super(KANAutoEncoder3, self).__init__()
         self.add_noise = add_noise
         self.device = device
         self.use_gnn = use_gnn

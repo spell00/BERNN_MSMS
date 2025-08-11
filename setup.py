@@ -15,10 +15,42 @@ with open("README.md", "r", encoding="utf-8") as fh:
 python_version = sys.version_info
 is_python39_or_earlier = python_version < (3, 10)
 is_python312_or_later = python_version >= (3, 12)
+is_python313_or_later = python_version >= (3, 13)
 
 # Define core/minimal requirements (compatible with Python 3.8+)
 # These are carefully chosen to minimize conflicts
-if is_python312_or_later:
+if is_python313_or_later:
+    # For Python 3.13+ - use newer versions and more flexible constraints
+    minimal_requirements = [
+        "scikit-learn>=1.3.0",  # Python 3.13 compatible
+        "pandas>=2.2.0",  # Python 3.13 compatible
+        "scikit-optimize>=0.9.0",
+        "matplotlib>=3.7.0",  # Python 3.13 compatible
+        "seaborn>=0.12.2",
+        "tabulate>=0.9.0",
+        "scipy>=1.11.0",  # Python 3.13 compatible
+        "tqdm",
+        "joblib>=1.3.0",  # Python 3.13 compatible
+        "psutil>=5.9.4",
+        "scikit-image>=0.21.0",  # Python 3.13 compatible
+        "nibabel",
+        "mpmath>=1.3.0",
+        "patsy>=0.5.3",
+        "umap-learn>=0.5.3",
+        "shapely>=2.0.0",
+        "numba>=0.58.0",  # Python 3.13 compatible
+        "openpyxl>=3.0.10",
+        "xgboost>=1.7.0",  # Python 3.13 compatible
+        "importlib-metadata>=6.0.0",
+        "threadpoolctl>=3.1.0",
+        "protobuf>=4.21.0",  # More flexible for Python 3.13 - no upper limit
+        "requests>=2.31.0,<3.0.0",
+        "PyYAML>=6.0.1",
+        "python-dateutil>=2.8.2",
+        "nbformat>=5.9.2",
+        "statsmodels",
+    ]
+elif is_python312_or_later:
     # For Python 3.12+ - use newer versions that support Python 3.12
     minimal_requirements = [
         "scikit-learn>=1.3.0",  # Python 3.12 compatible
@@ -115,10 +147,23 @@ web_requirements = [
 ]
 
 # Deep learning dependencies - version-specific with conflict resolution
-if is_python312_or_later:
+if is_python313_or_later:
+    # For Python 3.13+ - use working combination with matching versions
+    deep_learning_requirements = [
+        "torch>=2.1.0",  # PyTorch generally supports newer Python versions faster
+        "torchvision>=0.16.0",
+        "torch-geometric",
+        # Use TensorFlow 2.20.0rc0 with matching estimator
+        "tensorflow>=2.20.0rc0",  # Use release candidate for Python 3.13
+        # Don't specify tensorflow-estimator version - let TensorFlow handle it
+        "typing-extensions>=4.9.0",
+        "numpy>=1.24,<2.3",
+        "six>=1.16.0",
+    ]
+elif is_python312_or_later:
     # For Python 3.12+ - use latest versions
     deep_learning_requirements = [
-        "torch>=2.4.1",  # Python 3.12 compatible
+        "torch>=2.1.0",  # Python 3.12 compatible
         "torchvision>=0.16.0",
         "torch-geometric",
         "tensorflow>=2.15.0",  # Python 3.12 compatible
@@ -142,8 +187,8 @@ elif is_python39_or_earlier:
 else:
     # For Python 3.10-3.11 - use newer versions
     deep_learning_requirements = [
-        "torch>=2.4.1",  # Newer version for Python 3.10+
-        "torchvision>=0.19.1",
+        "torch>=2.1.0",  # Newer version for Python 3.10+
+        "torchvision>=0.16.0",
         "torch-geometric",
         "tensorflow>=2.15.0",  # Newer TensorFlow for Python 3.10+
         "tensorflow-estimator>=2.15.0",
@@ -152,7 +197,16 @@ else:
     ]
 
 # Experiment tracking dependencies - version-specific with conflict resolution
-if is_python312_or_later:
+if is_python313_or_later:
+    experiment_tracking_requirements = [
+        # Don't specify tensorboard version - let TensorFlow handle it
+        "tensorboardX",
+        "neptune",
+        "mlflow[extras]>=2.12.1",  # Python 3.13 should be compatible
+        "sqlalchemy>=2.0.0",
+        "urllib3>=1.26.7",
+    ]
+elif is_python312_or_later:
     experiment_tracking_requirements = [
         "tensorboard>=2.15.0",
         "tensorboard-data-server>=0.7.0",
@@ -184,7 +238,13 @@ else:
     ]
 
 # Notebook dependencies - version-specific
-if is_python312_or_later:
+if is_python313_or_later:
+    notebook_requirements = [
+        "notebook>=7.0.0",  # Python 3.13 compatible
+        "ipywidgets>=8.0.0",
+        "jupyterlab>=4.0.0",
+    ]
+elif is_python312_or_later:
     notebook_requirements = [
         "notebook>=7.0.0",  # Python 3.12 compatible
         "ipywidgets>=8.0.0",
@@ -205,7 +265,15 @@ else:
 
 # Additional tools (with conflict resolution)
 # Note: ax-platform has very strict version requirements that conflict with modern packages
-if is_python312_or_later:
+if is_python313_or_later:
+    tools_requirements = [
+        # Exclude ax-platform for Python 3.13+ due to conflicts
+        "packaging>=21.0",
+        "python-dateutil>=2.8.2",
+        "PyYAML>=6.0.1",
+        "optuna>=3.0.0",  # Alternative optimization library
+    ]
+elif is_python312_or_later:
     tools_requirements = [
         # Exclude ax-platform for Python 3.12+ due to conflicts
         "ax-platform>=1.0.0",  # Causes too many conflicts
@@ -269,6 +337,29 @@ python38_ml_minimal_requirements = [
     "typing-extensions>=4.6.0,<4.10.0",
 ]
 
+# Python 3.13 minimal ML setup without TensorFlow (for early compatibility)
+python313_ml_minimal_requirements = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0", 
+    "torch-geometric",
+    # Skip TensorFlow initially until stable release
+    "scikit-learn>=1.3.0",
+    "typing-extensions>=4.9.0",
+    "numpy>=1.24,<2.3",
+]
+
+# Python 3.13 safe ML setup with stable TensorFlow (avoiding release candidates)
+python313_ml_stable_requirements = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0", 
+    "torch-geometric",
+    "tensorflow>=2.15.0",  # Use latest stable instead of RC
+    "scikit-learn>=1.3.0",
+    "typing-extensions>=4.9.0",
+    "numpy>=1.24,<2.3",
+    # Let TensorFlow manage its own dependencies
+]
+
 # Special packages that need careful handling
 special_requirements = [
     "pykan",  # May have its own conflicts
@@ -276,7 +367,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.6',
+    version='0.2.7',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -331,6 +422,27 @@ setup(
             notebook_requirements +
             special_requirements
         ),
+        'python313-ml-minimal': python313_ml_minimal_requirements,  # Python 3.13 ML without TensorFlow
+        'python313-ml-stable': python313_ml_stable_requirements,  # Python 3.13 ML with stable TensorFlow
+        'python313-minimal-safe': [  # Python 3.13 absolutely minimal (avoid all complex dependencies)
+            "torch>=2.1.0",
+            "torchvision>=0.16.0", 
+            "torch-geometric",
+            "scikit-learn>=1.3.0",
+            "pandas>=2.2.0",
+            "matplotlib>=3.7.0",
+            "seaborn>=0.12.2",
+            "numpy>=1.24,<2.3",
+            "scipy>=1.11.0",
+            "jupyter>=1.0.0",  # Simple jupyter instead of full jupyterlab
+        ],
+        'python313-safe': (  # Python 3.13 with safe packages only
+            optional_requirements +
+            compatibility_requirements +
+            python313_ml_minimal_requirements +
+            notebook_requirements +
+            special_requirements
+        ),
 
         # Full installs
         'full-no-ax': (
@@ -377,6 +489,9 @@ setup(
         'py312-plus': [] if not is_python312_or_later else (
             deep_learning_requirements + experiment_tracking_requirements
         ),
+        'py313-plus': [] if not is_python313_or_later else (
+            deep_learning_requirements + experiment_tracking_requirements
+        ),
     },
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -385,6 +500,7 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

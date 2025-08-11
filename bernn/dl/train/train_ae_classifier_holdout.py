@@ -17,11 +17,11 @@ from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import linsvc_space
-from bernn.dl.train.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
-from bernn.dl.train.pytorch.utils.utils import LogConfusionMatrix
-from bernn.dl.train.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
+from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
-from bernn.dl.train.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 import mlflow
 import warnings
