@@ -424,6 +424,11 @@ class TrainAEClassifierHoldout(TrainAE):
                         no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
                                                     optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
+                        # End-of-epoch update (skip during warmup if set)
+                        if args.update_grid and epoch >= args.update_grid_warmup:
+                            updated = model.update_grids()
+                            print(f"[epoch {epoch}] Updated {updated} KAN grids")
+
                         if not no_error:
                             break
                 for epoch in range(0, self.args.n_epochs):
@@ -706,8 +711,14 @@ if __name__ == "__main__":
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
+    passer.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
 
     args = parser.parse_args()
+
+    if args.kan == 0:
+        args.update_grid = 0
+        args.update_grid_warmup = 0
+
     
     # 1. RECOMMENDED: Modern approach with TrainingConfig
     print("=== Modern Configuration Class Approach ===")
@@ -726,6 +737,7 @@ if __name__ == "__main__":
         bad_batches=args.bad_batches,
         remove_zeros=args.remove_zeros,
         dataset=args.dataset,
+        kan=args.kan,
         # path=args.path,
         bs=args.bs,
         strategy=args.strategy,

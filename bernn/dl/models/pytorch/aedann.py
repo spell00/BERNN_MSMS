@@ -66,32 +66,30 @@ def grad_reverse(x: torch.Tensor) -> torch.Tensor:
 
 
 class Classifier(nn.Module):
-    def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2, use_softmax: bool = True) -> None:
-        _check_torch_available()
+    def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2,
+                 hidden_sizes: list = None, use_softmax: bool = True,
+                 activation: Any = nn.ReLU, dropout: float = 0.1) -> None:
         super(Classifier, self).__init__()
         self.use_softmax = use_softmax
-        if n_layers == 2:
-            self.linear2 = nn.Sequential(
-                nn.Linear(in_shape, in_shape),
-            )
-            self.linear3 = nn.Sequential(
-                nn.Linear(in_shape, out_shape),
-            )
-        if n_layers == 1:
-            self.linear2 = nn.Sequential(
-                nn.Linear(in_shape, out_shape),
-            )
-
+        self.n_layers = n_layers
+        if hidden_sizes is None:
+            # Default: halve each time, except last layer
+            hidden_sizes = [in_shape // 2 ** i for i in range(1, n_layers)] if n_layers > 1 else []
+        layers = []
+        prev_size = in_shape
+        for h in hidden_sizes:
+            layers.append(nn.Linear(prev_size, h))
+            layers.append(nn.BatchNorm1d(h))
+            layers.append(nn.Dropout(dropout))
+            layers.append(activation())
+            prev_size = h
+        layers.append(nn.Linear(prev_size, out_shape))
+        self.net = nn.Sequential(*layers)
         self.random_init()
         self.n_layers = n_layers
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.linear2(x)
-        if self.n_layers == 2:
-            x = self.linear3(x)
-        if self.use_softmax:
-            x = F.softmax(x, dim=1)
-        return x
+        return self.net(x)
 
     def random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
@@ -104,20 +102,25 @@ class Classifier(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        x = self.net(x)
+        if self.use_softmax:
+            x = F.softmax(x, dim=1)
+        return x.detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        x = self.net(x)
+        x = x.argmax(1)
+        return x.detach().cpu().numpy()
 
 
 class Classifier2(nn.Module):
-    def __init__(self, in_shape: int = 64, hidden: int = 64, out_shape: int = 9, use_softmax: bool = True) -> None:
+    def __init__(self, in_shape: int = 64, hidden: int = 64, out_shape: int = 9, use_softmax: bool = True, dropout: float = 0.1) -> None:
         super(Classifier2, self).__init__()
         self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, hidden),
             nn.BatchNorm1d(hidden),
-            nn.Dropout(),
+            nn.Dropout(dropout),
             nn.ReLU(),
         )
         self.linear2 = nn.Sequential(
@@ -128,8 +131,6 @@ class Classifier2(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.linear1(x)
         x = self.linear2(x)
-        if self.use_softmax:
-            x = F.softmax(x, dim=1)
         return x
 
     def random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
@@ -143,7 +144,11 @@ class Classifier2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        x = self.linear2(x).detach().cpu().numpy()
+        if self.use_softmax:
+            x = F.softmax(x, dim=1)
+
+        return x
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         return self.linear2(x).argmax(1).detach().cpu().numpy()
@@ -245,7 +250,7 @@ class Encoder3(nn.Module):
         # Add the final layer without activation
         self.layers.append(nn.Sequential(
             nn.Linear(prev_size, layers[list(layers.keys())[-1]]),
-            nn.BatchNorm1d(layers[list(layers.keys())[-1]]),
+            # nn.BatchNorm1d(layers[list(layers.keys())[-1]]),
         ))
 
         self.random_init()
@@ -393,7 +398,7 @@ class Decoder3(nn.Module):
         # Add the final layer without activation
         self.layers[list(layers.keys())[-1]] = nn.Sequential(
             nn.Linear(prev_size, in_shape),
-            nn.BatchNorm1d(in_shape),
+            # nn.BatchNorm1d(in_shape),
         )
 
         # Create a new ModuleDict with reversed order
@@ -457,7 +462,7 @@ class SHAPAutoEncoder2(nn.Module):
             self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
             self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2)
+        self.mapper = Classifier(n_batches + 1, layer2, dropout=dropout, n_layers=1)
 
         if variational:
             self.gaussian_sampling = GaussianSample(layer2, layer2, device)
@@ -628,7 +633,7 @@ class SHAPAutoEncoder3(nn.Module):
             self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
 
         # Create mapper for batch effect removal
-        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]])
+        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], dropout=dropout, n_layers=1)
 
         # Create variational sampling if needed
         if variational:
@@ -642,7 +647,7 @@ class SHAPAutoEncoder3(nn.Module):
 
         # Create discriminator and classifier
         self.dann_discriminator = Classifier2(layers[list(layers.keys())[-1]], 64, n_batches)
-        self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers)
+        self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers, dropout=dropout)
 
         # Create ZINB-specific layers if needed
         if zinb:
@@ -847,7 +852,7 @@ class AutoEncoder2(nn.Module):
             self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
             self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2)
+        self.mapper = Classifier(n_batches + 1, layer2, dropout=dropout, n_layers=n_layers)
 
         if variational:
             self.gaussian_sampling = GaussianSample(layer2, layer2, device)
@@ -1018,13 +1023,13 @@ class AutoEncoder3(nn.Module):
         """
         super(AutoEncoder3, self).__init__()
         self.add_noise = add_noise
+        self.is_sigmoid = is_sigmoid
         self.device = device
         self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
         self.tied_weights = tied_weights
-        self.is_sigmoid = is_sigmoid
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
         self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
@@ -1032,7 +1037,7 @@ class AutoEncoder3(nn.Module):
             self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
         else:
             self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
-        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]])
+        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], dropout=dropout, n_layers=n_layers)
 
         if variational:
             self.gaussian_sampling = GaussianSample(
@@ -1045,7 +1050,7 @@ class AutoEncoder3(nn.Module):
         self.dann_discriminator = Classifier2(
             layers[list(layers.keys())[-1]],
             64, n_batches)
-        self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers)
+        self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers, dropout=dropout)
         if self.zinb:
             self._dec_mean = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), MeanAct())
             self._dec_disp = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), DispAct())
@@ -1105,11 +1110,12 @@ class AutoEncoder3(nn.Module):
             rec = {'mean': _mean, 'rec': to_rec}
         else:
             zinb_loss = torch.Tensor([0])
-        if self.is_sigmoid:
-            rec['mean'] = torch.sigmoid(rec['mean'])
+
         # reverse = ReverseLayerF.apply(enc, alpha)
         # b_preds = self.classifier(reverse)
         # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
+        if self.is_sigmoid:
+            rec['mean'] = torch.sigmoid(rec['mean'])
         return [enc, rec, zinb_loss, kl]
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool,
@@ -1133,11 +1139,11 @@ class AutoEncoder3(nn.Module):
 
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().cpu().float().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().cpu().float().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,

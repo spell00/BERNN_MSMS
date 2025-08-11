@@ -347,7 +347,7 @@ class TrainAE:
         self.log_predictions(best_lists, run, h)
 
         if self.log_metrics:
-            if self.log_tb:
+            if self.log_tb and self.log_metrics:
                 try:
                     # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
@@ -357,7 +357,7 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_neptune:
+            if self.log_neptune and self.log_metrics:
                 try:
                     metrics = log_metrics(run, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
@@ -366,7 +366,7 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_mlflow:
+            if self.log_mlflow and self.log_metrics:
                 try:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
@@ -615,7 +615,7 @@ class TrainAE:
                     total_loss.backward()
                 except Exception as e:
                     print(f"Error in total_loss: {e}")
-                nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
+                # nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 optimizer.step()
 
         return classif_loss, lists, traces
@@ -646,7 +646,7 @@ class TrainAE:
                 if torch.isnan(bclassif_loss):
                     print("NAN in batch discriminator loss!")
                 bclassif_loss.backward()
-                nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
+                # nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
                 optimizer_b.step()
         self.unfreeze_layers(ae)
 
@@ -939,7 +939,7 @@ class TrainAE:
                 print("NAN in loss!")
                 return 0
             loss.backward()
-            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
+            # nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
             optimizer_ae.step()
 
         if np.mean(traces['rec_loss']) < self.best_loss:

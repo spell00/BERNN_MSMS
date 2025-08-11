@@ -715,6 +715,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     else:
                         warmup_disc_b = False
 
+                    # End-of-epoch update (skip during warmup if set)
+                    if args.update_grid and epoch >= args.update_grid_warmup:
+                        updated = model.update_grids()
+                        print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
                 # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
                 # all layers except the classification layers are frozen
@@ -808,6 +812,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     # If save neptune is True, save the model
                     if self.log_neptune:
                         log_num_neurons(run, n_neurons, init_n_neurons)
+                # End-of-epoch update (skip during warmup if set)
+                if args.update_grid and epoch >= args.update_grid_warmup:
+                    updated = model.update_grids()
+                    print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
             best_mccs += [best_mcc]
 
@@ -926,7 +934,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
-    # parser.add_argument('--kan', type=int, default=1, help='')
+    parser.add_argument('--kan', type=int, default=1, help='')
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
@@ -938,8 +946,13 @@ if __name__ == "__main__":
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
+    parser.add_argument('--update_grid_warmup', type=int, default=5, help='Update grid after warmup?')
 
     args = parser.parse_args()
+
+    if args.kan == 0:
+        args.update_grid = 0
+        args.update_grid_warmup = 0
 
     # Example usage showing different approaches:
 
@@ -960,6 +973,7 @@ if __name__ == "__main__":
         bad_batches=args.bad_batches,
         remove_zeros=args.remove_zeros,
         dataset=args.dataset,
+        kan=args.kan,
         # path=args.path,
         bs=args.bs,
         strategy=args.strategy,
