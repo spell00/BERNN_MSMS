@@ -613,6 +613,129 @@ class TrainAE:
 
         return classif_loss, lists, traces
 
+    def loop2(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+        """
+        Joint training/eval step: classification + reconstruction.
+
+        Args:
+            group: 'train' | 'valid' | 'test'
+            optimizer: optimizer for classifier (or ae if applicable)
+            ae: autoencoder model
+            scheduler: LR scheduler (can be None or ReduceLROnPlateau/others)
+            losses: dict with {'mseloss': ..., 'celoss': ...}
+            loader: DataLoader
+            lists: accumulators dict
+            traces: metrics traces dict
+            nu: weight for classification loss
+            mapping: pass-through to AE forward
+
+        Returns:
+            classif_loss, lists, traces
+        """
+        sampling = True if (group in ['train', 'valid'] and nu != 0) else False
+        classif_loss = None
+
+        for i, batch in enumerate(loader):
+            if group == 'train' and nu != 0:
+                optimizer.zero_grad()
+
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, \
+                meta_neg_batch_sample, set_name = batch
+
+            data = data.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            to_rec = to_rec.to(self.args.device).float()
+
+            # Concatenate meta to inputs if configured
+            if self.args.n_meta > 0:
+                data = torch.cat((data, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
+
+            not_to_rec = not_to_rec.to(self.args.device).float()
+
+            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+            rec = rec['mean']
+            rec_loss = losses['mseloss'](rec, to_rec)
+
+            # Classifier head (optionally with meta embeddings)
+            if self.args.embeddings_meta:
+                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+            else:
+                preds = ae.classifier(enc)
+
+            domain_preds = ae.dann_discriminator(enc)
+
+            # One-hot targets (fallback to class 0 if out of bounds)
+            if torch.all(labels < self.n_cats):
+                cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
+                classif_loss = losses['celoss'](preds, cats)
+            else:
+                cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
+                cats[:, 0] = 1
+                classif_loss = losses['celoss'](preds, cats)
+
+            # Handle possible list outputs
+            if not self.args.zinb:
+                if isinstance(rec, list):
+                    rec = rec[-1]
+                if isinstance(to_rec, list):
+                    to_rec = to_rec[-1]
+
+            # Accumulate outputs
+            n = len(domain)
+            lists[group]['set'] += [np.array([group for _ in range(n)])]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['cats'] += [cats.detach().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            try:
+                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+            except Exception as e:
+                print(f"Error in labels: {e}")
+
+            # Update traces
+            traces[group]['acc'] += [np.mean([
+                0 if p != l else 1
+                for p, l in zip(preds.detach().cpu().numpy().argmax(1), labels.detach().cpu().numpy())
+            ])]
+            traces[group]['top3'] += [np.mean([
+                1 if lab.item() in pred.tolist()[::-1][:3] else 0
+                for pred, lab in zip(preds.argsort(1), labels)
+            ])]
+            traces[group]['closs'] += [classif_loss.item()]
+            try:
+                traces[group]['mcc'] += [np.round(
+                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)]
+            except Exception as e:
+                print(f"Error in mcc: {e}")
+                if 'mcc' not in traces[group]:
+                    traces[group]['mcc'] = []
+                traces[group]['mcc'] += [np.round(
+                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)]
+
+            # Backprop when training
+            if group == 'train' and nu != 0:
+                w = 1.0
+                total_loss = w * nu * classif_loss + rec_loss
+                try:
+                    total_loss.backward()
+                except Exception as e:
+                    print(f"Error in total_loss: {e}")
+                optimizer.step()
+                if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau':
+                    scheduler.step()
+
+        return classif_loss, lists, traces
+
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
         # from the part where the autoencoder is trained. Only for DANN
@@ -819,7 +942,7 @@ class TrainAE:
 
         return l1_loss
 
-    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,
+    def warmup_loop(self, optimizer_ae, scheduler, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,
                     optimizer_b, values, loggers, loaders, run, mapping=True):
         lists, traces = get_empty_traces()
         ae.train()
@@ -881,9 +1004,7 @@ class TrainAE:
                 # domain = domain.argmax(1)
 
             if torch.isnan(enc[0][0]):
-                # if self.log_mlflow:
-                #     mlflow.log_param('finished', 0)
-                return 0
+                return 0, ae, 0
             # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
             if isinstance(rec, list):
                 rec = rec[-1]
@@ -930,10 +1051,15 @@ class TrainAE:
             loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss + l1_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
-                return 0
+                return 0, ae, warmup
             loss.backward()
-            # nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
+            # Clip gradients if requested
+            if hasattr(self.args, 'clip_val') and self.args.clip_val and self.args.clip_val > 0:
+                nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
             optimizer_ae.step()
+            # Step scheduler if configured and not ReduceLROnPlateau
+            if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau' and scheduler is not None:
+                scheduler.step()
 
         if np.mean(traces['rec_loss']) < self.best_loss:
             # "Every counters go to 0 when a better reconstruction loss is reached"
@@ -948,36 +1074,35 @@ class TrainAE:
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
 
+        # Handle early stop for warmup
         if (self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:
-            # When the warnup counter gets to
+            # When the warmup counter reaches limit
             values = log_traces(traces, values)
             if self.args.early_warmup_stop != 0:
                 try:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
-                    pass
             print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
             warmup = False
             self.warmup_disc_b = True
 
+        # Finish warmup at specified epoch
         if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
-            # When the warnup counter gets to
             if self.args.early_warmup_stop != 0:
                 try:
                     ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
-                    pass
             print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
             values = log_traces(traces, values)
             warmup = False
             self.warmup_disc_b = True
 
-        if epoch < self.args.warmup and warmup:  # and np.mean(traces['rec_loss']) >= best_loss:
+        # Regular logging during warmup
+        if epoch < self.args.warmup and warmup:
             values = log_traces(traces, values)
             self.warmup_counter += 1
-            # best_values = get_best_values(traces, ae_only=True)
             # TODO change logging with tensorboard and neptune. The previous
             if self.log_tb:
                 loggers['tb_logging'].logging(values, metrics)
@@ -985,12 +1110,12 @@ class TrainAE:
                 log_neptune(run, values)
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
+
         ae.train()
         ae.mapper.train()
 
-        # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
+        # If training of the autoencoder is restricted to the warmup (train_after_warmup=0),
         # all layers except the classification layers are frozen
-
         if self.args.bdisc:
             self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
         if self.warmup_disc_b and self.warmup_b_counter < 0:
@@ -998,7 +1123,11 @@ class TrainAE:
         else:
             self.warmup_disc_b = False
 
-        return 1, ae
+        # Step ReduceLROnPlateau after epoch based on reconstruction loss
+        if self.args.scheduler == 'ReduceLROnPlateau' and scheduler is not None and len(traces['rec_loss']) > 0:
+            scheduler.step(np.mean(traces['rec_loss']))
+
+        return 1, ae, warmup
 
     def freeze_all_but_clayers(self, ae):
         """
