@@ -4,7 +4,7 @@ This package provides tools for removing batch effects from mass spectrometry da
 using deep learning approaches.
 """
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 __author__ = "Simon Pelletier"
 __license__ = "MIT"
 

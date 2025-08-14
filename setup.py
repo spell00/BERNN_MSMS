@@ -367,7 +367,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.7',
+    version='0.2.8',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -376,6 +376,8 @@ setup(
     description='Batch Effect Removal Neural Networks for Tandem Mass Spectrometry',
     long_description=long_description,
     long_description_content_type="text/markdown",
+    # Avoid emitting License-File metadata for broader tool compatibility
+    license_files=[],
     python_requires='>=3.8',
     install_requires=minimal_requirements,
     extras_require={

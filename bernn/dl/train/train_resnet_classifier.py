@@ -878,28 +878,28 @@ class TrainAE:
             #     rec_loss = torch.zeros(1).to(device)[0]
 
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            # lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            # lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            # lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            # lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except:
                 pass
             try:
                 traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
+                                              zip(preds.detach().float().cpu().numpy().argmax(1),
+                                                  labels.detach().float().cpu().numpy())])]
             except:
                 pass
             traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
@@ -907,7 +907,7 @@ class TrainAE:
 
             traces[group]['closs'] += [classif_loss.item()]
             traces[group]['mcc'] += [np.round(
-                MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
             ]
             if group in ['train'] and nu != 0:
                 # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])

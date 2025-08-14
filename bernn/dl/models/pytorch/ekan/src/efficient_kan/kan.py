@@ -173,7 +173,7 @@ class KANLinear(torch.nn.Module):
         output = output.view(*original_shape[:-1], self.out_features)
         if self.prune_threshold > 0.0:
             output = self.mask * output
-        self.counts += output.abs().detach().cpu().numpy().mean(0)
+        self.counts += output.abs().detach().float().cpu().numpy().mean(0)
         self.n += 1
         return output
 
@@ -183,7 +183,7 @@ class KANLinear(torch.nn.Module):
         """
         if self.counts.sum() == 0:
             return
-        new_mask = self.mask.clone().detach().cpu()
+        new_mask = self.mask.clone().detach().float().cpu()
         scores = (torch.Tensor(self.counts).clone() / self.n)
         new_mask = scores > self.prune_threshold
         if new_mask.sum() == 0:
@@ -205,7 +205,7 @@ class KANLinear(torch.nn.Module):
         """
         if self.counts.sum() == 0:
             return
-        new_mask = self.mask.clone().detach().cpu()
+        new_mask = self.mask.clone().detach().float().cpu()
         scores = (torch.Tensor(self.counts).clone() / self.n)
         new_mask = scores > prune_threshold
         self.mask = torch.tensor(new_mask, device=self.mask.device, dtype=torch.bool)

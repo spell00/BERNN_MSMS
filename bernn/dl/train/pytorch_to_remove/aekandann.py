@@ -114,10 +114,10 @@ class Classifier(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier2(nn.Module):
@@ -150,10 +150,10 @@ class Classifier2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier3(nn.Module):
@@ -193,10 +193,10 @@ class Classifier3(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Encoder(nn.Module):
@@ -396,10 +396,10 @@ class SHAPKANAutoEncoder2(nn.Module):
                 nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z, q_param, h_last=None, p_param=None):
         if len(z.shape) == 1:
@@ -576,11 +576,11 @@ class SHAPKANAutoEncoder3(nn.Module):
 
     def predict_proba(self, x):
         enc = self.enc(x)
-        return self.classifier(enc).detach().cpu().numpy()
+        return self.classifier(enc).detach().float().cpu().numpy()
 
     def predict(self, x):
         enc = self.enc(x)
-        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+        return self.classifier(enc).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z, q_param, h_last=None, p_param=None):
         if len(z.shape) == 1:

@@ -161,10 +161,10 @@ class Classifier(KANGridMixin, nn.Module):
         out = self.net(x)
         if self.use_softmax:
             out = F.softmax(out, dim=1)
-        return out.detach().cpu().numpy()
+        return out.detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.net(x).argmax(1).detach().cpu().numpy()
+        return self.net(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier2(KANGridMixin, nn.Module):
@@ -207,10 +207,10 @@ class Classifier2(KANGridMixin, nn.Module):
         out = self.forward(x)
         if self.use_softmax:
             out = F.softmax(out, dim=1)
-        return out.detach().cpu().numpy()
+        return out.detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.forward(x).argmax(1).detach().cpu().numpy()
+        return self.forward(x).argmax(1).detach().float().cpu().numpy()
 
 
 # -------------------- Encoders / Decoders (KAN) -------------------- #
@@ -437,10 +437,10 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
 
     # Probability / prediction helpers
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
 
 class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
@@ -530,10 +530,10 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         return out
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
 
 # -------------------- Variational / Loss helpers -------------------- #
@@ -700,11 +700,11 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
     # Utilities reused from aedann AutoEncoder3
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).detach().cpu().float().numpy()
+        return self.classifier(x).detach().float().cpu().float().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().cpu().float().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
 
     def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
         eps = 1e-10
@@ -858,11 +858,11 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
 
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).detach().cpu().float().numpy()
+        return self.classifier(x).detach().float().cpu().float().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
         x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().cpu().float().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
 
     def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
         eps = 1e-10

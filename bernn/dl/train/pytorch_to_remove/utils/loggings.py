@@ -487,7 +487,7 @@ def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, l
     unique_labels = np.unique(labels)
 
     def model_to_numpy(x):
-        return model.to('cpu')(torch.from_numpy(x)).detach().cpu().numpy()
+        return model.to('cpu')(torch.from_numpy(x)).detach().float().cpu().numpy()
 
     # Convert my pandas dataframe to numpy
     data = x_df.to_numpy(dtype=np.float32)
@@ -536,7 +536,7 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
 
         # explainer = shap.DeepExplainer(ae, X_test)
         # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
-        # explanation.values = explanation.values.detach().cpu().numpy()
+        # explanation.values = explanation.values.detach().float().cpu().numpy()
         misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
                                                               np.concatenate(best_lists[group]['cats']).argmax(1))]
         try:

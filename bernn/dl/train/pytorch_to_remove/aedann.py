@@ -86,10 +86,10 @@ class Classifier(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier2(nn.Module):
@@ -122,10 +122,10 @@ class Classifier2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Encoder(nn.Module):
@@ -488,10 +488,10 @@ class SHAPAutoEncoder2(nn.Module):
                 nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -699,7 +699,7 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Probability predictions
         """
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         """Get class predictions.
@@ -710,7 +710,7 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Class predictions
         """
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -927,10 +927,10 @@ class AutoEncoder2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None, 
@@ -1126,11 +1126,11 @@ class AutoEncoder3(nn.Module):
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
         enc = self.enc(x)
-        return self.classifier(enc).detach().cpu().numpy()
+        return self.classifier(enc).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         enc = self.enc(x)
-        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+        return self.classifier(enc).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,

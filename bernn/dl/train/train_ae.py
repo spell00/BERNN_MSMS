@@ -6,6 +6,7 @@ import random
 import torch
 from torch import nn
 from sklearn import metrics
+import contextlib
 
 # Handle ax-platform import with graceful fallback
 try:
@@ -197,6 +198,15 @@ class TrainAE:
             self.data = binarize_labels(self.data, self.args.controls)
             self.unique_labels = np.unique(self.data['labels']['all'])
 
+    def autocast_context(self):
+        """Create autocast context for mixed precision training with bfloat16."""
+        try:
+            # Try to create autocast context with bfloat16
+            return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
+        except (AttributeError, RuntimeError):
+            # Fallback to null context if autocast or bfloat16 is not supported
+            return contextlib.nullcontext()
+
     def default_params(self):
         """Initialize default parameters for the training process."""
         self.all_params = {
@@ -243,6 +253,7 @@ class TrainAE:
             'log_plots': 1,
             'prune_network': 1,
             'prune_threshold': 0,  # Threshold for pruning the network
+            'precision': 'bf16',  # Mixed precision training type
             'dropout': 0,  # Dropout rate for the network
             'use_sigmoid': 0,  # Use sigmoid activation in the last layer of the AE
             'scaler': 'standard',  # Set during training
@@ -531,16 +542,19 @@ class TrainAE:
                 data = torch.cat((data, meta_inputs), 1)
                 to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
-            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
-            rec = rec['mean']
+            
+            # Use autocast for mixed precision training
+            with self.autocast_context():
+                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+                rec = rec['mean']
 
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
+                # If embedding_meta > 0, meta data added to embeddings
+                if self.args.embeddings_meta:
+                    preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                else:
+                    preds = ae.classifier(enc)
 
-            domain_preds = ae.dann_discriminator(enc)
+                domain_preds = ae.dann_discriminator(enc)
             if torch.all(labels < self.n_cats):
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
                 classif_loss = celoss(preds, cats)
@@ -559,29 +573,29 @@ class TrainAE:
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
             lists[group]['domains'] += [
-                np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])
+                np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])
             ]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except Exception as e:
                 print(f"Error in labels: {e}")
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
+                                              zip(preds.detach().float().cpu().numpy().argmax(1),
+                                                  labels.detach().float().cpu().numpy())])]
             traces[group]['top3'] += [np.mean(
                 [1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
                  zip(preds.argsort(1), labels)])]
@@ -589,13 +603,13 @@ class TrainAE:
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
             except Exception as e:
                 print(f"Error in mcc: {e}")
                 traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
 
             if group in ['train'] and nu != 0:
@@ -685,27 +699,27 @@ class TrainAE:
             # Accumulate outputs
             n = len(domain)
             lists[group]['set'] += [np.array([group for _ in range(n)])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
-                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except Exception as e:
                 print(f"Error in labels: {e}")
 
             # Update traces
             traces[group]['acc'] += [np.mean([
                 0 if p != l else 1
-                for p, l in zip(preds.detach().cpu().numpy().argmax(1), labels.detach().cpu().numpy())
+                for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().float().cpu().numpy())
             ])]
             traces[group]['top3'] += [np.mean([
                 1 if lab.item() in pred.tolist()[::-1][:3] else 0
@@ -714,13 +728,13 @@ class TrainAE:
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)]
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
             except Exception as e:
                 print(f"Error in mcc: {e}")
                 if 'mcc' not in traces[group]:
                     traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)]
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
 
             # Backprop when training
             if group == 'train' and nu != 0:
@@ -1018,27 +1032,27 @@ class TrainAE:
             traces['rec_loss'] += [rec_loss.item()]
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                               domain.detach().cpu().numpy())])]
+                                           zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                               domain.detach().float().cpu().numpy())])]
             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
             lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                [self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
             lists['all']['encoded_values'] += [
-                enc.detach().cpu().numpy()]
+                enc.detach().float().cpu().numpy()]
             lists['all']['rec_values'] += [
-                rec.detach().cpu().numpy()]
+                rec.detach().float().cpu().numpy()]
             lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
             lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except Exception as e:
                 print(f"Error loading labels: {e}")
                 pass

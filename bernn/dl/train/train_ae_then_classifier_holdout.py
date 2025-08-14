@@ -617,27 +617,27 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             traces['rec_loss'] += [rec_loss.item()]
                             traces['dom_loss'] += [dloss.item()]
                             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                                               domain.detach().cpu().numpy())])]
+                                                           zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                                               domain.detach().float().cpu().numpy())])]
                             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
                             lists['all']['domains'] += [np.array(
-                                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-                            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-                            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-                            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                                [self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+                            lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+                            # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+                            lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
                             lists['all']['encoded_values'] += [
-                                enc.detach().cpu().numpy()]
+                                enc.detach().float().cpu().numpy()]
                             lists['all']['rec_values'] += [
-                                rec.detach().cpu().numpy()]
+                                rec.detach().float().cpu().numpy()]
                             lists['all']['names'] += [names]
-                            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-                            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+                            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+                            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
                             lists['all']['atn'] += [str(x) for x in
-                                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
                             lists['all']['inputs'] += [data['inputs']['all'].to_numpy()]
                             try:
                                 lists['all']['labels'] += [np.array(
-                                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
                             except:
                                 pass
                             if warmup or self.args.train_after_warmup and not warmup_disc_b:

@@ -419,7 +419,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -433,7 +433,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -620,7 +620,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -634,7 +634,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -830,7 +830,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -844,7 +844,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset4(data['inputs']['valid'], valid_names, 
@@ -998,7 +998,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -1012,7 +1012,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -1169,10 +1169,10 @@ class MSCSV:
         if self.resize:
             try:
                 mat_data = transforms.Resize((self.new_size, self.new_size))(
-                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             except:
                 mat_data = transforms.Resize((self.new_size, self.new_size))(
-                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             mat_data = pd.DataFrame(mat_data)
 
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
@@ -1208,10 +1208,10 @@ class MS2CSV:
             if self.resize:
                 try:
                     mat_data = transforms.Resize((self.new_size, self.new_size))(
-                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
                 except:
                     mat_data = transforms.Resize((self.new_size, self.new_size))(
-                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
             if self.scaler == 'binarize':
                 mat_data[mat_data > 0] = 1
@@ -1344,7 +1344,7 @@ class MSCSV2:
 
         if self.resize:
             mat_data = transforms.Resize((299, 299))(
-                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
         return mat_data.astype('float'), label, low, batch, fname
 
