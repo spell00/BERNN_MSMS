@@ -878,7 +878,7 @@ class TrainAE:
             #     rec_loss = torch.zeros(1).to(device)[0]
 
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
             lists[group]['classes'] += [labels.detach().float().cpu().numpy()]

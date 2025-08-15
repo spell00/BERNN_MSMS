@@ -458,7 +458,6 @@ class TrainAE:
                                 dropout=dropout,
                                 variational=self.args.variational, conditional=False,
                                 zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                use_gnn=0,  # TODO to remove
                                 device=self.args.device).to(self.args.device)
                 ae.mapper.to(self.args.device)
                 ae.dec.to(self.args.device)
@@ -474,7 +473,6 @@ class TrainAE:
                                           dropout=dropout,
                                           variational=self.args.variational, conditional=False,
                                           zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                          use_gnn=0,  # TODO remove this
                                           device=self.args.device).to(self.args.device)
                 shap_ae.mapper.to(self.args.device)
                 shap_ae.dec.to(self.args.device)
@@ -960,7 +958,7 @@ class TrainAE:
                 if isinstance(to_rec, list):
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
             lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
@@ -1082,10 +1080,10 @@ class TrainAE:
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                            zip(domain_preds.detach().float().cpu().numpy().argmax(1),
-                                               domain.detach().float().cpu().numpy())])]
+                                               domain.detach().int().cpu().numpy())])]
             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
             lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
             lists['all']['classes'] += [labels.detach().float().cpu().numpy()]

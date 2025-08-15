@@ -331,13 +331,12 @@ class ConvDecoder(nn.Module):
 
 class SHAPAutoEncoderCNN(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, dropout,
-                 n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
+                 n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, device='cuda'):
         super(SHAPAutoEncoderCNN, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -373,8 +372,6 @@ class SHAPAutoEncoderCNN(nn.Module):
         # rec = {}
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        # if self.use_gnn:
-        #     x = self.gnn1(x)
         enc = self.enc(x)
         if self.gaussian_sampling is not None:
             if sampling:
@@ -466,11 +463,10 @@ class SHAPAutoEncoderCNN(nn.Module):
 
 class AutoEncoderCNN(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, dropout, n_layers, zinb=False,
-                 conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
+                 conditional=False, add_noise=False, tied_weights=0, device='cuda'):
         super(AutoEncoderCNN, self).__init__()
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb

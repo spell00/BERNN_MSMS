@@ -37,7 +37,7 @@ if is_python313_or_later:
         "mpmath>=1.3.0",
         "patsy>=0.5.3",
         "umap-learn>=0.5.3",
-        "shapely>=2.0.0",
+        # "shapely>=2.0.0",
         "numba>=0.58.0",  # Python 3.13 compatible
         "openpyxl>=3.0.10",
         "xgboost>=1.7.0",  # Python 3.13 compatible
@@ -68,7 +68,7 @@ elif is_python312_or_later:
         "mpmath>=1.3.0",
         "patsy>=0.5.3",
         "umap-learn>=0.5.3",
-        "shapely>=2.0.0",
+        # "shapely>=2.0.0",
         "numba>=0.58.0",  # Python 3.12 compatible
         "openpyxl>=3.0.10",
         "xgboost>=1.7.0",  # Python 3.12 compatible
@@ -99,7 +99,7 @@ else:
         "mpmath>=1.3.0",
         "patsy>=0.5.3",
         "umap-learn>=0.5.3",
-        "shapely>=2.0.0",
+        # "shapely>=2.0.0",
         "numba>=0.57.1",
         "openpyxl>=3.0.10",
         "xgboost>=1.0.0,<2.0.0",
@@ -367,7 +367,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.8',
+    version='0.2.10',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license

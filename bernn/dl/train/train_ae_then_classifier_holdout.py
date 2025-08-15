@@ -473,7 +473,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                          dropout=dropout,
                          variational=self.args.variational, conditional=False,
                          zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                         use_gnn=0,
                          prune_threshold=params['prune_threshold'],
                          device=self.args.device).to(self.args.device)
             self.count_neurons(ae)
@@ -496,7 +495,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                    dropout=dropout,
                                    variational=self.args.variational, conditional=False,
                                    zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                   use_gnn=0, # TODO parameter to be removed
                                    device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
@@ -618,10 +616,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             traces['dom_loss'] += [dloss.item()]
                             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                                            zip(domain_preds.detach().float().cpu().numpy().argmax(1),
-                                                               domain.detach().float().cpu().numpy())])]
+                                                               domain.detach().int().cpu().numpy())])]
                             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
                             lists['all']['domains'] += [np.array(
-                                [self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+                                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
                             lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
                             # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
                             lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
@@ -734,7 +732,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
-                closs, _, _ = self.loop('train', optimizer_c, ae, sceloss, loaders['train'], lists, traces, nu=nu)
+                closs, _, _ = self.loop2('train', optimizer_c, ae, None, sceloss, loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:

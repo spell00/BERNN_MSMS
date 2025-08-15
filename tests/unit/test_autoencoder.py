@@ -31,8 +31,7 @@ def standard_model():
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
-        device='cpu',
+        u',
         prune_threshold=0.001  # not actually implemented pruning but need to be there  
     )
 
@@ -57,9 +56,8 @@ def kan_model():
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
         device='cpu',
-        prune_threshold=0.001
+        shold=0.001
     )
 
 @pytest.mark.unit
@@ -115,9 +113,8 @@ def test_autoencoder_device_transfer_autoencoder(device):
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
         device=device,
-        prune_threshold=0.001
+        shold=0.001
     ).to(device)
     
     if device == 'cuda:0':
@@ -144,9 +141,8 @@ def test_autoencoder_device_transfer_kan(device):
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
         device=device,
-        prune_threshold=0.001
+        shold=0.001
     ).to(device)
     
     if device == 'cuda:0':
@@ -172,9 +168,8 @@ def test_model_prune_autoencoder():
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
         device='cpu',
-        prune_threshold=0.001
+        shold=0.001
     )
     
     if hasattr(model, 'prune_threshold'):
@@ -208,9 +203,8 @@ def test_model_prune_kan():
         zinb=False,
         add_noise=0,
         tied_weights=False,
-        use_gnn=0,
         device='cpu',
-        prune_threshold=0.001
+        shold=0.001
     )
     
     if hasattr(model, 'prune_threshold'):

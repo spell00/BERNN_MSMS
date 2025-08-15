@@ -376,13 +376,15 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
-        device: str = 'cuda'
-    ):
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
         super().__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
+        self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -460,13 +462,15 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
-        device: str = 'cuda'
-    ):
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
         super().__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
+        self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -588,7 +592,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         add_noise: bool = False,
         tied_weights: int = 0,
         update_grid: bool = False,
-        use_gnn: bool = False,
         device: str = 'cuda',
         is_sigmoid: bool = False,
     ) -> None:
@@ -596,7 +599,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         self.add_noise = add_noise
         self.is_sigmoid = is_sigmoid
         self.device = device
-        self.use_gnn = use_gnn  # (not implemented for KAN variant)
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -721,6 +723,19 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
             result += ridge
         return torch.mean(result)
 
+    def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
+        print("Pruning not available for this model")
+        return 0
+
+    def count_n_neurons(self) -> int:
+        total = 0
+        layer_counts = {}
+        for name, module in self.named_modules():
+            if isinstance(module, KANLinear):
+                layer_counts[name] = module.out_features
+                total += module.out_features
+        return {"total": total, "layers": layer_counts}
+
 
 class KANAutoEncoder2(KANGridMixin, nn.Module):
     """KAN-based analogue of AutoEncoder2.
@@ -748,14 +763,12 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         add_noise: bool = False,
         tied_weights: int = 0,
         update_grid: bool = False,
-        use_gnn: bool = False,
         device: str = 'cuda',
         is_sigmoid: bool = False,
     ) -> None:
         super().__init__()
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn  # not implemented for KAN variant
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -878,5 +891,18 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
             ridge = ridge_lambda * torch.square(pi)
             result += ridge
         return torch.mean(result)
+
+    def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
+        print("Pruning not available for this model")
+        return 0
+
+    def count_n_neurons(self) -> int:
+        total = 0
+        layer_counts = {}
+        for name, module in self.named_modules():
+            if isinstance(module, KANLinear):
+                layer_counts[name] = module.out_features
+                total += module.out_features
+        return {"total": total, "layers": layer_counts}
 
 # Preserve legacy alias if earlier code expects KANAutoEncoder3 name

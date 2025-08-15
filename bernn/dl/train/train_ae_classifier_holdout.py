@@ -345,23 +345,26 @@ class TrainAEClassifierHoldout(TrainAE):
 
                 if h == 1 or self.args.kan == 1:
 
-                    ae = self.ae(data['inputs']['all'].shape[1],
-                                 is_sigmoid=self.args.use_sigmoid,
-                                 n_batches=self.n_batches,
-                                 nb_classes=self.n_cats,
-                                 mapper=self.args.use_mapping,
-                                 layers=self.get_ordered_layers(params),
-                                 n_layers=self.args.n_layers,
-                                 n_meta=self.args.n_meta,
-                                 n_emb=self.args.embeddings_meta,
-                                 dropout=params['dropout'],
-                                 variational=self.args.variational, conditional=False,
-                                 zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                 use_gnn=0,  # TODO to remove
-                                 device=self.args.device,
-                                 prune_threshold=params['prune_threshold'],
-                                 update_grid=self.args.update_grid
-                                 ).to(self.args.device)
+                    ae = self.ae(
+                        data['inputs']['all'].shape[1],
+                        is_sigmoid=self.args.use_sigmoid,
+                        n_batches=self.n_batches,
+                        nb_classes=self.n_cats,
+                        mapper=self.args.use_mapping,
+                        layers=self.get_ordered_layers(params),
+                        n_layers=self.args.n_layers,
+                        n_meta=self.args.n_meta,
+                        n_emb=self.args.embeddings_meta,
+                        dropout=params['dropout'],
+                        variational=self.args.variational,
+                        conditional=False,
+                        zinb=self.args.zinb,
+                        add_noise=0,
+                        tied_weights=self.args.tied_weights,
+                        device=self.args.device,
+                        prune_threshold=params['prune_threshold'],
+                        update_grid=self.args.update_grid,
+                    ).to(self.args.device)
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
                     n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
@@ -381,7 +384,6 @@ class TrainAEClassifierHoldout(TrainAE):
                         dropout=params['dropout'],
                         variational=self.args.variational, conditional=False,
                         zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                        use_gnn=0,  # TODO to remove
                         device=self.args.device,
                         # prune_threshold=params['prune_threshold'],
                         # update_grid=self.args.update_grid
@@ -422,15 +424,19 @@ class TrainAEClassifierHoldout(TrainAE):
                     print("\n\nNO WARMUP\n\n")
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
-                        no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
+                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
                                                     optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
                         # End-of-epoch update (skip during warmup if set)
                         if args.update_grid and epoch >= args.update_grid_warmup:
-                            updated = model.update_grids()
-                            print(f"[epoch {epoch}] Updated {updated} KAN grids")
+                            # Safely call grid updates on the AE model if available (KAN only)
+                            try:
+                                updated = ae.update_grids()
+                                print(f"[epoch {epoch}] Updated {updated} KAN grids")
+                            except Exception:
+                                pass
 
-                        if not no_error:
+                                update_grid=self.args.update_grid
                             break
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
@@ -440,7 +446,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     lists, traces = get_empty_traces()
 
                     if self.args.warmup_after_warmup:
-                        self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
+                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'], triplet_loss, mseloss,
                                          False, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
@@ -713,7 +719,7 @@ if __name__ == "__main__":
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
     parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
-
+    parser.add_argument('--classif_loss', type=str, default='ce', help='')
     args = parser.parse_args()
 
     if args.kan == 0:
@@ -820,16 +826,16 @@ if __name__ == "__main__":
 
     # Wrapper for Ax
     def ax_eval(parameterization):
-        try:
-            # Ax may give numpy types; ensure plain Python
-            param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
-                           for k, v in parameterization.items()}
-            loss = train.train(param_clean)
-            # Guarantee numeric
-            loss = float(loss)
-        except Exception as e:
-            print(f"[AX WARN] Trial failed: {e}")
-            loss = 1e9
+        # try:
+        # Ax may give numpy types; ensure plain Python
+        param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
+                        for k, v in parameterization.items()}
+        loss = train.train(param_clean)
+        # Guarantee numeric
+        loss = float(loss)
+        # except Exception as e:
+        #     print(f"[AX WARN] Trial failed: {e}")
+        #     loss = 1e9
         # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
         # but explicit dict form is more robust; returning scalar is also fine. Choose one:
         return loss  # scalar OK because objective_name='closs'

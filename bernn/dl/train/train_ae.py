@@ -20,6 +20,7 @@ except ImportError as e:
         raise ImportError("ax-platform is not available. Please install with: pip install ax-platform==0.3.7")
 
 from sklearn.metrics import matthews_corrcoef as MCC
+from sklearn.neighbors import KNeighborsClassifier
 # from ...ml.train.params_gp import *
 from ..models.pytorch.aedann import ReverseLayerF
 from ..models.pytorch.aeekandann import KANAutoEncoder2
@@ -221,6 +222,10 @@ class TrainAE:
             'n_trials': 100,
             'device': 'cuda:0',
             'rec_loss': 'l1',
+            # Classification loss selector: 'ce' or 'triplet'
+            'classif_loss': 'ce',
+            # Margin for TripletMarginLoss when classif_loss='triplet'
+            'triplet_margin': 1.0,
             'tied_weights': 0,
             'random': 1,
             'variational': 0,
@@ -505,7 +510,8 @@ class TrainAE:
                     print(f"Error in {group} AUC: {e}")
 
 
-    def loop(self, group, optimizer, ae, celoss, loader, lists, traces, nu=1, mapping=True):
+    def loop(self, group, optimizer, ae, celoss, loader, 
+             lists, traces, nu=1, mapping=True):
         """
 
         Args:
@@ -548,22 +554,41 @@ class TrainAE:
                 enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
                 rec = rec['mean']
 
-                # If embedding_meta > 0, meta data added to embeddings
-                if self.args.embeddings_meta:
-                    preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                # Compute prediction head: use KNN when triplet loss is selected
+                if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                    feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
+                    preds = self._knn_preds(feats, labels)
                 else:
-                    preds = ae.classifier(enc)
+                    if self.args.embeddings_meta:
+                        preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                    else:
+                        preds = ae.classifier(enc)
 
                 domain_preds = ae.dann_discriminator(enc)
+            # Build one-hot labels for metrics and CE mode
             if torch.all(labels < self.n_cats):
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
-                classif_loss = celoss(preds, cats)
             else:
-                # print("Error in classif_loss: labels out of bounds")
-                # Create a tensor of zeros with the correct shape and device
+                # Fallback if labels out of bounds
                 cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
-                # Set the first class as 1 for all samples
                 cats[:, 0] = 1
+
+            # Select classification loss
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                # Compute embeddings for positive/negative samples and apply TripletMarginLoss on enc
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', 1.0), p=2, swap=True)
+                pos_bs = pos_batch_sample.to(self.args.device).float()
+                neg_bs = neg_batch_sample.to(self.args.device).float()
+                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
+                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_bs = torch.cat((pos_bs, mpos_bs), 1)
+                    neg_bs = torch.cat((neg_bs, mneg_bs), 1)
+                with self.autocast_context():
+                    pos_enc, _, _, _ = ae(pos_bs, pos_bs, domain, sampling=True, mapping=mapping)
+                    neg_enc, _, _, _ = ae(neg_bs, neg_bs, domain, sampling=True, mapping=mapping)
+                classif_loss = class_triplet(enc, pos_enc, neg_enc)
+            else:
                 classif_loss = celoss(preds, cats)
 
             if not self.args.zinb:
@@ -573,11 +598,11 @@ class TrainAE:
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
             lists[group]['domains'] += [
-                np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])
+                np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])
             ]
             lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
             # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
             lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
@@ -589,13 +614,13 @@ class TrainAE:
             lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
             except Exception as e:
                 print(f"Error in labels: {e}")
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                               zip(preds.detach().float().cpu().numpy().argmax(1),
-                                                  labels.detach().float().cpu().numpy())])]
+                                                  labels.detach().int().cpu().numpy())])]
             traces[group]['top3'] += [np.mean(
                 [1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
                  zip(preds.argsort(1), labels)])]
@@ -603,13 +628,13 @@ class TrainAE:
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
             except Exception as e:
                 print(f"Error in mcc: {e}")
                 traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
 
             if group in ['train'] and nu != 0:
@@ -672,21 +697,39 @@ class TrainAE:
             rec = rec['mean']
             rec_loss = losses['mseloss'](rec, to_rec)
 
-            # Classifier head (optionally with meta embeddings)
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+            # Classifier head or KNN (triplet)
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
+                preds = self._knn_preds(feats, labels)
             else:
-                preds = ae.classifier(enc)
+                if self.args.embeddings_meta:
+                    preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                else:
+                    preds = ae.classifier(enc)
 
             domain_preds = ae.dann_discriminator(enc)
 
             # One-hot targets (fallback to class 0 if out of bounds)
             if torch.all(labels < self.n_cats):
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
-                classif_loss = losses['celoss'](preds, cats)
             else:
                 cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
                 cats[:, 0] = 1
+
+            # Select classification loss
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', 1.0), p=2, swap=True)
+                pos_bs = pos_batch_sample.to(self.args.device).float()
+                neg_bs = neg_batch_sample.to(self.args.device).float()
+                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
+                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_bs = torch.cat((pos_bs, mpos_bs), 1)
+                    neg_bs = torch.cat((neg_bs, mneg_bs), 1)
+                pos_enc, _, _, _ = ae(pos_bs, pos_bs, domain, sampling=True, mapping=mapping)
+                neg_enc, _, _, _ = ae(neg_bs, neg_bs, domain, sampling=True, mapping=mapping)
+                classif_loss = class_triplet(enc, pos_enc, neg_enc)
+            else:
                 classif_loss = losses['celoss'](preds, cats)
 
             # Handle possible list outputs
@@ -699,10 +742,10 @@ class TrainAE:
             # Accumulate outputs
             n = len(domain)
             lists[group]['set'] += [np.array([group for _ in range(n)])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
             lists[group]['names'] += [names]
             lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
             lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
@@ -712,14 +755,14 @@ class TrainAE:
             lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
             lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
-                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
+                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
             except Exception as e:
                 print(f"Error in labels: {e}")
 
             # Update traces
             traces[group]['acc'] += [np.mean([
                 0 if p != l else 1
-                for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().float().cpu().numpy())
+                for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().int().cpu().numpy())
             ])]
             traces[group]['top3'] += [np.mean([
                 1 if lab.item() in pred.tolist()[::-1][:3] else 0
@@ -728,13 +771,13 @@ class TrainAE:
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
             except Exception as e:
                 print(f"Error in mcc: {e}")
                 if 'mcc' not in traces[group]:
                     traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
 
             # Backprop when training
             if group == 'train' and nu != 0:
@@ -829,6 +872,41 @@ class TrainAE:
             triplet_loss = None
 
         return sceloss, celoss, mseloss, triplet_loss
+
+    def compute_classif_loss(self, enc, preds, labels, celoss, triplet_margin):
+            """Compute classification loss as CE or TripletMarginLoss based on args.classif_loss.
+
+            - For 'ce': expects labels as class indices; will build one-hot cats if needed
+            - For 'triplet': expects batch to include positive/negative samples; we derive
+                triplet from enc (anchor) and encodings of pos/neg built in calling scope.
+            """
+            if self.args.classif_loss == 'triplet':
+                    # Triplet handled in calling scope where pos/neg enc are available
+                    # Return None here; caller must pass actual triplet value
+                    return None
+            # Default to CrossEntropy-style loss (the code uses one-hot 'cats')
+            return celoss(preds, labels)
+
+    def _knn_preds(self, features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        """Fit a KNN on the current batch features and output per-class probabilities.
+
+        Note: This is a simple, in-batch proxy to obtain preds when using triplet loss.
+        """
+        X = features.detach().cpu().numpy()
+        y = labels.detach().int().cpu().numpy()
+        n_samples = max(1, X.shape[0])
+        n_neighbors = max(1, min(5, n_samples))
+        knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
+        try:
+            knn.fit(X, y)
+            proba = knn.predict_proba(X)
+            out = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+            cls = knn.classes_.astype(int)
+            out[:, cls] = proba.astype(np.float32)
+        except Exception:
+            # Fallback to uniform probs if KNN fails (e.g., degenerate batch)
+            out = np.full((X.shape[0], self.n_cats), 1.0 / max(1, self.n_cats), dtype=np.float32)
+        return torch.from_numpy(out).to(self.args.device)
 
     def freeze_dlayers(self, ae):
         """
@@ -1033,13 +1111,13 @@ class TrainAE:
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
                                            zip(domain_preds.detach().float().cpu().numpy().argmax(1),
-                                               domain.detach().float().cpu().numpy())])]
+                                               domain.detach().int().cpu().numpy())])]
             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
             lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().float().cpu().numpy()])]
+                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
             # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
-            lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
+            lists['all']['classes'] += [labels.detach().int().cpu().numpy()]
             lists['all']['encoded_values'] += [
                 enc.detach().float().cpu().numpy()]
             lists['all']['rec_values'] += [
@@ -1052,7 +1130,7 @@ class TrainAE:
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
             except Exception as e:
                 print(f"Error loading labels: {e}")
                 pass
