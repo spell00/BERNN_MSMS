@@ -464,7 +464,11 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
     make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
     make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
     make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
+    make_decision_deep(df=explainer.expected_value[0],
+                       values=shap_values[0],
+                       misclassified=misclassified,
+                       feature_names=x_df.columns,
+                       group=group, run=run, log_path=log_path, category='DeepExplainer', mlops=mlops)
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):

@@ -26,6 +26,26 @@ random.seed(42)
 torch.manual_seed(42)
 np.random.seed(42)
 
+def read_csv(path):
+    with open(path, 'r', encoding='utf-8') as csv_file:
+        rows = csv.DictReader(csv_file)
+        data = []
+        labels = []
+        row = {}
+        for i, row in enumerate(rows):
+            labels += [list(row.values())[0]]
+            try:
+                data += [np.array(list(row.values())[1:], dtype=float)]
+            except Exception:
+                tmp = np.array(list(row.values())[1:])
+                tmp = np.array([x if x is not None else 0. for x in tmp])
+                tmp = np.array([float(x) if x != '' else 0. for x in tmp])
+                data += [tmp]
+
+    data = np.stack(data)
+    data[np.isnan(data)] = 0
+    return pd.DataFrame(data, index=labels, columns=list(row.keys())[1:])
+
 
 class MSDataset3(Dataset):
     def __init__(self, data, meta, names=None, labels=None, batches=None, 
@@ -98,6 +118,13 @@ class MSDataset3(Dataset):
             to_rec = x
             not_to_rec = torch.zeros_like(to_rec)
 
+        # Always provide positive/negative samples for reconstruction context
+        pos_to_rec = self.labels_data[label][torch.randint(0, self.n_labels[label], (1,))].squeeze()
+        neg_label_for_rec = label
+        while neg_label_for_rec == label:
+            neg_label_for_rec = np.random.choice(list(self.labels_data.keys()))
+        neg_to_rec = self.labels_data[neg_label_for_rec][torch.randint(0, self.n_labels[neg_label_for_rec], (1,))].squeeze()
+
         # Triplet sampling
         if self.triplet_dloss in {'revTriplet', 'inverseTriplet'} and len(self.unique_batches) > 1:
             not_batch = batch
@@ -121,6 +148,8 @@ class MSDataset3(Dataset):
             x = self.transform(x)
             to_rec = self.transform(to_rec)
             not_to_rec = self.transform(not_to_rec)
+            pos_to_rec = self.transform(pos_to_rec)
+            neg_to_rec = self.transform(neg_to_rec)
             pos = self.transform(pos)
             neg = self.transform(neg)
 
@@ -131,7 +160,10 @@ class MSDataset3(Dataset):
             if torch.rand(1).item() > 0.5:
                 x = x * (torch.rand_like(x) < 0.9)
 
-        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos, neg, meta_pos, meta_neg, set_name
+        return (
+            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos, neg, meta_pos, meta_neg, set_name
+        )
 
 class MSDataset4(Dataset):
     def __init__(self, data, meta, cultpures, names=None, labels=None,
@@ -225,6 +257,14 @@ class MSDataset4(Dataset):
                 to_rec = self.samples[idx].copy()
 
             not_to_rec = np.array([0], dtype=self.samples.dtype)
+
+        # Always provide positive/negative samples for reconstruction context
+        pos_to_rec = self.labels_data[label_name][np.random.randint(0, self.n_labels[label])].copy()
+        neg_label_for_rec = label
+        while neg_label_for_rec == label:
+            neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+        ind2 = np.random.randint(0, self.n_labels[neg_label_for_rec])
+        neg_to_rec = self.labels_data[neg_label_for_rec][ind2].copy()
         if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
             while not_batch_label == batch or not_batch_label is None:
@@ -249,6 +289,8 @@ class MSDataset4(Dataset):
             x = self.transform(np.expand_dims(x, 0)).squeeze()
             to_rec = self.transform(np.expand_dims(to_rec, 0)).squeeze()
             not_to_rec = self.transform(np.expand_dims(not_to_rec, 0)).squeeze()
+            pos_to_rec = self.transform(np.expand_dims(pos_to_rec, 0)).squeeze()
+            neg_to_rec = self.transform(np.expand_dims(neg_to_rec, 0)).squeeze()
             pos_batch_sample = self.transform(np.expand_dims(pos_batch_sample, 0)).squeeze()
             neg_batch_sample = self.transform(np.expand_dims(neg_batch_sample, 0)).squeeze()
 
@@ -263,8 +305,8 @@ class MSDataset4(Dataset):
                 x = x * mask
 
         return (
-            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample,
-            meta_pos_batch_sample, meta_neg_batch_sample, set1
+            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set1
         )
 
 

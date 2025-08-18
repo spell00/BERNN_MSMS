@@ -29,7 +29,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_data, get_bacteria
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_bacteria
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -322,9 +322,6 @@ class TrainAE:
         elif self.args.dataset == 'bacteria':
             self.data, self.unique_labels, self.unique_batches = get_bacteria(self.path, args, seed=seed)
             self.pools = False
-
-        elif self.args.dataset == 'prostate':
-            self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
 
         elif self.args.dataset == 'mice':
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
@@ -973,6 +970,12 @@ class TrainAE:
             lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
             lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data['inputs']['all'].to_numpy()]
             try:
                 lists[group]['labels'] += [np.array(
                     [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
@@ -1101,9 +1104,16 @@ class TrainAE:
             lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
             lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data['inputs']['all'].to_numpy()]
             try:
-                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
-            except Exception:
+                lists[group]['labels'] += [np.array(
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
+            except:
                 pass
 
             traces[group]['acc'] += [np.mean([

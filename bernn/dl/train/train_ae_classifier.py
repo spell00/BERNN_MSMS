@@ -30,7 +30,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_bacteria, get_cifar10
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_bacteria, get_cifar10
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -337,11 +337,10 @@ class TrainAE:
             self.columns = self.data['inputs']['train'].columns
             self.log_deep_only = True
 
-        elif self.args.dataset == 'prostate':
-            self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
-
         elif self.args.dataset == 'mice':
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
+        elif self.args.dataset == 'cifar10':
+            self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=seed)
         else:
             exit('Wrong dataset name')
         # self.get_amide(self.path, seed=(1 + h) * 10)

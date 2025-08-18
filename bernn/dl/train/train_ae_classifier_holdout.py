@@ -424,9 +424,12 @@ class TrainAEClassifierHoldout(TrainAE):
                     print("\n\nNO WARMUP\n\n")
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
-                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
-                                                    optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'],
+                                                                triplet_loss, mseloss, True, epoch,
+                                                                optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
+                        if not warmup:
+                            break
                         # End-of-epoch update (skip during warmup if set)
                         if args.update_grid and epoch >= args.update_grid_warmup:
                             # Safely call grid updates on the AE model if available (KAN only)
@@ -436,8 +439,6 @@ class TrainAEClassifierHoldout(TrainAE):
                             except Exception:
                                 pass
 
-                                update_grid=self.args.update_grid
-                            break
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
                         if self.verbose > 0:
@@ -451,7 +452,11 @@ class TrainAEClassifierHoldout(TrainAE):
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
                         ae = self.freeze_all_but_clayers(ae)
-                    closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                    losses = {
+                        "mseloss": mseloss,
+                        "celoss": sceloss,
+                    }
+                    closs = self.loop_train('train', optimizer_ae, ae, None, losses,
                                             loaders['train'], lists, traces, nu=params['nu'])
 
                     if torch.isnan(closs):
@@ -467,8 +472,8 @@ class TrainAEClassifierHoldout(TrainAE):
                                 continue
                             closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                              loaders[group], lists, traces, nu=0)
-                        closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                                loaders['train'], lists, traces, nu=0)
+                        # closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                        #                         loaders['train'], lists, traces, nu=0)
                     # Below is the loop for all sets
                     # with torch.no_grad():
                     #     for group in list(data['inputs'].keys()):
@@ -499,7 +504,7 @@ class TrainAEClassifierHoldout(TrainAE):
                         except Exception as e:
                             print(f"Problem with add_to_logger: {e}")
                     if self.log_neptune:
-                        add_to_neptune(run, values)
+                        add_to_neptune(values, run)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
@@ -714,12 +719,13 @@ if __name__ == "__main__":
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
     parser.add_argument('--prune_network', type=float, default=0, help='')
     parser.add_argument('--log_inputs', type=int, default=0, help='')
-    parser.add_argument('--log_neptune', type=int, default=0, help='')
+    parser.add_argument('--log_neptune', type=int, default=1, help='')
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
     parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
     parser.add_argument('--classif_loss', type=str, default='ce', help='')
+    parser.add_argument('--scheduler', type=str, default='ReduceLROnPlateau', help='')
     args = parser.parse_args()
 
     if args.kan == 0:
@@ -796,12 +802,13 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 10]},
+        {"name": "warmup", "type": "range", "bounds": [1, 1000]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
+        {"name": "knn_n_neighbors", "type": "choice", "values": [1, 3, 5, 7, 9, 11]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
-         "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
+         "values": ['minmax', 'standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},        
     ]

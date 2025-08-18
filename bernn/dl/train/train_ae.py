@@ -129,6 +129,22 @@ class TrainAE:
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
         self.load_autoencoder()
+        # Persistent KNN for triplet mode
+        self._knn_ready = False
+        # Initialize KNN with configured number of neighbors
+        try:
+            n_neighbors = int(getattr(self.args, 'knn_n_neighbors', 5))
+        except Exception:
+            n_neighbors = 5
+        self.knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
+
+    # Back-compat wrappers (old names)
+    def loop(self, group, optimizer, ae, celoss, loader, 
+             lists, traces, nu=1, mapping=True):
+        return self.loop_infer(group, optimizer, ae, celoss, loader, lists, traces, nu, mapping)
+
+    def loop2(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+        return self.loop_train(group, optimizer, ae, scheduler, losses, loader, lists, traces, nu, mapping)
 
     def make_params(self, params):
         # Fixing the hyperparameters that are not optimized
@@ -168,6 +184,17 @@ class TrainAE:
         self.args.scaler = params['scaler']
         self.args.warmup = params['warmup']
         self.args.disc_b_warmup = params['disc_b_warmup']
+        if 'triplet_margin' in params:
+            self.triplet_margin = float(params['triplet_margin'])
+        else:
+            self.triplet_margin = 0.
+        # KNN neighbors (for triplet prediction). Rebuild KNN if provided by HPO
+        try:
+            if 'knn_n_neighbors' in params:
+                self.args.knn_n_neighbors = int(params['knn_n_neighbors'])
+                self.knn = KNeighborsClassifier(n_neighbors=self.args.knn_n_neighbors, weights='distance')
+        except Exception as e:
+            print(f"Warning: couldn't set knn_n_neighbors from params: {e}")
         self.foldername = str(uuid.uuid4())
         self.complete_log_path = f'logs/ae_classifier_holdout/{self.foldername}'
         self.hparams_filepath = self.complete_log_path + '/hp'
@@ -225,7 +252,7 @@ class TrainAE:
             # Classification loss selector: 'ce' or 'triplet'
             'classif_loss': 'ce',
             # Margin for TripletMarginLoss when classif_loss='triplet'
-            'triplet_margin': 1.0,
+            'triplet_margin': 10.0,
             'tied_weights': 0,
             'random': 1,
             'variational': 0,
@@ -264,6 +291,7 @@ class TrainAE:
             'scaler': 'standard',  # Set during training
             'warmup': 100,  # Set during training
             'disc_b_warmup': 0,  # Set during training
+            'knn_n_neighbors': 5,  # K for persistent KNN used in triplet mode
             # 'hparams_filepath': '',  # Path to save hyperparameters
             # 'foldername': '',  # Unique folder name for the run
             # 'complete_log_path': '',  # Complete path for logging 
@@ -510,8 +538,8 @@ class TrainAE:
                     print(f"Error in {group} AUC: {e}")
 
 
-    def loop(self, group, optimizer, ae, celoss, loader, 
-             lists, traces, nu=1, mapping=True):
+    def loop_infer(self, group, optimizer, ae, celoss, loader, 
+                   lists, traces, nu=1, mapping=True):
         """
 
         Args:
@@ -537,8 +565,8 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 optimizer.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -554,10 +582,12 @@ class TrainAE:
                 enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
                 rec = rec['mean']
 
-                # Compute prediction head: use KNN when triplet loss is selected
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
                     feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
-                    preds = self._knn_preds(feats, labels)
+                    # Prefer persistent KNN if available, otherwise fallback to in-batch KNN
+                    X = feats.detach().float().cpu().numpy()
+                    proba = self.knn.predict_proba(X)
+                    preds = torch.from_numpy(proba.astype(np.float32)).to(self.args.device)
                 else:
                     if self.args.embeddings_meta:
                         preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
@@ -576,17 +606,17 @@ class TrainAE:
             # Select classification loss
             if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
                 # Compute embeddings for positive/negative samples and apply TripletMarginLoss on enc
-                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', 1.0), p=2, swap=True)
-                pos_bs = pos_batch_sample.to(self.args.device).float()
-                neg_bs = neg_batch_sample.to(self.args.device).float()
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
+                pos_to_rec = pos_to_rec.to(self.args.device).float()
+                neg_to_rec = neg_to_rec.to(self.args.device).float()
                 mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
                 mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
                 if self.args.n_meta > 0:
-                    pos_bs = torch.cat((pos_bs, mpos_bs), 1)
-                    neg_bs = torch.cat((neg_bs, mneg_bs), 1)
+                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
+                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
                 with self.autocast_context():
-                    pos_enc, _, _, _ = ae(pos_bs, pos_bs, domain, sampling=True, mapping=mapping)
-                    neg_enc, _, _, _ = ae(neg_bs, neg_bs, domain, sampling=True, mapping=mapping)
+                    pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                    neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
                 classif_loss = class_triplet(enc, pos_enc, neg_enc)
             else:
                 classif_loss = celoss(preds, cats)
@@ -652,7 +682,7 @@ class TrainAE:
 
         return classif_loss, lists, traces
 
-    def loop2(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+    def loop_train(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
         """
         Joint training/eval step: classification + reconstruction.
 
@@ -673,12 +703,14 @@ class TrainAE:
         """
         sampling = True if (group in ['train', 'valid'] and nu != 0) else False
         classif_loss = None
+        # Collect features/labels to fit persistent KNN after the loop when using triplet
+        knn_feats, knn_labels = [], []
 
         for i, batch in enumerate(loader):
             if group == 'train' and nu != 0:
                 optimizer.zero_grad()
 
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, \
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
                 pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, \
                 meta_neg_batch_sample, set_name = batch
 
@@ -695,12 +727,18 @@ class TrainAE:
 
             enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
             rec = rec['mean']
-            rec_loss = losses['mseloss'](rec, to_rec)
+            if self.args.train_after_warmup:
+                rec_loss = losses['mseloss'](rec, to_rec)
+            else:
+                rec_loss = torch.tensor(0.0, device=self.args.device)
 
-            # Classifier head or KNN (triplet)
+            # Classifier head; for triplet we only collect train features to fit KNN later
             if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
                 feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
-                preds = self._knn_preds(feats, labels)
+                if group == 'train' and nu != 0:
+                    knn_feats.append(feats.detach().float().cpu().numpy())
+                    knn_labels.append(labels.detach().int().cpu().numpy())
+                preds = None
             else:
                 if self.args.embeddings_meta:
                     preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
@@ -709,25 +747,28 @@ class TrainAE:
 
             domain_preds = ae.dann_discriminator(enc)
 
-            # One-hot targets (fallback to class 0 if out of bounds)
-            if torch.all(labels < self.n_cats):
-                cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
+            # One-hot targets (needed only for CE)
+            if getattr(self.args, 'classif_loss', 'ce') != 'triplet':
+                if torch.all(labels < self.n_cats):
+                    cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
+                else:
+                    cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
+                    cats[:, 0] = 1
             else:
-                cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
-                cats[:, 0] = 1
+                cats = None
 
             # Select classification loss
             if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', 1.0), p=2, swap=True)
-                pos_bs = pos_batch_sample.to(self.args.device).float()
-                neg_bs = neg_batch_sample.to(self.args.device).float()
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
+                pos_to_rec = pos_to_rec.to(self.args.device).float()
+                neg_to_rec = neg_to_rec.to(self.args.device).float()
                 mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
                 mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
                 if self.args.n_meta > 0:
-                    pos_bs = torch.cat((pos_bs, mpos_bs), 1)
-                    neg_bs = torch.cat((neg_bs, mneg_bs), 1)
-                pos_enc, _, _, _ = ae(pos_bs, pos_bs, domain, sampling=True, mapping=mapping)
-                neg_enc, _, _, _ = ae(neg_bs, neg_bs, domain, sampling=True, mapping=mapping)
+                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
+                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
+                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
                 classif_loss = class_triplet(enc, pos_enc, neg_enc)
             else:
                 classif_loss = losses['celoss'](preds, cats)
@@ -740,44 +781,47 @@ class TrainAE:
                     to_rec = to_rec[-1]
 
             # Accumulate outputs
-            n = len(domain)
-            lists[group]['set'] += [np.array([group for _ in range(n)])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
-            lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
-            try:
-                lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
-            except Exception as e:
-                print(f"Error in labels: {e}")
-
+            # n = len(domain)
+            # lists[group]['set'] += [np.array([group for _ in range(n)])]
+            # lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            # lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            # if preds is not None:
+            #     lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            # lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
+            # lists[group]['names'] += [names]
+            # if cats is not None:
+            #     lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            # lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            # lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            # lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            # lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            # lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
+            # try:
+            #     lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
+            # except Exception as e:
+            #     print(f"Error in labels: {e}")
             # Update traces
-            traces[group]['acc'] += [np.mean([
-                0 if p != l else 1
-                for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().int().cpu().numpy())
-            ])]
-            traces[group]['top3'] += [np.mean([
-                1 if lab.item() in pred.tolist()[::-1][:3] else 0
-                for pred, lab in zip(preds.argsort(1), labels)
-            ])]
-            traces[group]['closs'] += [classif_loss.item()]
-            try:
-                traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
-            except Exception as e:
-                print(f"Error in mcc: {e}")
-                if 'mcc' not in traces[group]:
-                    traces[group]['mcc'] = []
-                traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+            # if preds is not None:
+            #     traces[group]['acc'] += [np.mean([
+            #         0 if p != l else 1
+            #         for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().int().cpu().numpy())
+            #     ])]
+            #     traces[group]['top3'] += [np.mean([
+            #         1 if lab.item() in pred.tolist()[::-1][:3] else 0
+            #         for pred, lab in zip(preds.argsort(1), labels)
+            #     ])]
+            # traces[group]['closs'] += [classif_loss.item()]
+            # if preds is not None:
+            #     try:
+            #         traces[group]['mcc'] += [np.round(
+            #             MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+            #     except Exception as e:
+            #         print(f"Error in mcc: {e}")
+            #         if 'mcc' not in traces[group]:
+            #             traces[group]['mcc'] = []
+            #         traces[group]['mcc'] += [np.round(
+            #             MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
 
             # Backprop when training
             if group == 'train' and nu != 0:
@@ -791,7 +835,18 @@ class TrainAE:
                 if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau':
                     scheduler.step()
 
-        return classif_loss, lists, traces
+        # Fit persistent KNN at the end of training loop when using triplet
+        if getattr(self.args, 'classif_loss', 'ce') == 'triplet' and group == 'train' and len(knn_feats) > 0:
+            try:
+                X_all = np.concatenate(knn_feats, axis=0)
+                y_all = np.concatenate(knn_labels, axis=0)
+                self.knn.fit(X_all, y_all)
+                self._knn_ready = True
+            except Exception as e:
+                print(f"KNN fit failed, falling back to batch KNN: {e}")
+                self._knn_ready = False
+
+        return classif_loss
 
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
@@ -800,8 +855,8 @@ class TrainAE:
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -886,27 +941,6 @@ class TrainAE:
                     return None
             # Default to CrossEntropy-style loss (the code uses one-hot 'cats')
             return celoss(preds, labels)
-
-    def _knn_preds(self, features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        """Fit a KNN on the current batch features and output per-class probabilities.
-
-        Note: This is a simple, in-batch proxy to obtain preds when using triplet loss.
-        """
-        X = features.detach().cpu().numpy()
-        y = labels.detach().int().cpu().numpy()
-        n_samples = max(1, X.shape[0])
-        n_neighbors = max(1, min(5, n_samples))
-        knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
-        try:
-            knn.fit(X, y)
-            proba = knn.predict_proba(X)
-            out = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
-            cls = knn.classes_.astype(int)
-            out[:, cls] = proba.astype(np.float32)
-        except Exception:
-            # Fallback to uniform probs if KNN fails (e.g., degenerate batch)
-            out = np.full((X.shape[0], self.n_cats), 1.0 / max(1, self.n_cats), dtype=np.float32)
-        return torch.from_numpy(out).to(self.args.device)
 
     def freeze_dlayers(self, ae):
         """
@@ -1046,8 +1080,8 @@ class TrainAE:
         for i, all_batch in iterator:
             # print(i)
             optimizer_ae.zero_grad()
-            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
             inputs = inputs.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -1163,6 +1197,7 @@ class TrainAE:
             self.best_loss = np.mean(traces['rec_loss'])
             self.dom_loss = np.mean(traces['dom_loss'])
             self.dom_acc = np.mean(traces['dom_acc'])
+            self.warmup_counter = 0
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
 
@@ -1172,7 +1207,7 @@ class TrainAE:
             values = log_traces(traces, values)
             if self.args.early_warmup_stop != 0:
                 try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
             print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
@@ -1183,7 +1218,7 @@ class TrainAE:
         if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
             if self.args.early_warmup_stop != 0:
                 try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
             print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
@@ -1301,6 +1336,7 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')
+    # parser.add_argument('--knn_n_neighbors', type=int, default=5, help='Number of neighbors for persistent KNN (triplet mode)')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)
@@ -1341,6 +1377,8 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
+        {"name": "triplet_margin", "type": "range", "bounds": [0., 10.]},
+        {"name": "knn_n_neighbors", "type": "choice", "values": [1, 3, 5, 7, 9, 11]},
         {"name": "warmup", "type": "range", "bounds": [10, 1000]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",

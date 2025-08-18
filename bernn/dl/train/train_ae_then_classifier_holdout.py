@@ -540,8 +540,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         for i, all_batch in iterator:
                             if warmup or self.args.train_after_warmup:
                                 optimizer_ae.zero_grad()
-                            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+                            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
                             inputs = inputs.to(self.args.device).float()
                             meta_inputs = meta_inputs.to(self.args.device).float()
                             to_rec = to_rec.to(self.args.device).float()
@@ -732,7 +732,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
-                closs, _, _ = self.loop2('train', optimizer_c, ae, None, sceloss, loaders['train'], lists, traces, nu=nu)
+                losses = {
+                    "mseloss": mseloss,
+                    "celoss": sceloss,
+                }
+                closs, _, _ = self.loop_train('train', optimizer_c, ae, None, losses, loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
