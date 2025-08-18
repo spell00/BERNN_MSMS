@@ -232,7 +232,7 @@ class Encoder3(nn.Module):
         device (str, optional): Device to use ('cuda' or 'cpu'). Defaults to 'cuda'.
     """
 
-    def __init__(self, in_shape: int, layers: dict, dropout: float, device: str = 'cuda'):
+    def __init__(self, in_shape: int, layers: dict, dropout: float, device: str = 'cpu'):
         super(Encoder3, self).__init__()
 
         # Build the network layers
@@ -369,7 +369,7 @@ class Decoder3(nn.Module):
     """
 
     def __init__(self, in_shape: int, n_batches: int, layers: dict,
-                 dropout: float, device: str = 'cuda'):
+                 dropout: float, device: str = 'cpu'):
         super(Decoder3, self).__init__()
 
         # Build the network layers
@@ -446,7 +446,7 @@ class SHAPAutoEncoder2(nn.Module):
                  n_meta: int, mapper: bool, variational: bool, layer1: int, layer2: int,
                  dropout: float, n_layers: int, zinb: bool = False, conditional: bool = True,
                  add_noise: bool = False, tied_weights: int = 0,
-                 device: str = 'cuda') -> None:
+                 device: str = 'cpu') -> None:
         super(SHAPAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
@@ -607,7 +607,7 @@ class SHAPAutoEncoder3(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int, n_meta: int,
                  mapper: bool, variational: bool, layers: dict, dropout: float, n_layers: int,
                  zinb: bool = False, conditional: bool = True, add_noise: bool = False,
-                 tied_weights: int = 0, device: str = 'cuda', is_sigmoid: bool = False) -> None:
+                 tied_weights: int = 0, device: str = 'cpu', is_sigmoid: bool = False) -> None:
         super(SHAPAutoEncoder3, self).__init__()
         self.n_emb = n_emb
         self.is_sigmoid = is_sigmoid
@@ -829,7 +829,7 @@ class AutoEncoder2(nn.Module):
                  n_emb: int, mapper: bool, variational: bool, layer1: int, layer2: int,
                  dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, device: str = 'cuda') -> None:
+                 update_grid: bool = False, device: str = 'cpu') -> None:
         """
         TODO MAKE DESCRIPTION
         """
@@ -1013,7 +1013,7 @@ class AutoEncoder3(nn.Module):
                  n_emb: int, mapper: bool, variational: bool, layers: dict,
                  dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, device: str = 'cuda', is_sigmoid: bool = False) -> None:
+                 update_grid: bool = False, device: str = 'cpu', is_sigmoid: bool = False) -> None:
         """
         TODO MAKE DESCRIPTION
         """

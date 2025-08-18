@@ -5,10 +5,10 @@ This subpackage contains the deep learning models and training code.
 
 # Model definitions
 from .models.pytorch import (
-    AutoEncoder2,
-    SHAPAutoEncoder2,
-    KANAutoEncoder2,
-    SHAPKANAutoEncoder2,
+    AutoEncoder3,
+    SHAPAutoEncoder3,
+    KANAutoEncoder3,
+    SHAPKANAutoEncoder3,
     AutoEncoder3,
     SHAPAutoEncoder3,
 )
@@ -25,10 +25,10 @@ from .models.pytorch.ekan import KANLinear, KAN
 
 __all__ = [
     # Models
-    "AutoEncoder2",
-    "SHAPAutoEncoder2",
-    "KANAutoEncoder2",
-    "SHAPKANAutoEncoder2",
+    "AutoEncoder3",
+    "SHAPAutoEncoder3",
+    "KANAutoEncoder3",
+    "SHAPKANAutoEncoder3",
     "AutoEncoder3",
     "SHAPAutoEncoder3",
     "KANAutoEncoder3",

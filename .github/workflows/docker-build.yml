@@ -134,7 +134,12 @@ jobs:
 
       - name: Run tests in Docker for Python ${{ matrix.python-version }}
         run: |
-          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace bernn:py${{ matrix.python-version }} pytest -v -rs --cov=bernn --cov-report=term --cov-report=xml:coverage-py${{ matrix.python-version }}.xml tests/
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace bernn:py${{ matrix.python-version }} bash -lc "\
+          python -m pip install --upgrade pip && \
+          pip install -e . && \
+          pip install pytest pytest-cov && \
+          pytest -v -rs --cov=bernn --cov-report=term --cov-report=xml:coverage-py${{ matrix.python-version }}.xml tests/\
+          "
 
       - name: Upload coverage to Codecov for Python ${{ matrix.python-version }}
         uses: codecov/codecov-action@v5
