@@ -226,6 +226,44 @@ class TrainAE:
             self.data = binarize_labels(self.data, self.args.controls)
             self.unique_labels = np.unique(self.data['labels']['all'])
 
+        # Move n_move_test samples from test to train, and n_move_valid from valid to train, randomly
+        n_move_test = getattr(self.args, 'n_move_test', 0)
+        n_move_valid = getattr(self.args, 'n_move_valid', 0)
+        move_keys = ['inputs', 'meta', 'labels', 'names', 'batches', 'cats']
+        # Move from test to train
+        if n_move_test > 0 and len(self.data['inputs']['test']) > 0:
+            idxs = np.random.choice(np.arange(len(self.data['inputs']['test'])), size=min(n_move_test, len(self.data['inputs']['test'])), replace=False)
+            for key in move_keys:
+                if key in self.data and 'test' in self.data[key] and 'train' in self.data[key]:
+                    if hasattr(self.data[key]['test'], 'iloc'):
+                        samples = self.data[key]['valid'].iloc[idxs]
+                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
+                        # Remove by position, not by index value
+                        mask = np.ones(len(self.data[key]['test']), dtype=bool)
+                        mask[idxs] = False
+                        self.data[key]['test'] = self.data[key]['test'].iloc[mask]
+                    else:
+                        samples = self.data[key]['test'][idxs]
+                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
+                        self.data[key]['test'] = np.delete(self.data[key]['test'], idxs, axis=0)
+
+        # Move from valid to train
+        if n_move_valid > 0 and len(self.data['inputs']['valid']) > 0:
+            idxs = np.random.choice(np.arange(len(self.data['inputs']['valid'])), size=min(n_move_valid, len(self.data['inputs']['valid'])), replace=False)
+            for key in move_keys:
+                if key in self.data and 'valid' in self.data[key] and 'train' in self.data[key]:
+                    if hasattr(self.data[key]['valid'], 'iloc'):
+                        samples = self.data[key]['valid'].iloc[idxs]
+                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
+                        # Remove by position, not by index value
+                        mask = np.ones(len(self.data[key]['valid']), dtype=bool)
+                        mask[idxs] = False
+                        self.data[key]['valid'] = self.data[key]['valid'].iloc[mask]
+                    else:
+                        samples = self.data[key]['valid'][idxs]
+                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
+                        self.data[key]['valid'] = np.delete(self.data[key]['valid'], idxs, axis=0)
+
     def autocast_context(self):
         """Create autocast context for mixed precision training with bfloat16."""
         try:
@@ -252,7 +290,7 @@ class TrainAE:
             # Classification loss selector: 'ce' or 'triplet'
             'classif_loss': 'ce',
             # Margin for TripletMarginLoss when classif_loss='triplet'
-            'triplet_margin': 10.0,
+            'triplet_margin': 1.0,
             'tied_weights': 0,
             'random': 1,
             'variational': 0,
@@ -292,6 +330,8 @@ class TrainAE:
             'warmup': 100,  # Set during training
             'disc_b_warmup': 0,  # Set during training
             'knn_n_neighbors': 5,  # K for persistent KNN used in triplet mode
+            'n_move_test': 0,  # Number of test samples to move to train
+            'n_move_valid': 0,  # Number of valid samples to move to train
             # 'hparams_filepath': '',  # Path to save hyperparameters
             # 'foldername': '',  # Unique folder name for the run
             # 'complete_log_path': '',  # Complete path for logging 
@@ -583,11 +623,33 @@ class TrainAE:
                 rec = rec['mean']
 
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                    feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
-                    # Prefer persistent KNN if available, otherwise fallback to in-batch KNN
+                    feats = torch.cat((ae.classifier.net[0](enc), meta_inputs), 1) if self.args.embeddings_meta else enc
+                    # Prefer persistent KNN if available, fallback to in-batch KNN
                     X = feats.detach().float().cpu().numpy()
-                    proba = self.knn.predict_proba(X)
-                    preds = torch.from_numpy(proba.astype(np.float32)).to(self.args.device)
+                    try:
+                        from sklearn.exceptions import NotFittedError
+                        if getattr(self, "_knn_ready", False):
+                            proba = self.knn.predict_proba(X)
+                            # Map to full number of classes in correct order
+                            proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+                            cls_idx = np.array(self.knn.classes_, dtype=int)
+                            proba_full[:, cls_idx] = proba.astype(np.float32)
+                        else:
+                            raise NotFittedError("Persistent KNN not ready")
+                    except Exception as e:
+                        # Fallback: in-batch KNN using neighbors within the current batch
+                        from sklearn.neighbors import NearestNeighbors
+                        k = int(getattr(self.args, 'knn_n_neighbors', 5))
+                        y_np = labels.detach().int().cpu().numpy()
+                        nns = NearestNeighbors(n_neighbors=min(k, len(X)), metric='minkowski')
+                        nns.fit(X)
+                        idx = nns.kneighbors(X, return_distance=False)
+                        proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+                        for i in range(X.shape[0]):
+                            counts = np.bincount(y_np[idx[i]], minlength=self.n_cats).astype(np.float32)
+                            s = counts.sum()
+                            proba_full[i] = counts / s if s > 0 else np.full(self.n_cats, 1.0 / self.n_cats, dtype=np.float32)
+                    preds = torch.from_numpy(proba_full).to(self.args.device)
                 else:
                     if self.args.embeddings_meta:
                         preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
@@ -614,9 +676,12 @@ class TrainAE:
                 if self.args.n_meta > 0:
                     pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
                     neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
-                with self.autocast_context():
-                    pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
-                    neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                if not self.args.train_after_warmup:
+                    enc = ae.classifier.net[0](enc)
+                    pos_enc = ae.classifier.net[0](pos_enc)
+                    neg_enc = ae.classifier.net[0](neg_enc)
                 classif_loss = class_triplet(enc, pos_enc, neg_enc)
             else:
                 classif_loss = celoss(preds, cats)
@@ -769,6 +834,10 @@ class TrainAE:
                     neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
                 pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
                 neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                if not self.args.train_after_warmup:
+                    enc = ae.classifier.net[0](enc)
+                    pos_enc = ae.classifier.net[0](pos_enc)
+                    neg_enc = ae.classifier.net[0](neg_enc)
                 classif_loss = class_triplet(enc, pos_enc, neg_enc)
             else:
                 classif_loss = losses['celoss'](preds, cats)
@@ -779,49 +848,6 @@ class TrainAE:
                     rec = rec[-1]
                 if isinstance(to_rec, list):
                     to_rec = to_rec[-1]
-
-            # Accumulate outputs
-            # n = len(domain)
-            # lists[group]['set'] += [np.array([group for _ in range(n)])]
-            # lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
-            # lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
-            # if preds is not None:
-            #     lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
-            # lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
-            # lists[group]['names'] += [names]
-            # if cats is not None:
-            #     lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
-            # lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
-            # lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
-            # lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
-            # lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
-            # lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
-            # try:
-            #     lists[group]['labels'] += [np.array([self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
-            # except Exception as e:
-            #     print(f"Error in labels: {e}")
-            # Update traces
-            # if preds is not None:
-            #     traces[group]['acc'] += [np.mean([
-            #         0 if p != l else 1
-            #         for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().int().cpu().numpy())
-            #     ])]
-            #     traces[group]['top3'] += [np.mean([
-            #         1 if lab.item() in pred.tolist()[::-1][:3] else 0
-            #         for pred, lab in zip(preds.argsort(1), labels)
-            #     ])]
-            # traces[group]['closs'] += [classif_loss.item()]
-            # if preds is not None:
-            #     try:
-            #         traces[group]['mcc'] += [np.round(
-            #             MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
-            #     except Exception as e:
-            #         print(f"Error in mcc: {e}")
-            #         if 'mcc' not in traces[group]:
-            #             traces[group]['mcc'] = []
-            #         traces[group]['mcc'] += [np.round(
-            #             MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
 
             # Backprop when training
             if group == 'train' and nu != 0:
@@ -1336,7 +1362,7 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')
-    # parser.add_argument('--knn_n_neighbors', type=int, default=5, help='Number of neighbors for persistent KNN (triplet mode)')
+    parser.add_argument('--knn_n_neighbors', type=int, default=5, help='Number of neighbors for persistent KNN (triplet mode)')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)

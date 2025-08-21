@@ -1345,6 +1345,8 @@ if __name__ == "__main__":
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--n_move_test', type=int, default=0, help='Number of test samples to move to valid')
+    parser.add_argument('--n_move_valid', type=int, default=0, help='Number of valid samples to move to train')
 
     args = parser.parse_args()
 

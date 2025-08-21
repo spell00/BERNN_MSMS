@@ -726,6 +726,8 @@ if __name__ == "__main__":
     parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
     parser.add_argument('--classif_loss', type=str, default='ce', help='')
     parser.add_argument('--scheduler', type=str, default='ReduceLROnPlateau', help='')
+    parser.add_argument('--n_move_valid', type=int, default=0, help='Number of valid samples to move to train')
+    parser.add_argument('--n_move_test', type=int, default=0, help='Number of test samples to move to valid')
     args = parser.parse_args()
 
     if args.kan == 0:
