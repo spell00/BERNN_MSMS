@@ -1353,57 +1353,78 @@ class MSCSV2:
 
 
 class MSDataset4(Dataset):
-    def __init__(self, data, meta, names=None, labels=None, batches=None, transform=None, quantize=False,
-                 remove_paddings=False, crop_size=-1, add_noise=False, random_recs=False, triplet_dloss=False,
-                 device='cuda'):
+    def __init__(self, data, meta, cultpures, names=None, labels=None,
+                 batches=None, sets=None, transform=None, crop_size=-1,
+                 add_noise=False, random_recs=False, triplet_dloss=False):
         self.random_recs = random_recs
-        self.crop_size = crop_size
-        self.samples = data
+        try:
+            self.samples = data.to_numpy()
+        except Exception as e:
+            print(f"Error in samples: {e}")
+            self.samples = data
+
         self.add_noise = add_noise
         self.names = names
         self.meta = meta
+        self.sets = sets
         self.transform = transform
         self.crop_size = crop_size
         self.labels = labels
-        self.unique_labels = list(set(labels))
+        self.labels_names = labels
+        self.unique_labels = np.unique(labels)
         self.batches = batches
         self.unique_batches = np.unique(batches)
-        self.quantize = quantize
-        self.remove_paddings = remove_paddings
+        self.cultpures = cultpures
         labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels}
         batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
-        # try:
-        self.labels_data = {label: data[labels_inds[label]] for label in labels}
-        self.labels_meta_data = {label: meta[labels_inds[label]] for label in labels}
-        self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
-        self.batches_meta_data = {batch: meta[batches_inds[batch]] for batch in batches}
-        # except:
-        #     print(labels)
+        try:
+            self.labels_data = {label: data.iloc[labels_inds[label]].to_numpy() for label in labels}
+            self.labels_meta_data = {label: meta.iloc[labels_inds[label]].to_numpy() for label in labels}
+            self.batches_data = {batch: data.iloc[batches_inds[batch]].to_numpy() for batch in batches}
+            self.batches_meta_data = {batch: meta.iloc[batches_inds[batch]].to_numpy() for batch in batches}
+        except Exception as e:
+            print(f"Error in labels_data: {e}")
+            self.labels_data = {label: data[labels_inds[label]] for label in labels}
+            self.labels_meta_data = {label: meta[labels_inds[label]] for label in labels}
+            self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
+            self.batches_meta_data = {batch: meta[batches_inds[batch]] for batch in batches}
+
         self.n_labels = {label: len(self.labels_data[label]) for label in labels}
         self.n_batches = {batch: len(self.batches_data[batch]) for batch in batches}
         self.triplet_dloss = triplet_dloss
+        if isinstance(self.labels[0], str):
+            self.labels = np.array([np.argwhere(label == self.unique_labels).item() for label in self.labels])
+        if isinstance(self.batches[0], str):
+            self.batches = np.array([np.argwhere(batch == self.unique_batches).item() for batch in self.batches])
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        meta_pos_batch_sample = None
-        meta_neg_batch_sample = None
         meta_to_rec = None
         if self.labels is not None:
             label = self.labels[idx]
+            label_name = self.labels_names[idx]
             batch = self.batches[idx]
+            if len(self.sets) > 0:
+                set1 = self.sets[idx]
+            else:
+                set1 = 'unknown'
             try:
-                name = self.names[idx]
-            except:
-                name = str(self.names.iloc[idx])
-            try:
-                meta_to_rec = self.meta[idx]
-            except:
+                if isinstance(self.names, pd.Series):
+                    name = self.names.iloc[idx]
+                else:
+                    name = str(self.names[idx])
+            except Exception as e:
+                print(f"Error in names: {e}")
+                name = str(self.names[idx])
+            if isinstance(self.meta, pd.DataFrame):
                 meta_to_rec = self.meta.iloc[idx].to_numpy()
-
+            else:
+                meta_to_rec = self.meta[idx]
         else:
             label = None
+            label_name = None
             batch = None
             name = None
         if self.random_recs:
@@ -1413,12 +1434,23 @@ class MSDataset4(Dataset):
                 not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
             ind = np.random.randint(0, self.n_labels[not_label])
             not_to_rec = self.labels_data[not_label][ind].copy()
-            meta_not_to_rec = self.labels_meta_data[not_label][ind].copy()
             meta_to_rec = self.meta[idx]
         else:
-            to_rec = self.samples[idx].copy()
-            not_to_rec = np.array([0])
-        if self.triplet_dloss and len(self.unique_batches) > 1:
+            if label_name != 'blanc':
+                to_rec = self.cultpures[label_name].copy()
+            else:
+                to_rec = self.samples[idx].copy()
+
+            not_to_rec = np.array([0], dtype=self.samples.dtype)
+
+        # Always provide positive/negative samples for reconstruction context
+        pos_to_rec = self.labels_data[label_name][np.random.randint(0, self.n_labels[label_name])]
+        neg_label_for_rec = label_name
+        while neg_label_for_rec == label_name:
+            neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))]
+        ind2 = np.random.randint(0, self.n_labels[neg_label_for_rec])
+        neg_to_rec = self.labels_data[neg_label_for_rec][ind2]
+        if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
             while not_batch_label == batch or not_batch_label is None:
                 not_batch_label = self.unique_batches[np.random.randint(0, len(self.unique_batches))].copy()
@@ -1437,21 +1469,27 @@ class MSDataset4(Dataset):
         if self.crop_size != -1:
             max_start_crop = x.shape[1] - self.crop_size
             ran = np.random.randint(0, max_start_crop)
-            x = torch.Tensor(x)[:, ran:ran + self.crop_size]  # .to(device)
+            x = torch.Tensor(x)[:, ran:ran + self.crop_size]
         if self.transform:
-            x = self.transform(x.transpose([1, 2, 0])).reshape(x.shape)
-            to_rec = self.transform(to_rec.transpose([1, 2, 0])).squeeze().reshape(to_rec.shape)
-            if len(not_to_rec.shape) > 1:
-                not_to_rec = self.transform(not_to_rec.transpose([1, 2, 0])).squeeze().reshape(x.shape)
-            if len(pos_batch_sample.shape) > 1:
-                pos_batch_sample = self.transform(pos_batch_sample.transpose([1, 2, 0])).squeeze().reshape(x.shape)
-                neg_batch_sample = self.transform(neg_batch_sample.transpose([1, 2, 0])).squeeze().reshape(x.shape)
+            x = self.transform(np.expand_dims(x, 0)).squeeze()
+            to_rec = self.transform(np.expand_dims(to_rec, 0)).squeeze()
+            not_to_rec = self.transform(np.expand_dims(not_to_rec, 0)).squeeze()
+            pos_to_rec = self.transform(np.expand_dims(pos_to_rec, 0)).squeeze()
+            neg_to_rec = self.transform(np.expand_dims(neg_to_rec, 0)).squeeze()
+            pos_batch_sample = self.transform(np.expand_dims(pos_batch_sample, 0)).squeeze()
+            neg_batch_sample = self.transform(np.expand_dims(neg_batch_sample, 0)).squeeze()
 
         if self.add_noise:
-            if np.random.random() > 0.5:
-                x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
-            meta_pos_batch_sample, meta_neg_batch_sample
+            if np.random.rand() > 0.5:
+                x = x + np.random.randn(*x.shape) * 0.1
+            if np.random.rand() > 0.5:
+                x = x * (np.random.rand(*x.shape) < 0.9)
+
+        return (
+            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set1
+        )
+
 
 class MSDataset5(Dataset):
     def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,

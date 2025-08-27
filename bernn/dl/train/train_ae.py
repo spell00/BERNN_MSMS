@@ -24,7 +24,7 @@ from .pytorch.aedann import ReverseLayerF
 from .pytorch.aeekandann import KANAutoencoder2
 from .pytorch.ekan.src.efficient_kan.kan import KANLinear
 from .pytorch.utils.loggings import log_metrics, \
-    log_plots, log_neptune, log_shap, log_mlflow
+    log_plots, log_neptune, log_shap, log_mlflow, log_dvclive
 from bernn.utils.utils import to_csv
 from .pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
@@ -375,6 +375,15 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
+            if self.log_dvclive:
+                try:
+                    metrics = log_metrics(None, best_lists, best_vals, ae,
+                                          np.unique(np.concatenate(best_lists['train']['labels'])),
+                                          np.unique(self.data['batches']), epoch, mlops="dvclive",
+                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          device=self.args.device)
+                except BrokenPipeError:
+                    print("\n\n\nProblem with logging dvclive!\n\n\n")
 
         if self.log_metrics and self.pools:
             try:
@@ -401,6 +410,8 @@ class TrainAE:
                     metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
                                                self.unique_unique_labels, loggers['logger'], epoch, metrics, 'rec',
                                                'tensorboard')
+                if self.log_dvclive:
+                    print("Logging pool metrics to dvclive: not implemented")
 
             except BrokenPipeError:
                 print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -423,6 +434,8 @@ class TrainAE:
                     log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
                              self.complete_log_path, self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
+                if self.log_dvclive:
+                    print("Logging plots to dvclive: not implemented")
 
         columns = list(self.data['inputs']['all'].columns)
         if self.args.n_meta == 2:
@@ -457,11 +470,15 @@ class TrainAE:
             log_neptune(run, best_values)
         if self.log_mlflow:
             log_mlflow(best_values, h)
+        if self.log_dvclive:
+            log_dvclive(best_values, h)
 
         # except BrokenPipeError:
         #     print("\n\n\nProblem with logging stuff!\n\n\n")
 
     def logging(self, run, cm_logger):
+        if self.log_dvclive:
+            cm_logger.plot(run, 0, self.unique_unique_labels, 'dvclive')
         if self.log_neptune:
             cm_logger.plot(run, 0, self.unique_unique_labels, 'neptune')
             # cm_logger.get_rf_results(run, self.args)
@@ -499,7 +516,9 @@ class TrainAE:
                                       step=step)
                 except Exception as e:
                     print(f"Error in {group} AUC: {e}")
-
+            if self.log_dvclive:
+                # track files
+                print(f"Logging {group} predictions to dvclive: not implemented")
 
     def loop(self, group, optimizer, ae, celoss, loader, lists, traces, nu=1, mapping=True):
         """
@@ -992,6 +1011,8 @@ class TrainAE:
                 log_neptune(run, values)
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
+            if self.log_dvclive:
+                log_dvclive(values, epoch)
         ae.train()
         ae.mapper.train()
 

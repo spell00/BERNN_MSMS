@@ -774,7 +774,7 @@ if __name__ == "__main__":
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
+        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 1000]},
@@ -799,9 +799,9 @@ if __name__ == "__main__":
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
     if args.kan and args.use_l1:
         # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-8, 1e-2], "log_scale": True}]
+        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
     if args.use_l1:
-        parameters += [{"name": "l1", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True}]
+        parameters += [{"name": "l1", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True}]
     if args.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 

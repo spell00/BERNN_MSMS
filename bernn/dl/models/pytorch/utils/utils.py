@@ -792,6 +792,38 @@ def add_to_mlflow(values, epoch):
             pass
 
 
+def add_to_dvclive(values, epoch, live):
+    """
+    Add values to the dvclive logger (DVC)
+    Args:
+        values: Dict of values to be logged
+        epoch: Epoch of the values getting logged
+        live: dvclive.Live instance
+    """
+    if len(values['rec_loss']) > 0:
+        if not np.isnan(values['rec_loss'][-1]):
+            live.log_metric('rec_loss', values['rec_loss'][-1])
+    if len(values['dom_loss']) > 0:
+        if not np.isnan(values['dom_loss'][-1]):
+            live.log_metric('dom_loss', values['dom_loss'][-1])
+    if len(values['dom_acc']) > 0:
+        if not np.isnan(values['dom_acc'][-1]):
+            live.log_metric('dom_acc', values['dom_acc'][-1])
+    for group in list(values.keys())[4:]:
+        try:
+            if not np.isnan(values[group]['closs'][-1]):
+                live.log_metric(f'closs/{group}', values[group]['closs'][-1])
+            if not np.isnan(values[group]['acc'][-1]):
+                live.log_metric(f'acc/{group}/all_concentrations', values[group]['acc'][-1])
+            if not np.isnan(values[group]['mcc'][-1]):
+                live.log_metric(f'mcc/{group}/all_concentrations', values[group]['mcc'][-1])
+            if not np.isnan(values[group]['top3'][-1]):
+                live.log_metric(f'top3/{group}/all_concentrations', values[group]['top3'][-1])
+        except Exception:
+            pass
+    live.next_step()
+
+
 def count_labels(arr):
     """
     Counts elements in array

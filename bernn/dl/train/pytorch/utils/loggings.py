@@ -633,6 +633,32 @@ def log_neptune(run, traces):
                 run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
                 run['rec batch_entropy'].log(traces['rec batch_entropy']),
 
+def log_dvclive(live, traces):
+    """
+    Log metrics and artifacts to DVC/dvclive.
+    Args:
+        traces (dict): Dictionary of metrics to log (e.g., per-epoch or per-step metrics).
+        best_scores (dict): Dictionary of best scores/metrics to log.
+        artifacts (list): List of file paths to log as artifacts (plots, models, etc.).
+    """
+    if best_scores is not None:
+        for key, value in best_scores.items():
+            live.log_metric(key, value)
+    if artifacts is not None:
+        for path in artifacts:
+            live.log_artifact(path)
+    for i in range(len(traces['mcc']['train'])):
+        if traces is not None:
+            for key in ['acc', 'mcc']:
+                for g in ['train', 'valid', 'test']:
+                    if key in traces and g in traces[key]:
+                        if isinstance(traces[key][g], list):
+                            if len(traces[key][g]) == 0:
+                                continue
+                        elif isinstance(traces[key][g], (float, np.float64)) is False:
+                            continue
+                        live.log_metric(f'{key}_{g}', traces[key][g][i])
+        live.next_step()
 
 def log_mlflow(traces, step):
     if 'rec_loss' in traces:
