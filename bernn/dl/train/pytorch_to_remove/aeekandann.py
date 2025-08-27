@@ -7,7 +7,7 @@ from .utils.stochastic import GaussianSample
 from .utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from .utils.utils import to_categorical
 import pandas as pd
-from .ekan.src.efficient_kan.kan import KANLinear
+from ...models.pytorch.ekan.src.efficient_kan.kan import KANLinear
 import copy
 import numpy as np
 
@@ -103,13 +103,13 @@ class Classifier(nn.Module):
 
     def predict_proba(self, x):
         if self.n_layers == 2:
-            return self.layers["layer2"](self.layers["layer1"](x)).detach().cpu().numpy()
-        return self.layers["layer1"](x).detach().cpu().numpy()
+            return self.layers["layer2"](self.layers["layer1"](x)).detach().float().cpu().numpy()
+        return self.layers["layer1"](x).detach().float().cpu().numpy()
 
     def predict(self, x):
         if self.n_layers == 2:
-            return self.layers["layer2"](self.layers["layer1"](x)).argmax(1).detach().cpu().numpy()
-        return self.layers["layer1"](x).argmax(1).detach().cpu().numpy()
+            return self.layers["layer2"](self.layers["layer1"](x)).argmax(1).detach().float().cpu().numpy()
+        return self.layers["layer1"](x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier2(nn.Module):
@@ -157,10 +157,10 @@ class Classifier2(nn.Module):
                     m.bias.data.zero_()
 
     def predict_proba(self, x):
-        return self.layers["layer2"](self.layers["layer1"](x)).detach().cpu().numpy()
+        return self.layers["layer2"](self.layers["layer1"](x)).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.layers["layer2"](self.layers["layer1"](x)).argmax(1).detach().cpu().numpy()
+        return self.layers["layer2"](self.layers["layer1"](x)).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier3(nn.Module):
@@ -201,10 +201,10 @@ class Classifier3(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Encoder(nn.Module):
@@ -362,16 +362,15 @@ class Decoder(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
 
-class SHAPKANAutoencoder2(nn.Module):
+class SHAPKANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational,
                  layer1, layer2, dropout, n_layers, zinb=False, conditional=False,
-                 add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPKANAutoencoder2, self).__init__()
+                 add_noise=False, tied_weights=0, device='cuda'):
+        super(SHAPKANAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -441,10 +440,10 @@ class SHAPKANAutoencoder2(nn.Module):
                 nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z, q_param, h_last=None, p_param=None):
         if len(z.shape) == 1:
@@ -505,16 +504,15 @@ class SHAPKANAutoencoder2(nn.Module):
         return result
 
 
-class KANAutoencoder2(nn.Module):
+class KANAutoEncoder2(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper,
                  variational, layer1, layer2, dropout, n_layers, prune_threshold, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0,
-                 use_gnn=False, update_grid=False, device='cuda'):
-        super(KANAutoencoder2, self).__init__()
+                 update_grid=False, device='cuda'):
+        super(KANAutoEncoder2, self).__init__()
         self.prune_threshold = prune_threshold
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -622,10 +620,10 @@ class KANAutoencoder2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z, q_param, h_last=None, p_param=None):
         if len(z.shape) == 1:
@@ -686,14 +684,13 @@ class KANAutoencoder2(nn.Module):
         return result
 
 
-class KANAutoencoder3(nn.Module):
+class KANAutoEncoder3(nn.Module):
     def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layers: dict,
                  dropout, n_layers, prune_threshold, zinb=False, conditional=True, add_noise=False,
-                 tied_weights=0, update_grid=False, use_gnn=False, device='cuda', is_sigmoid=False):
-        super(KANAutoencoder3, self).__init__()
+                 tied_weights=0, update_grid=False, device='cuda', is_sigmoid=False):
+        super(KANAutoEncoder3, self).__init__()
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -802,11 +799,11 @@ class KANAutoencoder3(nn.Module):
 
     def predict_proba(self, x):
         enc = self.enc(x)
-        return self.classifier(enc).detach().cpu().numpy()
+        return self.classifier(enc).detach().float().cpu().numpy()
 
     def predict(self, x):
         enc = self.enc(x)
-        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+        return self.classifier(enc).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z, q_param, h_last=None, p_param=None):
         if len(z.shape) == 1:

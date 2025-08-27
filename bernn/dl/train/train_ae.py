@@ -6,6 +6,7 @@ import random
 import torch
 from torch import nn
 from sklearn import metrics
+import contextlib
 
 # Handle ax-platform import with graceful fallback
 try:
@@ -19,6 +20,7 @@ except ImportError as e:
         raise ImportError("ax-platform is not available. Please install with: pip install ax-platform==0.3.7")
 
 from sklearn.metrics import matthews_corrcoef as MCC
+from sklearn.neighbors import KNeighborsClassifier
 # from ...ml.train.params_gp import *
 from .pytorch.aedann import ReverseLayerF
 from .pytorch.aeekandann import KANAutoencoder2
@@ -26,10 +28,9 @@ from .pytorch.ekan.src.efficient_kan.kan import KANLinear
 from .pytorch.utils.loggings import log_metrics, \
     log_plots, log_neptune, log_shap, log_mlflow, log_dvclive
 from bernn.utils.utils import to_csv
-from .pytorch.utils.utils import to_categorical, get_empty_traces, \
+from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
-from .pytorch.utils.loggings import make_data
-import mlflow
+from ..models.pytorch.utils.loggings import make_data
 import warnings
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_dummy
 import uuid
@@ -128,6 +129,22 @@ class TrainAE:
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
         self.load_autoencoder()
+        # Persistent KNN for triplet mode
+        self._knn_ready = False
+        # Initialize KNN with configured number of neighbors
+        try:
+            n_neighbors = int(getattr(self.args, 'knn_n_neighbors', 5))
+        except Exception:
+            n_neighbors = 5
+        self.knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
+
+    # Back-compat wrappers (old names)
+    def loop(self, group, optimizer, ae, celoss, loader, 
+             lists, traces, nu=1, mapping=True):
+        return self.loop_infer(group, optimizer, ae, celoss, loader, lists, traces, nu, mapping)
+
+    def loop2(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+        return self.loop_train(group, optimizer, ae, scheduler, losses, loader, lists, traces, nu, mapping)
 
     def make_params(self, params):
         # Fixing the hyperparameters that are not optimized
@@ -167,6 +184,17 @@ class TrainAE:
         self.args.scaler = params['scaler']
         self.args.warmup = params['warmup']
         self.args.disc_b_warmup = params['disc_b_warmup']
+        if 'triplet_margin' in params:
+            self.triplet_margin = float(params['triplet_margin'])
+        else:
+            self.triplet_margin = 0.
+        # KNN neighbors (for triplet prediction). Rebuild KNN if provided by HPO
+        try:
+            if 'knn_n_neighbors' in params:
+                self.args.knn_n_neighbors = int(params['knn_n_neighbors'])
+                self.knn = KNeighborsClassifier(n_neighbors=self.args.knn_n_neighbors, weights='distance')
+        except Exception as e:
+            print(f"Warning: couldn't set knn_n_neighbors from params: {e}")
         self.foldername = str(uuid.uuid4())
         self.complete_log_path = f'logs/ae_classifier_holdout/{self.foldername}'
         self.hparams_filepath = self.complete_log_path + '/hp'
@@ -198,6 +226,53 @@ class TrainAE:
             self.data = binarize_labels(self.data, self.args.controls)
             self.unique_labels = np.unique(self.data['labels']['all'])
 
+        # Move n_move_test samples from test to train, and n_move_valid from valid to train, randomly
+        n_move_test = getattr(self.args, 'n_move_test', 0)
+        n_move_valid = getattr(self.args, 'n_move_valid', 0)
+        move_keys = ['inputs', 'meta', 'labels', 'names', 'batches', 'cats']
+        # Move from test to train
+        if n_move_test > 0 and len(self.data['inputs']['test']) > 0:
+            idxs = np.random.choice(np.arange(len(self.data['inputs']['test'])), size=min(n_move_test, len(self.data['inputs']['test'])), replace=False)
+            for key in move_keys:
+                if key in self.data and 'test' in self.data[key] and 'train' in self.data[key]:
+                    if hasattr(self.data[key]['test'], 'iloc'):
+                        samples = self.data[key]['valid'].iloc[idxs]
+                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
+                        # Remove by position, not by index value
+                        mask = np.ones(len(self.data[key]['test']), dtype=bool)
+                        mask[idxs] = False
+                        self.data[key]['test'] = self.data[key]['test'].iloc[mask]
+                    else:
+                        samples = self.data[key]['test'][idxs]
+                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
+                        self.data[key]['test'] = np.delete(self.data[key]['test'], idxs, axis=0)
+
+        # Move from valid to train
+        if n_move_valid > 0 and len(self.data['inputs']['valid']) > 0:
+            idxs = np.random.choice(np.arange(len(self.data['inputs']['valid'])), size=min(n_move_valid, len(self.data['inputs']['valid'])), replace=False)
+            for key in move_keys:
+                if key in self.data and 'valid' in self.data[key] and 'train' in self.data[key]:
+                    if hasattr(self.data[key]['valid'], 'iloc'):
+                        samples = self.data[key]['valid'].iloc[idxs]
+                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
+                        # Remove by position, not by index value
+                        mask = np.ones(len(self.data[key]['valid']), dtype=bool)
+                        mask[idxs] = False
+                        self.data[key]['valid'] = self.data[key]['valid'].iloc[mask]
+                    else:
+                        samples = self.data[key]['valid'][idxs]
+                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
+                        self.data[key]['valid'] = np.delete(self.data[key]['valid'], idxs, axis=0)
+
+    def autocast_context(self):
+        """Create autocast context for mixed precision training with bfloat16."""
+        try:
+            # Try to create autocast context with bfloat16
+            return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
+        except (AttributeError, RuntimeError):
+            # Fallback to null context if autocast or bfloat16 is not supported
+            return contextlib.nullcontext()
+
     def default_params(self):
         """Initialize default parameters for the training process."""
         self.all_params = {
@@ -212,6 +287,10 @@ class TrainAE:
             'n_trials': 100,
             'device': 'cuda:0',
             'rec_loss': 'l1',
+            # Classification loss selector: 'ce' or 'triplet'
+            'classif_loss': 'ce',
+            # Margin for TripletMarginLoss when classif_loss='triplet'
+            'triplet_margin': 1.0,
             'tied_weights': 0,
             'random': 1,
             'variational': 0,
@@ -244,11 +323,15 @@ class TrainAE:
             'log_plots': 1,
             'prune_network': 1,
             'prune_threshold': 0,  # Threshold for pruning the network
+            'precision': 'bf16',  # Mixed precision training type
             'dropout': 0,  # Dropout rate for the network
             'use_sigmoid': 0,  # Use sigmoid activation in the last layer of the AE
             'scaler': 'standard',  # Set during training
             'warmup': 100,  # Set during training
             'disc_b_warmup': 0,  # Set during training
+            'knn_n_neighbors': 5,  # K for persistent KNN used in triplet mode
+            'n_move_test': 0,  # Number of test samples to move to train
+            'n_move_valid': 0,  # Number of valid samples to move to train
             # 'hparams_filepath': '',  # Path to save hyperparameters
             # 'foldername': '',  # Unique folder name for the run
             # 'complete_log_path': '',  # Complete path for logging 
@@ -325,18 +408,12 @@ class TrainAE:
         self.scaler = None
 
     def load_autoencoder(self):
-        # if not self.args.kan:
-        #     from .pytorch.aedann import AutoEncoder2 as AutoEncoder
-        #     from .pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
-        # elif self.args.kan == 1:
-        #     from .pytorch.aeekandann import KANAutoencoder2 as AutoEncoder
-        #     from .pytorch.aeekandann import SHAPKANAutoencoder2 as SHAPAutoEncoder
         if not self.args.kan:
             from bernn import AutoEncoder3 as AutoEncoder
             from bernn import SHAPAutoEncoder3 as SHAPAutoEncoder
         elif self.args.kan == 1:
-            from bernn import KANAutoencoder3 as AutoEncoder
-            from bernn import SHAPKANAutoencoder3 as SHAPAutoEncoder
+            from bernn import KANAutoEncoder3 as AutoEncoder
+            from bernn import SHAPKANAutoEncoder3 as SHAPAutoEncoder
         self.ae = AutoEncoder
         self.shap_ae = SHAPAutoEncoder
 
@@ -347,7 +424,7 @@ class TrainAE:
         self.log_predictions(best_lists, run, h)
 
         if self.log_metrics:
-            if self.log_tb:
+            if self.log_tb and self.log_metrics:
                 try:
                     # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
@@ -357,7 +434,7 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_neptune:
+            if self.log_neptune and self.log_metrics:
                 try:
                     metrics = log_metrics(run, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
@@ -366,7 +443,7 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_mlflow:
+            if self.log_mlflow and self.log_metrics:
                 try:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
@@ -546,8 +623,8 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 optimizer.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             data = data.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -557,25 +634,74 @@ class TrainAE:
                 data = torch.cat((data, meta_inputs), 1)
                 to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
-            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
-            rec = rec['mean']
+            
+            # Use autocast for mixed precision training
+            with self.autocast_context():
+                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+                rec = rec['mean']
 
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
+                if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                    feats = torch.cat((ae.classifier.net[0](enc), meta_inputs), 1) if self.args.embeddings_meta else enc
+                    # Prefer persistent KNN if available, fallback to in-batch KNN
+                    X = feats.detach().float().cpu().numpy()
+                    try:
+                        from sklearn.exceptions import NotFittedError
+                        if getattr(self, "_knn_ready", False):
+                            proba = self.knn.predict_proba(X)
+                            # Map to full number of classes in correct order
+                            proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+                            cls_idx = np.array(self.knn.classes_, dtype=int)
+                            proba_full[:, cls_idx] = proba.astype(np.float32)
+                        else:
+                            raise NotFittedError("Persistent KNN not ready")
+                    except Exception as e:
+                        # Fallback: in-batch KNN using neighbors within the current batch
+                        from sklearn.neighbors import NearestNeighbors
+                        k = int(getattr(self.args, 'knn_n_neighbors', 5))
+                        y_np = labels.detach().int().cpu().numpy()
+                        nns = NearestNeighbors(n_neighbors=min(k, len(X)), metric='minkowski')
+                        nns.fit(X)
+                        idx = nns.kneighbors(X, return_distance=False)
+                        proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+                        for i in range(X.shape[0]):
+                            counts = np.bincount(y_np[idx[i]], minlength=self.n_cats).astype(np.float32)
+                            s = counts.sum()
+                            proba_full[i] = counts / s if s > 0 else np.full(self.n_cats, 1.0 / self.n_cats, dtype=np.float32)
+                    preds = torch.from_numpy(proba_full).to(self.args.device)
+                else:
+                    if self.args.embeddings_meta:
+                        preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                    else:
+                        preds = ae.classifier(enc)
 
-            domain_preds = ae.dann_discriminator(enc)
+                domain_preds = ae.dann_discriminator(enc)
+            # Build one-hot labels for metrics and CE mode
             if torch.all(labels < self.n_cats):
                 cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
-                classif_loss = celoss(preds, cats)
             else:
-                # print("Error in classif_loss: labels out of bounds")
-                # Create a tensor of zeros with the correct shape and device
+                # Fallback if labels out of bounds
                 cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
-                # Set the first class as 1 for all samples
                 cats[:, 0] = 1
+
+            # Select classification loss
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                # Compute embeddings for positive/negative samples and apply TripletMarginLoss on enc
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
+                pos_to_rec = pos_to_rec.to(self.args.device).float()
+                neg_to_rec = neg_to_rec.to(self.args.device).float()
+                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
+                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
+                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
+                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                if not self.args.train_after_warmup:
+                    enc = ae.classifier.net[0](enc)
+                    pos_enc = ae.classifier.net[0](pos_enc)
+                    neg_enc = ae.classifier.net[0](neg_enc)
+                classif_loss = class_triplet(enc, pos_enc, neg_enc)
+            else:
                 classif_loss = celoss(preds, cats)
 
             if not self.args.zinb:
@@ -585,29 +711,29 @@ class TrainAE:
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
             lists[group]['domains'] += [
-                np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])
+                np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])
             ]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().int().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
             except Exception as e:
                 print(f"Error in labels: {e}")
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
+                                              zip(preds.detach().float().cpu().numpy().argmax(1),
+                                                  labels.detach().int().cpu().numpy())])]
             traces[group]['top3'] += [np.mean(
                 [1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
                  zip(preds.argsort(1), labels)])]
@@ -615,13 +741,13 @@ class TrainAE:
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
             except Exception as e:
                 print(f"Error in mcc: {e}")
                 traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().int().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
 
             if group in ['train'] and nu != 0:
@@ -634,10 +760,137 @@ class TrainAE:
                     total_loss.backward()
                 except Exception as e:
                     print(f"Error in total_loss: {e}")
-                nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
+                # nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 optimizer.step()
 
         return classif_loss, lists, traces
+
+    def loop_train(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+        """
+        Joint training/eval step: classification + reconstruction.
+
+        Args:
+            group: 'train' | 'valid' | 'test'
+            optimizer: optimizer for classifier (or ae if applicable)
+            ae: autoencoder model
+            scheduler: LR scheduler (can be None or ReduceLROnPlateau/others)
+            losses: dict with {'mseloss': ..., 'celoss': ...}
+            loader: DataLoader
+            lists: accumulators dict
+            traces: metrics traces dict
+            nu: weight for classification loss
+            mapping: pass-through to AE forward
+
+        Returns:
+            classif_loss, lists, traces
+        """
+        sampling = True if (group in ['train', 'valid'] and nu != 0) else False
+        classif_loss = None
+        # Collect features/labels to fit persistent KNN after the loop when using triplet
+        knn_feats, knn_labels = [], []
+
+        for i, batch in enumerate(loader):
+            if group == 'train' and nu != 0:
+                optimizer.zero_grad()
+
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, \
+                meta_neg_batch_sample, set_name = batch
+
+            data = data.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            to_rec = to_rec.to(self.args.device).float()
+
+            # Concatenate meta to inputs if configured
+            if self.args.n_meta > 0:
+                data = torch.cat((data, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
+
+            not_to_rec = not_to_rec.to(self.args.device).float()
+
+            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+            rec = rec['mean']
+            if self.args.train_after_warmup:
+                rec_loss = losses['mseloss'](rec, to_rec)
+            else:
+                rec_loss = torch.tensor(0.0, device=self.args.device)
+
+            # Classifier head; for triplet we only collect train features to fit KNN later
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
+                if group == 'train' and nu != 0:
+                    knn_feats.append(feats.detach().float().cpu().numpy())
+                    knn_labels.append(labels.detach().int().cpu().numpy())
+                preds = None
+            else:
+                if self.args.embeddings_meta:
+                    preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+                else:
+                    preds = ae.classifier(enc)
+
+            domain_preds = ae.dann_discriminator(enc)
+
+            # One-hot targets (needed only for CE)
+            if getattr(self.args, 'classif_loss', 'ce') != 'triplet':
+                if torch.all(labels < self.n_cats):
+                    cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
+                else:
+                    cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
+                    cats[:, 0] = 1
+            else:
+                cats = None
+
+            # Select classification loss
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
+                pos_to_rec = pos_to_rec.to(self.args.device).float()
+                neg_to_rec = neg_to_rec.to(self.args.device).float()
+                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
+                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
+                if self.args.n_meta > 0:
+                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
+                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
+                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                if not self.args.train_after_warmup:
+                    enc = ae.classifier.net[0](enc)
+                    pos_enc = ae.classifier.net[0](pos_enc)
+                    neg_enc = ae.classifier.net[0](neg_enc)
+                classif_loss = class_triplet(enc, pos_enc, neg_enc)
+            else:
+                classif_loss = losses['celoss'](preds, cats)
+
+            # Handle possible list outputs
+            if not self.args.zinb:
+                if isinstance(rec, list):
+                    rec = rec[-1]
+                if isinstance(to_rec, list):
+                    to_rec = to_rec[-1]
+
+            # Backprop when training
+            if group == 'train' and nu != 0:
+                w = 1.0
+                total_loss = w * nu * classif_loss + rec_loss
+                try:
+                    total_loss.backward()
+                except Exception as e:
+                    print(f"Error in total_loss: {e}")
+                optimizer.step()
+                if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau':
+                    scheduler.step()
+
+        # Fit persistent KNN at the end of training loop when using triplet
+        if getattr(self.args, 'classif_loss', 'ce') == 'triplet' and group == 'train' and len(knn_feats) > 0:
+            try:
+                X_all = np.concatenate(knn_feats, axis=0)
+                y_all = np.concatenate(knn_labels, axis=0)
+                self.knn.fit(X_all, y_all)
+                self._knn_ready = True
+            except Exception as e:
+                print(f"KNN fit failed, falling back to batch KNN: {e}")
+                self._knn_ready = False
+
+        return classif_loss
 
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
         # Freezing the layers so the batch discriminator can get some knowledge independently
@@ -646,8 +899,8 @@ class TrainAE:
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -665,7 +918,7 @@ class TrainAE:
                 if torch.isnan(bclassif_loss):
                     print("NAN in batch discriminator loss!")
                 bclassif_loss.backward()
-                nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
+                # nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
                 optimizer_b.step()
         self.unfreeze_layers(ae)
 
@@ -718,6 +971,20 @@ class TrainAE:
             triplet_loss = None
 
         return sceloss, celoss, mseloss, triplet_loss
+
+    def compute_classif_loss(self, enc, preds, labels, celoss, triplet_margin):
+            """Compute classification loss as CE or TripletMarginLoss based on args.classif_loss.
+
+            - For 'ce': expects labels as class indices; will build one-hot cats if needed
+            - For 'triplet': expects batch to include positive/negative samples; we derive
+                triplet from enc (anchor) and encodings of pos/neg built in calling scope.
+            """
+            if self.args.classif_loss == 'triplet':
+                    # Triplet handled in calling scope where pos/neg enc are available
+                    # Return None here; caller must pass actual triplet value
+                    return None
+            # Default to CrossEntropy-style loss (the code uses one-hot 'cats')
+            return celoss(preds, labels)
 
     def freeze_dlayers(self, ae):
         """
@@ -845,7 +1112,7 @@ class TrainAE:
 
         return l1_loss
 
-    def warmup_loop(self, optimizer_ae, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,
+    def warmup_loop(self, optimizer_ae, scheduler, ae, celoss, loader, triplet_loss, mseloss, warmup, epoch,
                     optimizer_b, values, loggers, loaders, run, mapping=True):
         lists, traces = get_empty_traces()
         ae.train()
@@ -857,8 +1124,8 @@ class TrainAE:
         for i, all_batch in iterator:
             # print(i)
             optimizer_ae.zero_grad()
-            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
             inputs = inputs.to(self.args.device).float()
             meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -907,9 +1174,7 @@ class TrainAE:
                 # domain = domain.argmax(1)
 
             if torch.isnan(enc[0][0]):
-                # if self.log_mlflow:
-                #     mlflow.log_param('finished', 0)
-                return 0
+                return 0, ae, 0
             # rec_loss = triplet_loss(rec, to_rec, not_to_rec)
             if isinstance(rec, list):
                 rec = rec[-1]
@@ -923,27 +1188,27 @@ class TrainAE:
             traces['rec_loss'] += [rec_loss.item()]
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                               domain.detach().cpu().numpy())])]
+                                           zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                               domain.detach().int().cpu().numpy())])]
             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
             lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists['all']['classes'] += [labels.detach().int().cpu().numpy()]
             lists['all']['encoded_values'] += [
-                enc.detach().cpu().numpy()]
+                enc.detach().float().cpu().numpy()]
             lists['all']['rec_values'] += [
-                rec.detach().cpu().numpy()]
+                rec.detach().float().cpu().numpy()]
             lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
             lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().int().cpu().numpy()])]
             except Exception as e:
                 print(f"Error loading labels: {e}")
                 pass
@@ -956,10 +1221,15 @@ class TrainAE:
             loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss + l1_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
-                return 0
+                return 0, ae, warmup
             loss.backward()
-            nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
+            # Clip gradients if requested
+            if hasattr(self.args, 'clip_val') and self.args.clip_val and self.args.clip_val > 0:
+                nn.utils.clip_grad_norm_(ae.parameters(), max_norm=self.args.clip_val)
             optimizer_ae.step()
+            # Step scheduler if configured and not ReduceLROnPlateau
+            if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau' and scheduler is not None:
+                scheduler.step()
 
         if np.mean(traces['rec_loss']) < self.best_loss:
             # "Every counters go to 0 when a better reconstruction loss is reached"
@@ -971,39 +1241,39 @@ class TrainAE:
             self.best_loss = np.mean(traces['rec_loss'])
             self.dom_loss = np.mean(traces['dom_loss'])
             self.dom_acc = np.mean(traces['dom_acc'])
+            self.warmup_counter = 0
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
 
+        # Handle early stop for warmup
         if (self.args.early_warmup_stop != 0 and self.warmup_counter == self.args.early_warmup_stop) and warmup:
-            # When the warnup counter gets to
+            # When the warmup counter reaches limit
             values = log_traces(traces, values)
             if self.args.early_warmup_stop != 0:
                 try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
-                    pass
             print(f"\n\nWARMUP FINISHED (early stop). {epoch}\n\n")
             warmup = False
             self.warmup_disc_b = True
 
+        # Finish warmup at specified epoch
         if epoch == self.args.warmup and warmup:  # or warmup_counter == 100:
-            # When the warnup counter gets to
             if self.args.early_warmup_stop != 0:
                 try:
-                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/model.pth'))
+                    ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                 except Exception as e:
                     print(f"Error loading model: {e}")
-                    pass
             print(f"\n\nWARMUP FINISHED. {epoch}\n\n")
             values = log_traces(traces, values)
             warmup = False
             self.warmup_disc_b = True
 
-        if epoch < self.args.warmup and warmup:  # and np.mean(traces['rec_loss']) >= best_loss:
+        # Regular logging during warmup
+        if epoch < self.args.warmup and warmup:
             values = log_traces(traces, values)
             self.warmup_counter += 1
-            # best_values = get_best_values(traces, ae_only=True)
             # TODO change logging with tensorboard and neptune. The previous
             if self.log_tb:
                 loggers['tb_logging'].logging(values, metrics)
@@ -1016,9 +1286,8 @@ class TrainAE:
         ae.train()
         ae.mapper.train()
 
-        # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
+        # If training of the autoencoder is restricted to the warmup (train_after_warmup=0),
         # all layers except the classification layers are frozen
-
         if self.args.bdisc:
             self.forward_discriminate(optimizer_b, ae, celoss, loaders['all'])
         if self.warmup_disc_b and self.warmup_b_counter < 0:
@@ -1026,7 +1295,11 @@ class TrainAE:
         else:
             self.warmup_disc_b = False
 
-        return 1, ae
+        # Step ReduceLROnPlateau after epoch based on reconstruction loss
+        if self.args.scheduler == 'ReduceLROnPlateau' and scheduler is not None and len(traces['rec_loss']) > 0:
+            scheduler.step(np.mean(traces['rec_loss']))
+
+        return 1, ae, warmup
 
     def freeze_all_but_clayers(self, ae):
         """
@@ -1061,7 +1334,7 @@ class TrainAE:
     #         ae: AutoEncoder object
     #     """
     #     for m in ae.modules():
-    #         if isinstance(m, KANAutoencoder2):
+    #         if isinstance(m, KANAutoEncoder2):
     #             for n in m.modules():
     #                 for i in n.modules():
     #                     if isinstance(i, KANLinear):
@@ -1078,7 +1351,7 @@ class TrainAE:
         """
         neurons = 0
         for m in ae.modules():
-            if isinstance(m, KANAutoencoder2):
+            if isinstance(m, KANAutoEncoder2):
                 for n in m.modules():
                     for i in n.modules():
                         if isinstance(i, KANLinear):
@@ -1108,6 +1381,7 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')
+    parser.add_argument('--knn_n_neighbors', type=int, default=5, help='Number of neighbors for persistent KNN (triplet mode)')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)
@@ -1127,6 +1401,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        import mlflow
         mlflow.create_experiment(
             args.exp_id,
             # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),
@@ -1147,6 +1422,8 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
+        {"name": "triplet_margin", "type": "range", "bounds": [0., 10.]},
+        {"name": "knn_n_neighbors", "type": "choice", "values": [1, 3, 5, 7, 9, 11]},
         {"name": "warmup", "type": "range", "bounds": [10, 1000]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",

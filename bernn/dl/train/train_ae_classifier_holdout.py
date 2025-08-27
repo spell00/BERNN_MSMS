@@ -11,18 +11,17 @@ import random
 # import json
 import copy
 import torch
-# torch.set_default_dtype(torch.float64)
 from torch import nn
 # from sklearn import metrics
 from tensorboardX import SummaryWriter
 from ax.service.managed_loop import optimize
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import linsvc_space
-from bernn.dl.train.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
-from bernn.dl.train.pytorch.utils.utils import LogConfusionMatrix
-from bernn.dl.train.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_input_ordination
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
+from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
-from bernn.dl.train.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
+from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 import mlflow
 import warnings
@@ -242,14 +241,11 @@ class TrainAEClassifierHoldout(TrainAE):
     def train(self, params):
         """
         Args:
-            params: Contains the hyperparameters to be optimized
-
+            params: hyperparameters
         Returns:
-            best_closs: The best classification loss on the valid set
-
+            best valid classification loss (float) for Ax (minimize)
         """
         start_time = datetime.now()
-
         params = self.make_params(params)
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
@@ -342,49 +338,56 @@ class TrainAEClassifierHoldout(TrainAE):
                 # Gets all the pytorch dataloaders to train the models
                 if self.pools:
                     loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                          None, bs=64)
+                                          None, bs=self.args.bs)
                 else:
                     loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                                   None, None, bs=self.args.bs)
 
                 if h == 1 or self.args.kan == 1:
 
-                    ae = self.ae(data['inputs']['all'].shape[1],
-                                 is_sigmoid=self.args.use_sigmoid,
-                                 n_batches=self.n_batches,
-                                 nb_classes=self.n_cats,
-                                 mapper=self.args.use_mapping,
-                                 layers=self.get_ordered_layers(params),
-                                 n_layers=self.args.n_layers,
-                                 n_meta=self.args.n_meta,
-                                 n_emb=self.args.embeddings_meta,
-                                 dropout=params['dropout'],
-                                 variational=self.args.variational, conditional=False,
-                                 zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                 use_gnn=0,  # TODO to remove
-                                 device=self.args.device,
-                                 prune_threshold=params['prune_threshold'],
-                                 update_grid=self.args.update_grid
-                                 ).to(self.args.device)
+                    ae = self.ae(
+                        data['inputs']['all'].shape[1],
+                        is_sigmoid=self.args.use_sigmoid,
+                        n_batches=self.n_batches,
+                        nb_classes=self.n_cats,
+                        mapper=self.args.use_mapping,
+                        layers=self.get_ordered_layers(params),
+                        n_layers=self.args.n_layers,
+                        n_meta=self.args.n_meta,
+                        n_emb=self.args.embeddings_meta,
+                        dropout=params['dropout'],
+                        variational=self.args.variational,
+                        conditional=False,
+                        zinb=self.args.zinb,
+                        add_noise=0,
+                        tied_weights=self.args.tied_weights,
+                        device=self.args.device,
+                        prune_threshold=params['prune_threshold'],
+                        update_grid=self.args.update_grid,
+                    ).to(self.args.device)
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
                     n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
                     init_n_neurons = ae.count_n_neurons()
                     # if self.args.embeddings_meta > 0:
                     #     n_meta = self.n_meta
-                    shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
-                                           n_batches=self.n_batches,
-                                           nb_classes=self.n_cats,
-                                           mapper=self.args.use_mapping,
-                                           layers=self.get_ordered_layers(params),
-                                           n_layers=self.args.n_layers,
-                                           n_meta=self.args.n_meta,
-                                           n_emb=self.args.embeddings_meta,
-                                           dropout=params['dropout'],
-                                           variational=self.args.variational, conditional=False,
-                                           zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                           use_gnn=0,  # TODO remove this
-                                           device=self.args.device).to(self.args.device)
+                    shap_ae = self.shap_ae(
+                        data['inputs']['all'].shape[1],
+                        is_sigmoid=self.args.use_sigmoid,
+                        n_batches=self.n_batches,
+                        nb_classes=self.n_cats,
+                        mapper=self.args.use_mapping,
+                        layers=self.get_ordered_layers(params),
+                        n_layers=self.args.n_layers,
+                        n_meta=self.args.n_meta,
+                        n_emb=self.args.embeddings_meta,
+                        dropout=params['dropout'],
+                        variational=self.args.variational, conditional=False,
+                        zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                        device=self.args.device,
+                        # prune_threshold=params['prune_threshold'],
+                        # update_grid=self.args.update_grid
+                    ).to(self.args.device)
                     shap_ae.mapper.to(self.args.device)
                     shap_ae.dec.to(self.args.device)
                 else:
@@ -421,11 +424,21 @@ class TrainAEClassifierHoldout(TrainAE):
                     print("\n\nNO WARMUP\n\n")
                 if h == 1:
                     for epoch in range(0, self.args.warmup):
-                        no_error = self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss, True, epoch,
-                                                    optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
+                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'],
+                                                                triplet_loss, mseloss, True, epoch,
+                                                                optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
-                        if not no_error:
+                        if not warmup:
                             break
+                        # End-of-epoch update (skip during warmup if set)
+                        if args.update_grid and epoch >= args.update_grid_warmup:
+                            # Safely call grid updates on the AE model if available (KAN only)
+                            try:
+                                updated = ae.update_grids()
+                                print(f"[epoch {epoch}] Updated {updated} KAN grids")
+                            except Exception:
+                                pass
+
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
                         if self.verbose > 0:
@@ -434,12 +447,16 @@ class TrainAEClassifierHoldout(TrainAE):
                     lists, traces = get_empty_traces()
 
                     if self.args.warmup_after_warmup:
-                        self.warmup_loop(optimizer_ae, ae, celoss, loaders['all'], triplet_loss, mseloss,
-                                         True, epoch,
+                        no_error, ae, warmup = self.warmup_loop(optimizer_ae, None, ae, celoss, loaders['all'], triplet_loss, mseloss,
+                                         False, epoch,
                                          optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
                     if not self.args.train_after_warmup:
                         ae = self.freeze_all_but_clayers(ae)
-                    closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                    losses = {
+                        "mseloss": mseloss,
+                        "celoss": sceloss,
+                    }
+                    closs = self.loop_train('train', optimizer_ae, ae, None, losses,
                                             loaders['train'], lists, traces, nu=params['nu'])
 
                     if torch.isnan(closs):
@@ -455,8 +472,8 @@ class TrainAEClassifierHoldout(TrainAE):
                                 continue
                             closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                              loaders[group], lists, traces, nu=0)
-                        closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                                loaders['train'], lists, traces, nu=0)
+                        # closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
+                        #                         loaders['train'], lists, traces, nu=0)
                     # Below is the loop for all sets
                     # with torch.no_grad():
                     #     for group in list(data['inputs'].keys()):
@@ -487,7 +504,7 @@ class TrainAEClassifierHoldout(TrainAE):
                         except Exception as e:
                             print(f"Problem with add_to_logger: {e}")
                     if self.log_neptune:
-                        add_to_neptune(run, values)
+                        add_to_neptune(values, run)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
@@ -548,8 +565,8 @@ class TrainAEClassifierHoldout(TrainAE):
                 
                 # Verify the model exists
                 if not os.path.exists(f'{self.complete_log_path}/model_{h}_state.pth'):
-                    return -1
-                
+                    # Return a large penalty instead of -1 (keeps Ax consistent)
+                    return 1e9
                 # Loading best model that was saved during training
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
                 # Need another model because the other cant be use to get shap values
@@ -700,14 +717,23 @@ if __name__ == "__main__":
     parser.add_argument('--clip_val', type=float, default=1, help='')
     parser.add_argument('--prune_threshold', type=float, default=1e-4, help='')
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
-    parser.add_argument('--prune_network', type=float, default=1, help='')
+    parser.add_argument('--prune_network', type=float, default=0, help='')
     parser.add_argument('--log_inputs', type=int, default=0, help='')
-    parser.add_argument('--log_neptune', type=int, default=0, help='')
+    parser.add_argument('--log_neptune', type=int, default=1, help='')
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
-
+    parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
+    parser.add_argument('--classif_loss', type=str, default='ce', help='')
+    parser.add_argument('--scheduler', type=str, default='ReduceLROnPlateau', help='')
+    parser.add_argument('--n_move_valid', type=int, default=0, help='Number of valid samples to move to train')
+    parser.add_argument('--n_move_test', type=int, default=0, help='Number of test samples to move to valid')
     args = parser.parse_args()
+
+    if args.kan == 0:
+        args.update_grid = 0
+        args.update_grid_warmup = 0
+
     
     # 1. RECOMMENDED: Modern approach with TrainingConfig
     print("=== Modern Configuration Class Approach ===")
@@ -726,6 +752,7 @@ if __name__ == "__main__":
         bad_batches=args.bad_batches,
         remove_zeros=args.remove_zeros,
         dataset=args.dataset,
+        kan=args.kan,
         # path=args.path,
         bs=args.bs,
         strategy=args.strategy,
@@ -764,10 +791,10 @@ if __name__ == "__main__":
 
     train = TrainAEClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False,
                                      log_metrics=args.log_metrics,
-                                     keep_models=False, log_inputs=False,
-                                     log_plots=args.log_plots, log_tb=False,
-                                     log_neptune=True,
-                                     log_mlflow=True, groupkfold=args.groupkfold,
+                                     keep_models=args.keep_models, log_inputs=args.log_inputs,
+                                     log_plots=args.log_plots, log_tb=args.log_tb,
+                                     log_neptune=args.log_neptune,
+                                     log_mlflow=args.log_mlflow, groupkfold=args.groupkfold,
                                      pools=args.pool)
 
     # List of hyperparameters getting optimized
@@ -775,14 +802,16 @@ if __name__ == "__main__":
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
+        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 1000]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
+        {"name": "knn_n_neighbors", "type": "choice", "values": [1, 3, 5, 7, 9, 11]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
-         "values": ['standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
+         "values": ['minmax', 'standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},        
     ]
@@ -800,14 +829,31 @@ if __name__ == "__main__":
     if args.kan and args.use_l1:
         # zeta = 0 because useless outside a zinb autoencoder
         parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
+        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
     if args.use_l1:
         parameters += [{"name": "l1", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True}]
     if args.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
+    # Wrapper for Ax
+    def ax_eval(parameterization):
+        # try:
+        # Ax may give numpy types; ensure plain Python
+        param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
+                        for k, v in parameterization.items()}
+        loss = train.train(param_clean)
+        # Guarantee numeric
+        loss = float(loss)
+        # except Exception as e:
+        #     print(f"[AX WARN] Trial failed: {e}")
+        #     loss = 1e9
+        # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
+        # but explicit dict form is more robust; returning scalar is also fine. Choose one:
+        return loss  # scalar OK because objective_name='closs'
+
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,
-        evaluation_function=train.train,
+        evaluation_function=ax_eval,
         objective_name='closs',
         minimize=True,
         total_trials=args.n_trials,

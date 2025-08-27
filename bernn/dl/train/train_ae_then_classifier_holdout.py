@@ -2,7 +2,6 @@
 
 import os
 import matplotlib
-from bernn.utils.pool_metrics import log_pool_metrics
 
 import uuid
 import shutil
@@ -13,7 +12,8 @@ import sys
 # Add the project root to the path
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')))
 
-from ...config.training_config import TrainingConfig
+from bernn.config.training_config import TrainingConfig
+from bernn.utils.pool_metrics import log_pool_metrics
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -473,7 +473,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                          dropout=dropout,
                          variational=self.args.variational, conditional=False,
                          zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                         use_gnn=0,
                          prune_threshold=params['prune_threshold'],
                          device=self.args.device).to(self.args.device)
             self.count_neurons(ae)
@@ -496,7 +495,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                    dropout=dropout,
                                    variational=self.args.variational, conditional=False,
                                    zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                   use_gnn=0, # TODO parameter to be removed
                                    device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
@@ -542,8 +540,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         for i, all_batch in iterator:
                             if warmup or self.args.train_after_warmup:
                                 optimizer_ae.zero_grad()
-                            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+                            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
                             inputs = inputs.to(self.args.device).float()
                             meta_inputs = meta_inputs.to(self.args.device).float()
                             to_rec = to_rec.to(self.args.device).float()
@@ -617,27 +615,27 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             traces['rec_loss'] += [rec_loss.item()]
                             traces['dom_loss'] += [dloss.item()]
                             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                                               domain.detach().cpu().numpy())])]
+                                                           zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                                               domain.detach().int().cpu().numpy())])]
                             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
                             lists['all']['domains'] += [np.array(
-                                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-                            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-                            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-                            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+                            lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+                            # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+                            lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
                             lists['all']['encoded_values'] += [
-                                enc.detach().cpu().numpy()]
+                                enc.detach().float().cpu().numpy()]
                             lists['all']['rec_values'] += [
-                                rec.detach().cpu().numpy()]
+                                rec.detach().float().cpu().numpy()]
                             lists['all']['names'] += [names]
-                            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-                            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+                            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+                            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
                             lists['all']['atn'] += [str(x) for x in
-                                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
                             lists['all']['inputs'] += [data['inputs']['all'].to_numpy()]
                             try:
                                 lists['all']['labels'] += [np.array(
-                                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
                             except:
                                 pass
                             if warmup or self.args.train_after_warmup and not warmup_disc_b:
@@ -715,6 +713,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     else:
                         warmup_disc_b = False
 
+                    # End-of-epoch update (skip during warmup if set)
+                    if args.update_grid and epoch >= args.update_grid_warmup:
+                        updated = model.update_grids()
+                        print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
                 # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
                 # all layers except the classification layers are frozen
@@ -730,7 +732,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         print('EARLY STOPPING.', epoch)
                     break
                 lists, traces = get_empty_traces()
-                closs, _, _ = self.loop('train', optimizer_c, ae, sceloss, loaders['train'], lists, traces, nu=nu)
+                losses = {
+                    "mseloss": mseloss,
+                    "celoss": sceloss,
+                }
+                closs, _, _ = self.loop_train('train', optimizer_c, ae, None, losses, loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -808,6 +814,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     # If save neptune is True, save the model
                     if self.log_neptune:
                         log_num_neurons(run, n_neurons, init_n_neurons)
+                # End-of-epoch update (skip during warmup if set)
+                if args.update_grid and epoch >= args.update_grid_warmup:
+                    updated = model.update_grids()
+                    print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
             best_mccs += [best_mcc]
 
@@ -926,7 +936,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
-    # parser.add_argument('--kan', type=int, default=1, help='')
+    parser.add_argument('--kan', type=int, default=1, help='')
     parser.add_argument('--update_grid', type=int, default=1, help='')
     parser.add_argument('--use_l1', type=int, default=1, help='')
     parser.add_argument('--clip_val', type=float, default=1, help='')
@@ -938,8 +948,13 @@ if __name__ == "__main__":
     parser.add_argument('--log_mlflow', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
+    parser.add_argument('--update_grid_warmup', type=int, default=5, help='Update grid after warmup?')
 
     args = parser.parse_args()
+
+    if args.kan == 0:
+        args.update_grid = 0
+        args.update_grid_warmup = 0
 
     # Example usage showing different approaches:
 
@@ -960,6 +975,7 @@ if __name__ == "__main__":
         bad_batches=args.bad_batches,
         remove_zeros=args.remove_zeros,
         dataset=args.dataset,
+        kan=args.kan,
         # path=args.path,
         bs=args.bs,
         strategy=args.strategy,

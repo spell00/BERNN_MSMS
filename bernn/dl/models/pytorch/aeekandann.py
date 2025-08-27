@@ -1,247 +1,222 @@
+# Rewritten to mirror aedann.py but using KANLinear instead of nn.Linear.
+from typing import Any, Optional, Tuple, List
+
+# try:
 import torch
 from torch import nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.autograd import Function
+# TORCH_AVAILABLE = True
+# except ImportError:
+#     TORCH_AVAILABLE = False
+
+# def _check_torch_available():
+#     if not TORCH_AVAILABLE:
+#         raise ImportError(
+#             "PyTorch is not installed. Install with: pip install bernn[deep-learning] or pip install torch"
+#         )
+
 from .utils.stochastic import GaussianSample
 from .utils.distributions import log_normal_standard, log_normal_diag, log_gaussian
 from .utils.utils import to_categorical
+from .ekan import KANLinear
 import pandas as pd
-from ...train.pytorch.ekan import KANLinear
-# from bernn.dl.train.pytorch.kan import KANLayer
-import copy
 import numpy as np
 
-def sample_gumbel(shape, eps=1e-20):
-    U = torch.rand(shape)
-    if args.cuda:
-        U = U.cuda()
-    return -torch.log(-torch.log(U + eps) + eps)
-
-
-def gumbel_softmax_sample(logits, temperature):
-    y = logits + sample_gumbel(logits.size())
-    return F.softmax(y / temperature, dim=-1)
-
-
-def gumbel_softmax(logits, temperature, hard=False):
+# -------- KAN grid update mixin -------- #
+class KANGridMixin:
     """
-    ST-gumple-softmax
-    input: [*, n_class]
-    return: flatten --> [*, n_class] an one-hot vector
+    Mixin giving unified KAN grid maintenance utilities.
+
+    Methods:
+      iter_kan_layers() -> iterator over all KANLinear layers
+      update_grids(*args, **kwargs) -> calls each KANLinear.update_grid(...)
+      maybe_update_grids(step, every=100, *args, **kwargs) -> conditional call
+         (call inside training loop if you want periodic updates)
+
+    Typical usage in a training loop:
+        if args.update_grid:
+            model.update_grids()                     # once per epoch
+        # or periodic:
+        model.maybe_update_grids(global_step, every=args.update_grid_every)
+
+    If your KANLinear.update_grid signature expects specific kwargs (e.g. data, percentile),
+    pass them through:
+        model.update_grids(data=batch_x, percentile=0.95)
     """
-    y = gumbel_softmax_sample(logits, temperature)
+    def iter_kan_layers(self):
+        for m in self.modules():
+            if isinstance(m, KANLinear):
+                yield m
 
-    if not hard:
-        return y.view(-1, latent_dim * categorical_dim)
+    def update_grids(self, *args, **kwargs) -> int:
+        """
+        Returns number of KANLinear layers whose grid was updated.
+        """
+        updated = 0
+        for layer in self.iter_kan_layers():
+            if hasattr(layer, "update_grid"):
+                try:
+                    layer.update_grid(*args, **kwargs)
+                except TypeError:
+                    # Fallback to no-arg call if signature mismatch
+                    layer.update_grid()
+                updated += 1
+        return updated
 
-    shape = y.size()
-    _, ind = y.max(dim=-1)
-    y_hard = torch.zeros_like(y).view(-1, shape[-1])
-    y_hard.scatter_(1, ind.view(-1, 1), 1)
-    y_hard = y_hard.view(*shape)
-    # Set gradients w.r.t. y_hard gradients w.r.t. y
-    y_hard = (y_hard - y).detach() + y
-    return y_hard.view(-1, latent_dim * categorical_dim)
+    def maybe_update_grids(self, step: int, every: int = 100, *args, **kwargs) -> int:
+        """
+        Conditionally update grids every `every` steps. Returns number updated or 0.
+        Pass every=0 or None to disable.
+        """
+        if every and every > 0 and step % every == 0:
+            return self.update_grids(*args, **kwargs)
+        return 0
 
 
-# https://github.com/DHUDBlab/scDSC/blob/1247a63aac17bdfb9cd833e3dbe175c4c92c26be/layers.py#L43
+# -------------------- Utility activations -------------------- #
 class MeanAct(nn.Module):
-    def __init__(self):
-        super(MeanAct, self).__init__()
+    def __init__(self) -> None:
+        # _check_torch_available()
+        super().__init__()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.clamp(torch.exp(x), min=1e-5, max=1e6)
 
 
-# https://github.com/DHUDBlab/scDSC/blob/1247a63aac17bdfb9cd833e3dbe175c4c92c26be/layers.py#L43
 class DispAct(nn.Module):
-    def __init__(self):
-        super(DispAct, self).__init__()
+    def __init__(self) -> None:
+        # _check_torch_available()
+        super().__init__()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.clamp(F.softplus(x), min=1e-4, max=1e4)
 
 
+# -------------------- Gradient Reversal -------------------- #
 class ReverseLayerF(Function):
-
     @staticmethod
-    def forward(ctx, x, alpha):
+    def forward(ctx: Any, x: torch.Tensor, alpha: float) -> torch.Tensor:
         ctx.alpha = alpha
-
         return x.view_as(x)
 
     @staticmethod
-    def backward(ctx, grad_output):
-        output = grad_output.neg() * ctx.alpha
-
-        return output, None
+    def backward(ctx: Any, grad_output: torch.Tensor):
+        return grad_output.neg() * ctx.alpha, None
 
 
-def grad_reverse(x):
-    return ReverseLayerF()(x)
+def grad_reverse(x: torch.Tensor) -> torch.Tensor:
+    # _check_torch_available()
+    return ReverseLayerF.apply(x, 1.0)
 
 
-class Classifier(nn.Module):
-    def __init__(self, in_shape=64, out_shape=9, n_layers=2, update_grid=False, device='cuda'):
-        self.update_grid = update_grid
-        self.device = device  # Store the device
-        super(Classifier, self).__init__()
-        if n_layers == 2:
-            self.linear1 = nn.Sequential(
-                KANLinear(in_shape, in_shape),
-            )
-            self.linear2 = nn.Sequential(
-                KANLinear(in_shape, out_shape),
-            )
-        if n_layers == 1:
-            self.linear1 = nn.Sequential(
-                KANLinear(in_shape, out_shape),
-            )
+# -------------------- Classifiers (KAN) -------------------- #
+class Classifier(KANGridMixin, nn.Module):
+    def __init__(
+        self,
+        in_shape: int = 64,
+        out_shape: int = 9,
+        n_layers: int = 2,
+        hidden_sizes: Optional[List[int]] = None,
+        use_softmax: bool = True,
+        activation: Any = nn.ReLU,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.use_softmax = use_softmax
+        if hidden_sizes is None:
+            hidden_sizes = [in_shape // 2 ** i for i in range(1, n_layers)] if n_layers > 1 else []
+        layers: List[nn.Module] = []
+        prev = in_shape
+        for h in hidden_sizes:
+            layers += [
+                KANLinear(prev, h),
+                # nn.BatchNorm1d(h),
+                nn.Dropout(dropout),
+                # activation(),
+            ]
+            prev = h
+        layers.append(KANLinear(prev, out_shape))
+        self.net = nn.Sequential(*layers)
+        self._random_init()
 
-        self.random_init()
-        self.n_layers = n_layers
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
 
-    def forward(self, x):
-        if self.update_grid:
-            self.linear1.update_grid(x)
-        x = self.linear1(x)
-        if self.n_layers == 2:
-            if self.update_grid:
-                self.linear2.update_grid(x)
-            x = self.linear2(x)
-        return x
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
 
-    def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+        out = self.net(x)
+        if self.use_softmax:
+            out = F.softmax(out, dim=1)
+        return out.detach().float().cpu().numpy()
 
-    def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+    def predict(self, x: torch.Tensor) -> np.ndarray:
+        return self.net(x).argmax(1).detach().float().cpu().numpy()
 
 
-class Classifier2(nn.Module):
-    def __init__(self, in_shape=64, hidden=64, out_shape=9, update_grid=False,
-                 device='cuda'):
-        super(Classifier2, self).__init__()
-        self.update_grid = update_grid
-        self.device = device
+class Classifier2(KANGridMixin, nn.Module):
+    def __init__(
+        self,
+        in_shape: int = 64,
+        hidden: int = 64,
+        out_shape: int = 9,
+        use_softmax: bool = True,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
             KANLinear(in_shape, hidden),
-            nn.BatchNorm1d(hidden),
-            nn.Dropout(),
-            nn.ReLU(),
+            # nn.BatchNorm1d(hidden),
+            nn.Dropout(dropout),
+            # nn.ReLU(),
         )
-        self.linear2 = nn.Sequential(
-            KANLinear(hidden, out_shape),
-        )
-        self.random_init()
+        self.linear2 = KANLinear(hidden, out_shape)
+        self._random_init()
 
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.linear2(x)
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear2(self.linear1(x))
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
 
-    def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
+    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+        out = self.forward(x)
+        if self.use_softmax:
+            out = F.softmax(out, dim=1)
+        return out.detach().float().cpu().numpy()
 
-    def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
-
-
-class Classifier3(nn.Module):
-    def __init__(self, in_shape=64, hidden=64, out_shape=9):
-        super(Classifier3, self).__init__()
-        self.linear1 = nn.Sequential(
-            KANLinear(in_shape, hidden),
-            nn.BatchNorm1d(hidden),
-            nn.Dropout(),
-            nn.ReLU(),
-        )
-        self.linear2 = nn.Sequential(
-            KANLinear(hidden, hidden),
-            nn.BatchNorm1d(hidden),
-            nn.Dropout(),
-            nn.ReLU(),
-        )
-        self.linear3 = nn.Sequential(
-            KANLinear(hidden, out_shape),
-        )
-        self.random_init()
-
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.linear2(x)
-        x = self.linear3(x)
-        return x
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
-
-    def predict_proba(self, x):
-        return self.linear2(x).detach().cpu().numpy()
-
-    def predict(self, x):
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+    def predict(self, x: torch.Tensor) -> np.ndarray:
+        return self.forward(x).argmax(1).detach().float().cpu().numpy()
 
 
-class Encoder(nn.Module):
-    def __init__(self, in_shape, layer1, dropout):
-        super(Encoder, self).__init__()
-
-        self.linear1 = nn.Sequential(
-            KANLinear(in_shape, layer1),
-            nn.BatchNorm1d(layer1),
-            # nn.LeakyReLU(),
-        )
-        self.random_init()
-
-    def forward(self, x):
-        x = self.linear1(x)
-        # x = self.linear2(x)
-        return x
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, KANLinear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d):
-            #     nn.init.constant_(m.weight, 0.975)
-            #     nn.init.constant_(m.bias, 0.125)
-
-
-class Encoder2(nn.Module):
-    def __init__(self, in_shape, layer1, layer2, dropout, update_grid=False):
-        super(Encoder2, self).__init__()
-        self.update_grid = update_grid
+# -------------------- Encoders / Decoders (KAN) -------------------- #
+class Encoder2(KANGridMixin, nn.Module):
+    def __init__(self, in_shape: int, layer1: int, layer2: int, dropout: float) -> None:
+        super().__init__()
         self.linear1 = nn.Sequential(
             KANLinear(in_shape, layer1),
             nn.BatchNorm1d(layer1),
@@ -251,150 +226,204 @@ class Encoder2(nn.Module):
         self.linear2 = nn.Sequential(
             KANLinear(layer1, layer2),
             nn.BatchNorm1d(layer2),
-            # nn.Dropout(dropout),
-            # nn.Sigmoid(),
-            # nn.ReLU(),
-
         )
+        self._random_init()
 
-        self.random_init()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.linear2(self.linear1(x))
 
-    def forward(self, x, batches=None):
-        if self.update_grid:
-            self.layer1.update_grid(x)
-        x = self.linear1(x)
-        if self.update_grid:
-            self.layer2.update_grid(x)
-        x = self.linear2(x)
-        # x2 = torch.sigmoid(x2)
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
+        for m in self.modules():
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+
+
+class Encoder3(KANGridMixin, nn.Module):
+    def __init__(self, in_shape: int, layers: dict, dropout: float, device: str = 'cuda'):
+        super().__init__()
+        self.blocks = nn.ModuleList()
+        prev = in_shape
+        sizes = list(layers.values())
+        for size in sizes[:-1]:
+            self.blocks.append(nn.Sequential(
+                KANLinear(prev, size),
+                # nn.BatchNorm1d(size),
+                nn.Dropout(dropout),
+                #nn.LeakyReLU(),
+            ))
+            prev = size
+        self.blocks.append(nn.Sequential(KANLinear(prev, sizes[-1])))
+        self._random_init()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for blk in self.blocks:
+            x = blk(x)
         return x
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d):
-            #     nn.init.constant_(m.weight, 0.975)
-            #     nn.init.constant_(m.bias, 0.125)
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
 
 
-class Decoder2(nn.Module):
-    def __init__(self, in_shape, n_batches, layer1, layer2, dropout, update_grid=False):
-        super(Decoder2, self).__init__()
-        self.update_grid = update_grid
+class Decoder2(KANGridMixin, nn.Module):
+    def __init__(self, in_shape: int, n_batches: int, layer1: int, layer2: int, dropout: float) -> None:
+        super().__init__()
+        self.n_batches = n_batches
         self.linear1 = nn.Sequential(
             KANLinear(layer1 + n_batches, layer2),
             nn.BatchNorm1d(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
+        self.linear2 = KANLinear(layer2, in_shape)
+        self._random_init()
 
-        self.linear2 = nn.Sequential(
-            KANLinear(layer2, in_shape),
-            # nn.BatchNorm1d(in_shape),
-            # nn.Sigmoid(),
-        )
-        self.update_grid = False
-        self.n_batches = n_batches
-        self.random_init()
-
-    def forward(self, x, batches=None):
+    def forward(self, x: torch.Tensor, batches: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
         if batches is not None and self.n_batches > 0:
             x = torch.cat((x, batches), 1)
-        if self.update_grid:
-            self.layer1.update_grid(x)
-        x1 = self.linear1(x)
-        if self.update_grid:
-            self.layer2.update_grid(x1)
-        x2 = self.linear2(x1)
-        # x2 = torch.sigmoid(x2)
-        return [x1, x2]
+        h = self.linear1(x)
+        out = self.linear2(h)
+        return [h, out]
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d):
-            #     nn.init.constant_(m.weight, 0.975)
-            #     nn.init.constant_(m.bias, 0.125)
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
 
 
-class Decoder(nn.Module):
-    def __init__(self, in_shape, n_batches, layer1, dropout):
-        super(Decoder, self).__init__()
-        self.linear2 = nn.Sequential(
-            KANLinear(layer1 + n_batches, in_shape),
-        )
+class Decoder3(KANGridMixin, nn.Module):
+    def __init__(self, in_shape: int, n_batches: int, layers: dict, dropout: float, device: str = 'cuda'):
+        super().__init__()
         self.n_batches = n_batches
-        self.random_init()
+        self.blocks = nn.ModuleList()
+        rev_sizes = list(layers.values())[::-1]  # largest -> smallest
+        prev = rev_sizes[0]
+        for size in rev_sizes[1:]:
+            self.blocks.append(nn.Sequential(
+                KANLinear(prev + (n_batches if n_batches > 0 else 0), size),
+                nn.BatchNorm1d(size),
+                nn.Dropout(dropout),
+                nn.ReLU(),
+            ))
+            prev = size
+        self.out = KANLinear(prev + (n_batches if n_batches > 0 else 0), in_shape)
+        self._random_init()
 
-    def forward(self, x, batches=None):
-        if batches is not None and self.n_batches > 0:
-            x = torch.cat((x, batches), 1)
-        x1 = self.linear1(x)
-        return x1
+    def forward(self, x: torch.Tensor, batches: Optional[torch.Tensor] = None) -> torch.Tensor:
+        for blk in self.blocks:
+            if self.n_batches > 0 and batches is not None:
+                x = torch.cat((x, batches), dim=1)
+            x = blk(x)
+        if self.n_batches > 0 and batches is not None:
+            x = torch.cat((x, batches), dim=1)
+        return self.out(x)
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
+    def _random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d):
-            #     nn.init.constant_(m.weight, 0.975)
-            #     nn.init.constant_(m.bias, 0.125)
+            if isinstance(m, (KANLinear, nn.Conv2d, nn.ConvTranspose2d)):
+                # KANLinear may use 'W' instead of 'weight'
+                if hasattr(m, "weight") and m.weight is not None:
+                    init_func(m.weight)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
+                elif hasattr(m, "W") and m.W is not None:
+                    init_func(m.W)
+                    if getattr(m, "bias", None) is not None and m.bias is not None:
+                        nn.init.zeros_(m.bias)
 
 
-class SHAPKANAutoencoder2(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layer1, layer2, dropout,
-                 n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda'):
-        super(SHAPKANAutoencoder2, self).__init__()
+# -------------------- SHAP + AutoEncoders (KAN) -------------------- #
+class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
+    def __init__(
+        self,
+        in_shape: int,
+        n_batches: int,
+        nb_classes: int,
+        n_emb: int,
+        n_meta: int,
+        mapper: bool,
+        variational: bool,
+        layer1: int,
+        layer2: int,
+        dropout: float,
+        n_layers: int,
+        zinb: bool = False,
+        conditional: bool = True,
+        add_noise: bool = False,
+        tied_weights: int = 0,
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
+        super().__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
+        self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
-        # self.gnn1 = GCNConv(in_shape, in_shape)
+
         self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout)
         if conditional:
             self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
             self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2)
+        self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
 
         if variational:
             self.gaussian_sampling = GaussianSample(layer2, layer2, device)
         else:
             self.gaussian_sampling = None
+
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
         self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
         self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
         self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self.random_init(nn.init.xavier_uniform_)
 
-    def forward(self, x, batches=None, sampling=False, beta=1.0):
-        if type(x) == pd.core.frame.DataFrame:
-            x = torch.Tensor(x.values).to(self.device)
+    def forward(
+        self,
+        x: torch.Tensor,
+        batches: Optional[torch.Tensor] = None,
+        sampling: bool = False,
+        beta: float = 1.0
+    ) -> torch.Tensor:
+        if isinstance(x, pd.DataFrame):
+            x = torch.tensor(x.values).to(self.device)
         if self.n_emb > 0:
             meta_values = x[:, -2:]
             x = x[:, :-2]
-        # if self.n_meta > 0:
-        #     x = x[:, :-2]
-        # rec = {}
         if self.add_noise:
-            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        # if self.use_gnn:
-        #     x = self.gnn1(x)
+            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
+
         enc = self.enc(x)
         if self.gaussian_sampling is not None:
             if sampling:
@@ -406,490 +435,170 @@ class SHAPKANAutoencoder2(nn.Module):
             out = self.classifier(torch.cat((enc, meta_values), 1))
         else:
             out = self.classifier(enc)
-
         return out
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
+    # Probability / prediction helpers
+    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+        return self.classifier(x).detach().float().cpu().numpy()
 
-    def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
-
-    def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
-
-    def _kld(self, z, q_param, h_last=None, p_param=None):
-        if len(z.shape) == 1:
-            z = z.view(1, -1)
-        if (self.flow_type == "nf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type == "iaf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type in ['hf', 'ccliniaf']) and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        elif self.flow_type in ["o-sylvester", "h-sylvester", "t-sylvester"] and self.n_flows > 0:
-            mu, log_var, r1, r2, q_ortho, b = q_param
-            f_z = self.flow(z, r1, r2, q_ortho, b)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        # vanilla
-        else:
-            (mu, log_var) = q_param
-            qz = log_normal_diag(z, mu, log_var)
-        if p_param is None:
-            pz = log_normal_standard(z)
-        else:
-            (mu, log_var) = p_param
-            pz = log_gaussian(z, mu, log_var)
-
-        kl = -(pz - qz)
-
-        return kl
-
-    # # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
-        eps = 1e-10
-        # scale_factor = scale_factor[:, None]
-        mean = mean * scale_factor
-        
-        t1 = torch.lgamma(disp+eps) + torch.lgamma(x+1.0) - torch.lgamma(x+disp+eps)
-        t2 = (disp+x) * torch.log(1.0 + (mean/(disp+eps))) + (x * (torch.log(disp+eps) - torch.log(mean+eps)))
-        nb_final = t1 + t2
-
-        nb_case = nb_final - torch.log(1.0-pi+eps)
-        zero_nb = torch.pow(disp/(disp+mean+eps), disp)
-        zero_case = -torch.log(pi + ((1.0-pi)*zero_nb)+eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-        
-        if ridge_lambda > 0:
-            ridge = ridge_lambda*torch.square(pi)
-            result += ridge
-        result = torch.mean(result)
-        return result
+    def predict(self, x: torch.Tensor) -> np.ndarray:
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
 
-class KANAutoencoder2(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layer1, layer2, dropout, n_layers, zinb=False,
-                 conditional=False, add_noise=False, tied_weights=0, use_gnn=False, update_grid=False, device='cuda'):
-        super(KANAutoencoder2, self).__init__()
-        self.add_noise = add_noise
-        self.device = device
-        self.use_gnn = use_gnn
-        self.use_mapper = mapper
-        self.n_batches = n_batches
-        self.zinb = zinb
-        self.tied_weights = tied_weights
-        self.flow_type = 'vanilla'
-        # self.gnn1 = GCNConv(in_shape, in_shape)
-        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout, update_grid=update_grid)
-        if conditional:
-            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout, update_grid=update_grid)
-        else:
-            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout, update_grid=update_grid)
-        self.mapper = Classifier(n_batches + 1, layer2, update_grid=update_grid)
-
-        if variational:
-            self.gaussian_sampling = GaussianSample(layer2, layer2, device)  # TODO THIS SHOULD ALSO BE KAN
-        else:
-            self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(layer2, 64, n_batches, update_grid=update_grid)
-        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, update_grid=update_grid)
-        # TODO: add update_grid to the decoders for zinb
-        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self.random_init(nn.init.kaiming_uniform_)
-
-    def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
-        rec = {}
-        if self.add_noise:
-            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        enc = self.enc(x)
-        if self.gaussian_sampling is not None:
-            if sampling:
-                enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
-                # Kullback-Leibler Divergence
-                # kl = self._kld(enc, (mu, log_var))
-                # mean_sq = mu * mu
-                # std = log_var.exp().sqrt()
-                # stddev_sq = std * std
-                # kl = 0.5 * torch.mean(mean_sq + stddev_sq - torch.log(stddev_sq) - 1)
-                # https://arxiv.org/pdf/1312.6114.pdf equation 10, first part and
-                # https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), axis=1)
-            else:
-                enc, _, _ = self.gaussian_sampling(enc, train=False)
-                kl = torch.Tensor([0])
-        else:
-            kl = torch.Tensor([0])
-        if self.use_mapper and mapping:
-            bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
-            enc_be = enc + self.mapper(bs).squeeze()
-        else:
-            enc_be = enc
-        if not self.tied_weights:
-            try:
-                bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
-            except Exception as e:
-                print(f'{e}')
-                bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
-            rec = {"mean": self.dec(enc_be, bs)}
-        elif not self.zinb:
-            rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
-            rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
-            rec = {"mean": rec}  # TODO rec does not need to be a dict no more
-        elif self.zinb:
-            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear3[0].weight.t()))]}
-
-        if self.zinb:
-            _mean = self._dec_mean(rec['mean'][0])
-            _disp = self._dec_disp(rec['mean'][0])
-            _pi = self._dec_pi(rec['mean'][0])
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            # if not sampling:
-            rec = {'mean': _mean, 'rec': to_rec}
-        else:
-            zinb_loss = torch.Tensor([0])
-
-        # reverse = ReverseLayerF.apply(enc, alpha)
-        # b_preds = self.classifier(reverse)
-        # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
-        return [enc, rec, zinb_loss, kl]
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
-
-    def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
-
-    def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
-
-    def _kld(self, z, q_param, h_last=None, p_param=None):
-        if len(z.shape) == 1:
-            z = z.view(1, -1)
-        if (self.flow_type == "nf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type == "iaf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type in ['hf', 'ccliniaf']) and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        elif self.flow_type in ["o-sylvester", "h-sylvester", "t-sylvester"] and self.n_flows > 0:
-            mu, log_var, r1, r2, q_ortho, b = q_param
-            f_z = self.flow(z, r1, r2, q_ortho, b)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        # vanilla
-        else:
-            (mu, log_var) = q_param
-            qz = log_normal_diag(z, mu, log_var)
-        if p_param is None:
-            pz = log_normal_standard(z)
-        else:
-            (mu, log_var) = p_param
-            pz = log_gaussian(z, mu, log_var)
-
-        kl = -(pz - qz)
-
-        return kl
-
-    # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
-        eps = 1e-10
-        # scale_factor = scale_factor[:, None]
-        mean = mean * scale_factor
-
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-        result = torch.mean(result)
-        return result
-
-
-class Encoder3(nn.Module):
-    def __init__(self, in_shape, layers: dict, dropout, device='cuda'):
+class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
+    def __init__(
+        self,
+        in_shape: int,
+        n_batches: int,
+        nb_classes: int,
+        n_emb: int,
+        n_meta: int,
+        mapper: bool,
+        variational: bool,
+        layers: dict,
+        dropout: float,
+        n_layers: int,
+        zinb: bool = False,
+        conditional: bool = True,
+        add_noise: bool = False,
+        tied_weights: int = 0,
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
         super().__init__()
-        self.device = device
-        self.layer_names = list(layers.keys())
-        self.n_layers = len(self.layer_names)
-        self.kan_layers = nn.ModuleList()
-        self.dropouts = nn.ModuleList()
-        prev_shape = in_shape
-        for i, name in enumerate(self.layer_names):
-            out_shape = layers[name]
-            self.kan_layers.append(KANLinear(prev_shape, out_shape, name=f'encoder3_{name}'))
-            self.dropouts.append(nn.Dropout(dropout))
-            prev_shape = out_shape
-        self.random_init()
-
-    def forward(self, x):
-        for kan, drop in zip(self.kan_layers, self.dropouts):
-            x = kan(x)
-            x = drop(x)
-        return x
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
-
-class Decoder3(nn.Module):
-    def __init__(self, in_shape, n_batches, layers: dict, dropout, device='cuda'):
-        super().__init__()
-        self.device = device
-        self.n_batches = n_batches
-        self.layer_names = list(layers.keys())
-        self.n_layers = len(self.layer_names)
-        self.kan_layers = nn.ModuleList()
-        self.dropouts = nn.ModuleList()
-        prev_shape = layers[self.layer_names[-1]] + n_batches if n_batches > 0 else layers[self.layer_names[-1]]
-        for name in reversed(self.layer_names):
-            out_shape = layers[name]
-            self.kan_layers.append(KANLinear(prev_shape, out_shape, name=f'decoder3_{name}'))
-            self.dropouts.append(nn.Dropout(dropout))
-            prev_shape = out_shape
-        self.kan_layers.append(KANLinear(prev_shape, in_shape, name='decoder3_out'))
-        self.random_init()
-
-    def forward(self, x, batches=None):
-        if batches is not None and self.n_batches > 0:
-            x = torch.cat((x, batches), dim=1)
-        for kan, drop in zip(self.kan_layers, self.dropouts):
-            x = kan(x)
-            x = drop(x)
-        x = self.kan_layers[-1](x)
-        return x
-
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
-
-class SHAPKANAutoencoder3(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, layers, dropout, zinb=False,
-                 conditional=False, add_noise=False, tied_weights=0, use_gnn=False, device='cuda', n_layers=1, is_sigmoid=False):
-        super(SHAPKANAutoencoder3, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
+        self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
-        self.is_sigmoid = is_sigmoid
-        self.n_layers = n_layers
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
-        # self.gnn1 = GCNConv(in_shape, in_shape)
+
         self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
         if conditional:
             self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
         else:
             self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
-        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], device=device)
+
+        last_dim = list(layers.values())[-1]
+        self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
 
         if variational:
-            self.gaussian_sampling = GaussianSample(layers[list(layers.keys())[-1]], layers[-1], device)
+            self.gaussian_sampling = GaussianSample(last_dim, last_dim, device)
         else:
             self.gaussian_sampling = None
-        self.dann_discriminator = Classifier2(layers[list(layers.keys())[-1]], 64, n_batches)
-        self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes)
-        if zinb:
-            self._dec_mean = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), MeanAct())
-            self._dec_disp = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), DispAct())
-            self._dec_pi = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), nn.Sigmoid())
-        self.random_init(nn.init.xavier_uniform_)
 
-    def forward(self, x, batches=None, sampling=False, beta=1.0):
+        self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
+        self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers)
+
+        if zinb and len(layers) > 1:
+            penultimate = list(layers.values())[-2]
+            self._dec_mean = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), MeanAct())
+            self._dec_disp = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), DispAct())
+            self._dec_pi = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), nn.Sigmoid())
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        batches: Optional[torch.Tensor] = None,
+        sampling: bool = False,
+        beta: float = 1.0
+    ) -> torch.Tensor:
+        if isinstance(x, pd.DataFrame):
+            x = torch.tensor(x.values).to(self.device)
         if self.n_emb > 0:
             meta_values = x[:, -2:]
-        if self.n_meta == 0:
-            x = x[:, :-2]
-        # rec = {}
+            if self.n_meta == 0:
+                x = x[:, :-2]
         if self.add_noise:
-            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        # if self.use_gnn:
-        #     x = self.gnn1(x)
-        try:
-            enc = self.enc(x).squeeze()
-        except:
-            pass
+            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
+        enc = self.enc(x)
+
         if self.gaussian_sampling is not None:
             if sampling:
                 enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
-                # Kullback-Leibler Divergence
-                # kl = self._kld(enc, (mu, log_var))
-                mean_sq = mu * mu
-                std = log_var.exp().sqrt()
-                stddev_sq = std * std
-                # kl = 0.5 * torch.mean(mean_sq + stddev_sq - torch.log(stddev_sq) - 1)
-                # https://arxiv.org/pdf/1312.6114.pdf equation 10, first part and
-                # https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), axis=1)
             else:
                 enc, _, _ = self.gaussian_sampling(enc, train=False)
-                kl = torch.Tensor([0])
-        else:
-            kl = torch.Tensor([0])
-        if self.use_mapper:
-            bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
-            # needs the batch
-            enc += self.mapper(bs).squeeze()
-        if not self.tied_weights:
-            try:
-                bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
-            except:
-                bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
 
-            rec = {"mean": self.dec(enc, bs)}
-        elif not self.zinb:
-            rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
-            rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
-            rec = {"mean": rec}  # TODO rec does not need to be a dict no more
-        elif self.zinb:
-            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear3[0].weight.t()))]}
+        if self.use_mapper and batches is not None:
+            bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
+            enc = enc + self.mapper(bs).squeeze()
 
         if self.n_emb > 0:
             out = self.classifier(torch.cat((enc, meta_values), 1))
         else:
             out = self.classifier(enc)
-
         return out
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
+    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+        return self.classifier(x).detach().float().cpu().numpy()
 
-    def predict_proba(self, x):
-        return self.classifier(x).detach().cpu().numpy()
-
-    def predict(self, x):
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
-
-    def _kld(self, z, q_param, h_last=None, p_param=None):
-        if len(z.shape) == 1:
-            z = z.view(1, -1)
-        if (self.flow_type == "nf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type == "iaf") and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z, log_det_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var) - sum(log_det_z)
-            z = f_z
-        elif (self.flow_type in ['hf', 'ccliniaf']) and self.n_flows > 0:
-            (mu, log_var) = q_param
-            f_z = self.flow(z, h_last)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        elif self.flow_type in ["o-sylvester", "h-sylvester", "t-sylvester"] and self.n_flows > 0:
-            mu, log_var, r1, r2, q_ortho, b = q_param
-            f_z = self.flow(z, r1, r2, q_ortho, b)
-            qz = log_gaussian(z, mu, log_var)
-            z = f_z
-        # vanilla
-        else:
-            (mu, log_var) = q_param
-            qz = log_normal_diag(z, mu, log_var)
-        if p_param is None:
-            pz = log_normal_standard(z)
-        else:
-            (mu, log_var) = p_param
-            pz = log_gaussian(z, mu, log_var)
-
-        kl = -(pz - qz)
-
-        return kl
-
-    # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
-        eps = 1e-10
-        mean = mean * scale_factor
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-        result = torch.mean(result)
-        return result
+    def predict(self, x: torch.Tensor) -> np.ndarray:
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
 
-class KANAutoencoder3(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, layers: dict,
-                 dropout, n_layers, prune_threshold, zinb=False, conditional=True, add_noise=False,
-                 tied_weights=0, update_grid=False, use_gnn=False, device='cuda', is_sigmoid=False):
-        super(KANAutoencoder3, self).__init__()
+# -------------------- Variational / Loss helpers -------------------- #
+def log_zinb_positive(
+    x: torch.Tensor,
+    mu: torch.Tensor,
+    theta: torch.Tensor,
+    pi: torch.Tensor,
+    eps: float = 1e-8
+) -> torch.Tensor:
+    case_zero = F.softplus(-pi + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps)) - F.softplus(-pi)
+    case_non_zero = (
+        -pi
+        - F.softplus(-pi)
+        + theta * torch.log(theta + eps)
+        - theta * torch.log(theta + mu + eps)
+        + x * torch.log(mu + eps)
+        - x * torch.log(theta + mu + eps)
+        + torch.lgamma(x + theta)
+        - torch.lgamma(theta)
+        - torch.lgamma(x + 1)
+    )
+    mask = torch.less(x, eps).float()
+    res = mask * case_zero + (1.0 - mask) * case_non_zero
+    res = torch.nan_to_num(res, 0)
+    return torch.sum(res, dim=-1)
+
+
+class KANAutoEncoder3(KANGridMixin, nn.Module):
+    """KAN-based AutoEncoder3 analogue.
+
+    Mirrors AutoEncoder3 (in aedann.py) but swaps nn.Linear for KANLinear and
+    uses the already defined KAN Encoder3 / Decoder3. Provides reconstruction,
+    optional variational sampling (GaussianSample), optional ZINB outputs, and
+    batch-effect mapping. Forward returns [enc, rec, zinb_loss, kl].
+    """
+    def __init__(
+        self,
+        in_shape: int,
+        n_batches: int,
+        nb_classes: int,
+        n_meta: int,
+        n_emb: int,
+        mapper: bool,
+        variational: bool,
+        layers: dict,
+        dropout: float,
+        n_layers: int,
+        prune_threshold: float,
+        zinb: bool = False,
+        conditional: bool = True,
+        add_noise: bool = False,
+        tied_weights: int = 0,
+        update_grid: bool = False,
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
+        super().__init__()
         self.add_noise = add_noise
+        self.is_sigmoid = is_sigmoid
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -898,87 +607,121 @@ class KANAutoencoder3(nn.Module):
         self.n_emb = n_emb
         self.n_meta = n_meta
         self.prune_threshold = prune_threshold
-        self.update_grid = update_grid
-        self.is_sigmoid = is_sigmoid  # Store the parameter for potential use
 
-        # Encoder and Decoder using KAN layers
+        # Encoder / Decoder
         self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
         if conditional:
             self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
         else:
             self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
 
-        # Mapper for batch effect removal
-        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], device=device)
+        last_dim = list(layers.values())[-1]
+        self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
 
         # Variational sampling
         if variational:
-            self.gaussian_sampling = GaussianSample(layers[list(layers.keys())[-1]], layers[list(layers.keys())[-1]], device)
+            self.gaussian_sampling = GaussianSample(last_dim, last_dim, device)
         else:
             self.gaussian_sampling = None
 
-        # Discriminator and classifier
-        self.dann_discriminator = Classifier2(layers[list(layers.keys())[-1]], 128, n_batches, device=device)
-        self.classifier = Classifier(in_shape=layers[list(layers.keys())[-1]] + n_emb, out_shape=nb_classes,
-                                     update_grid=update_grid, device=device, n_layers=n_layers)
+        self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
+        self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
-        # ZINB layers if needed
-        if zinb:
-            self._dec_mean = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), MeanAct())
-            self._dec_disp = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), DispAct())
-            self._dec_pi = nn.Sequential(
-                KANLinear(layers[list(layers.keys())[-2]], in_shape + n_meta, device=device), nn.Sigmoid())
+        if self.zinb and len(layers) > 1:
+            penultimate = list(layers.values())[-2]
+            self._dec_mean = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), MeanAct())
+            self._dec_disp = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), DispAct())
+            self._dec_pi = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), nn.Sigmoid())
+        elif self.zinb:
+            # Fallback if only one layer defined
+            self._dec_mean = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), MeanAct())
+            self._dec_disp = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), DispAct())
+            self._dec_pi = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), nn.Sigmoid())
 
-        self.random_init(nn.init.kaiming_uniform_)
-
-    def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
-        rec = {}
+    def forward(
+        self,
+        x: torch.Tensor,
+        to_rec: torch.Tensor,
+        batches: Optional[torch.Tensor] = None,
+        sampling: bool = False,
+        beta: float = 1.0,
+        mapping: bool = True,
+    ) -> List[Any]:
+        rec: dict = {}
+        if isinstance(x, pd.DataFrame):
+            x = torch.tensor(x.values).to(self.device)
         if self.add_noise:
-            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
+            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
+
         enc = self.enc(x)
+
+        # Variational sampling
         if self.gaussian_sampling is not None:
             if sampling:
                 enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
-                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), axis=1)
+                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1)
             else:
                 enc, _, _ = self.gaussian_sampling(enc, train=False)
-                kl = torch.Tensor([0])
+                kl = torch.zeros(enc.size(0), device=enc.device)
         else:
-            kl = torch.Tensor([0])
-        if self.use_mapper and mapping:
+            kl = torch.zeros(enc.size(0), device=enc.device)
+
+        # Batch-effect mapping
+        if self.use_mapper and mapping and batches is not None:
             bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
             enc_be = enc + self.mapper(bs).squeeze()
         else:
             enc_be = enc
-        if not self.tied_weights:
-            try:
-                bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
-            except Exception as e:
-                print(f'{e}')
-                bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
-            rec = {"mean": self.dec(enc_be, bs)}
-        elif not self.zinb:
-            rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
-            rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
-            rec = {"mean": rec}  # TODO rec does not need to be a dict no more
-        elif self.zinb:
-            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear3[0].weight.t()))]}
 
-        if self.zinb:
-            _mean = self._dec_mean(rec['mean'][0])
-            _disp = self._dec_disp(rec['mean'][0])
-            _pi = self._dec_pi(rec['mean'][0])
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            rec = {'mean': _mean, 'rec': to_rec}
+        # Reconstruction (no tied-weights support for multi-KAN yet)
+        if self.tied_weights:
+            raise NotImplementedError("tied_weights not implemented for KANAutoEncoder3")
         else:
-            zinb_loss = torch.Tensor([0])
+            if batches is not None and self.n_batches > 0:
+                rec_mean = self.dec(enc_be, to_categorical(batches, self.n_batches + 1).to(self.device).float())
+            else:
+                rec_mean = self.dec(enc_be, None)
+            rec = {"mean": rec_mean}
+
+        # ZINB optional
+        if self.zinb:
+            penult_act = enc_be  # simplification; could capture penultimate hidden if needed
+            _mean = self._dec_mean(penult_act)
+            _disp = self._dec_disp(penult_act)
+            _pi = self._dec_pi(penult_act)
+            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
+            rec = {"mean": _mean, "rec": to_rec}
+        else:
+            zinb_loss = torch.zeros(1, device=enc.device)
 
         if self.is_sigmoid:
             rec['mean'] = torch.sigmoid(rec['mean'])
 
         return [enc, rec, zinb_loss, kl]
+
+    # Utilities reused from aedann AutoEncoder3
+    def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
+        return self.classifier(x).detach().float().cpu().float().numpy()
+
+    def predict(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
+        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
+
+    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
+        eps = 1e-10
+        mean = mean * scale_factor
+        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
+        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
+        nb_final = t1 + t2
+        nb_case = nb_final - torch.log(1.0 - pi + eps)
+        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
+        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
+        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
+        if ridge_lambda > 0:
+            ridge = ridge_lambda * torch.square(pi)
+            result += ridge
+        return torch.mean(result)
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
         print("Pruning not available for this model")
@@ -993,41 +736,148 @@ class KANAutoencoder3(nn.Module):
                 total += module.out_features
         return {"total": total, "layers": layer_counts}
 
-    def random_init(self, init_func=nn.init.kaiming_uniform_):
-        for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                init_func(m.weight.data)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, KANLinear):
-                # KANLinear has its own initialization method
-                m.reset_parameters()
 
-    def predict_proba(self, x):
-        enc = self.enc(x)
-        return self.classifier(enc).detach().cpu().numpy()
+class KANAutoEncoder2(KANGridMixin, nn.Module):
+    """KAN-based analogue of AutoEncoder2.
 
-    def predict(self, x):
-        enc = self.enc(x)
-        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+    Uses Encoder2/Decoder2 with KANLinear layers, optional variational sampling,
+    optional ZINB reconstruction, and batch-effect mapping. Forward returns
+    [enc, rec, zinb_loss, kl] where rec is a dict containing at least key 'mean'.
+    """
+    def __init__(
+        self,
+        in_shape: int,
+        n_batches: int,
+        nb_classes: int,
+        n_meta: int,
+        n_emb: int,
+        mapper: bool,
+        variational: bool,
+        layer1: int,
+        layer2: int,
+        dropout: float,
+        n_layers: int,
+        prune_threshold: float,
+        zinb: bool = False,
+        conditional: bool = True,
+        add_noise: bool = False,
+        tied_weights: int = 0,
+        update_grid: bool = False,
+        device: str = 'cuda',
+        is_sigmoid: bool = False,
+    ) -> None:
+        super().__init__()
+        self.add_noise = add_noise
+        self.device = device
+        self.use_mapper = mapper
+        self.n_batches = n_batches
+        self.zinb = zinb
+        self.tied_weights = tied_weights
+        self.flow_type = 'vanilla'
+        self.n_emb = n_emb
+        self.n_meta = n_meta
+        self.prune_threshold = prune_threshold
+        self.is_sigmoid = is_sigmoid
 
-    def _kld(self, z, q_param, h_last=None, p_param=None):
-        if len(z.shape) == 1:
-            z = z.view(1, -1)
-        (mu, log_var) = q_param
-        qz = log_normal_diag(z, mu, log_var)
-        if p_param is None:
-            pz = log_normal_standard(z)
+        # Encoder / Decoder
+        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout)
+        if conditional:
+            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
         else:
-            (mu, log_var) = p_param
-            pz = log_gaussian(z, mu, log_var)
+            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
+        self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
 
-        kl = -(pz - qz)
+        # Variational sampling
+        if variational:
+            self.gaussian_sampling = GaussianSample(layer2, layer2, device)
+        else:
+            self.gaussian_sampling = None
 
-        return kl
+        self.dann_discriminator = Classifier2(layer2, 64, n_batches)
+        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
-    # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x, mean, disp, pi, scale_factor=1.0, ridge_lambda=0.0):
+        # ZINB projection heads (operate on first decoder hidden output)
+        if self.zinb:
+            self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
+            self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
+            self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        to_rec: torch.Tensor,
+        batches: Optional[torch.Tensor] = None,
+        sampling: bool = False,
+        beta: float = 1.0,
+        mapping: bool = True,
+    ) -> List[Any]:
+        rec: dict = {}
+        if isinstance(x, pd.DataFrame):
+            x = torch.tensor(x.values).to(self.device)
+        if self.add_noise:
+            x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
+
+        enc = self.enc(x)
+
+        # Variational sampling
+        if self.gaussian_sampling is not None:
+            if sampling:
+                enc, mu, log_var = self.gaussian_sampling(enc, train=True, beta=beta)
+                kl = -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1)
+            else:
+                enc, _, _ = self.gaussian_sampling(enc, train=False)
+                kl = torch.zeros(enc.size(0), device=enc.device)
+        else:
+            kl = torch.zeros(enc.size(0), device=enc.device)
+
+        # Batch-effect mapping
+        if self.use_mapper and mapping and batches is not None:
+            bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
+            enc_be = enc + self.mapper(bs).squeeze()
+        else:
+            enc_be = enc
+
+        # Reconstruction (Decoder2 returns [hidden, out])
+        if self.tied_weights:
+            raise NotImplementedError("tied_weights not implemented for KANAutoEncoder2")
+        else:
+            if batches is not None and self.n_batches > 0:
+                try:
+                    bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
+                except Exception:
+                    bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
+            else:
+                bs = None
+            dec_out = self.dec(enc_be, bs)
+            rec = {"mean": dec_out}
+
+        # ZINB optional (operate on first hidden from decoder)
+        if self.zinb:
+            hidden_first = rec['mean'][0]  # first element from decoder list
+            _mean = self._dec_mean(hidden_first)
+            _disp = self._dec_disp(hidden_first)
+            _pi = self._dec_pi(hidden_first)
+            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
+            rec = {"mean": _mean, "rec": to_rec}
+        else:
+            zinb_loss = torch.zeros(1, device=enc.device)
+
+        if self.is_sigmoid:
+            if isinstance(rec['mean'], torch.Tensor):
+                rec['mean'] = torch.sigmoid(rec['mean'])
+            # else leave list structure for compatibility if not zinb
+
+        return [enc, rec, zinb_loss, kl]
+
+    def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
+        return self.classifier(x).detach().float().cpu().float().numpy()
+
+    def predict(self, inputs: torch.Tensor) -> np.ndarray:
+        x = self.enc(inputs)
+        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
+
+    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
         eps = 1e-10
         mean = mean * scale_factor
         t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
@@ -1040,31 +890,19 @@ class KANAutoencoder3(nn.Module):
         if ridge_lambda > 0:
             ridge = ridge_lambda * torch.square(pi)
             result += ridge
-        result = torch.mean(result)
-        return result
+        return torch.mean(result)
 
+    def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
+        print("Pruning not available for this model")
+        return 0
 
-def log_zinb_positive(x, mu, theta, pi, eps=1e-8):
-    """
-    log likelihood (scalar) of a minibatch according to a zinb model.
-    Notes:
-    We parametrize the bernouilli using the logits, hence the softplus functions appearing
+    def count_n_neurons(self) -> int:
+        total = 0
+        layer_counts = {}
+        for name, module in self.named_modules():
+            if isinstance(module, KANLinear):
+                layer_counts[name] = module.out_features
+                total += module.out_features
+        return {"total": total, "layers": layer_counts}
 
-    Variables:
-    mu: mean of the negative binomial (has to be positive support) (shape: minibatch x genes)
-    theta: inverse dispersion parameter (has to be positive support) (shape: minibatch x genes)
-    pi: logit of the dropout parameter (real support) (shape: minibatch x genes)
-    eps: numerical stability constant
-    """
-    case_zero = F.softplus(- pi + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps)) \
-                                - F.softplus( - pi)
-    case_non_zero = - pi - F.softplus(- pi) \
-                                + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps) \
-                                + x * torch.log(mu + eps) - x * torch.log(theta + mu + eps) \
-                                + torch.lgamma(x + theta) - torch.lgamma(theta) - torch.lgamma(x + 1)
-
-    # mask = tf.cast(torch.less(x, eps), torch.float32)
-    mask = torch.less(x, eps).float()
-    res = torch.multiply(mask, case_zero) + torch.multiply(1 - mask, case_non_zero)
-    res = torch.nan_to_num(res, 0)
-    return torch.sum(res, axis=-1)
+# Preserve legacy alias if earlier code expects KANAutoEncoder3 name

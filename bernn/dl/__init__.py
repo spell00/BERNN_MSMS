@@ -7,8 +7,8 @@ This subpackage contains the deep learning models and training code.
 from .models.pytorch import (
     AutoEncoder2,
     SHAPAutoEncoder2,
-    KANAutoencoder2,
-    SHAPKANAutoencoder2,
+    KANAutoEncoder2,
+    SHAPKANAutoEncoder2,
     AutoEncoder3,
     SHAPAutoEncoder3,
 )
@@ -21,18 +21,18 @@ from .train import (
 )
 
 # KAN modules
-from .train.pytorch.ekan import KANLinear, KAN
+from .models.pytorch.ekan import KANLinear, KAN
 
 __all__ = [
     # Models
     "AutoEncoder2",
     "SHAPAutoEncoder2",
-    "KANAutoencoder2",
-    "SHAPKANAutoencoder2",
+    "KANAutoEncoder2",
+    "SHAPKANAutoEncoder2",
     "AutoEncoder3",
     "SHAPAutoEncoder3",
-    "KANAutoencoder3",
-    "SHAPKANAutoencoder3",
+    "KANAutoEncoder3",
+    "SHAPKANAutoEncoder3",
 
     # Training
     "TrainAE",

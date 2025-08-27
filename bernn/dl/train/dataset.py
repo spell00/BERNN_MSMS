@@ -127,6 +127,7 @@ class MSDataset3(Dataset):
             label = None
             batch = None
             name = None
+        # Reconstruction targets
         if self.random_recs:
             to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
             not_label = None
@@ -139,6 +140,13 @@ class MSDataset3(Dataset):
         else:
             to_rec = self.samples[idx].copy()
             not_to_rec = torch.Tensor([0])
+
+        # Always provide a positive/negative sample for reconstruction context
+        pos_to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
+        neg_label_for_rec = label
+        while neg_label_for_rec == label:
+            neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+        neg_to_rec = self.labels_data[neg_label_for_rec][np.random.randint(0, self.n_labels[neg_label_for_rec])].copy()
         if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
             while not_batch_label == batch or not_batch_label is None:
@@ -163,14 +171,16 @@ class MSDataset3(Dataset):
             x = self.transform(np.expand_dims(x, 0)).squeeze()
             to_rec = self.transform(np.expand_dims(to_rec, 0)).squeeze()
             not_to_rec = self.transform(np.expand_dims(not_to_rec, 0)).squeeze()
+            pos_to_rec = self.transform(np.expand_dims(pos_to_rec, 0)).squeeze()
+            neg_to_rec = self.transform(np.expand_dims(neg_to_rec, 0)).squeeze()
             pos_batch_sample = self.transform(np.expand_dims(pos_batch_sample, 0)).squeeze()
             neg_batch_sample = self.transform(np.expand_dims(neg_batch_sample, 0)).squeeze()
 
         if self.add_noise:
             if np.random.random() > 0.5:
                 x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
-            meta_pos_batch_sample, meta_neg_batch_sample, set
+        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+            pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set
 
 
 # This function is much faster than using pd.read_csv
@@ -413,17 +423,17 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
         classifier.eval()
         for i, batch in enumerate(loaders['valid']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             # to_rec = to_rec.to(device).float()
@@ -433,7 +443,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -614,17 +624,17 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
         classifier.eval()
         for i, batch in enumerate(loaders['valid']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             # to_rec = to_rec.to(device).float()
@@ -634,7 +644,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -830,7 +840,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -844,7 +854,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset4(data['inputs']['valid'], valid_names, 
@@ -992,17 +1002,17 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
         classifier.eval()
         for i, batch in enumerate(loaders['valid']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             enc, rec, _, kld = ae(input, domain, sampling=False)
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
-            valid_cats += [preds.detach().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
-            input, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample = batch
+            input, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, pos_batch_sample, neg_batch_sample, *_ = batch
             input[torch.isnan(input)] = 0
             input = input.to(device).float()
             # to_rec = to_rec.to(device).float()
@@ -1012,7 +1022,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
-            test_cats += [preds.detach().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -1169,10 +1179,10 @@ class MSCSV:
         if self.resize:
             try:
                 mat_data = transforms.Resize((self.new_size, self.new_size))(
-                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             except:
                 mat_data = transforms.Resize((self.new_size, self.new_size))(
-                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             mat_data = pd.DataFrame(mat_data)
 
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
@@ -1208,10 +1218,10 @@ class MS2CSV:
             if self.resize:
                 try:
                     mat_data = transforms.Resize((self.new_size, self.new_size))(
-                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
                 except:
                     mat_data = transforms.Resize((self.new_size, self.new_size))(
-                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
             if self.scaler == 'binarize':
                 mat_data[mat_data > 0] = 1
@@ -1344,7 +1354,7 @@ class MSCSV2:
 
         if self.resize:
             mat_data = transforms.Resize((299, 299))(
-                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().cpu().numpy()
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
         return mat_data.astype('float'), label, low, batch, fname
 
@@ -1427,6 +1437,7 @@ class MSDataset4(Dataset):
             label_name = None
             batch = None
             name = None
+        # Reconstruction targets
         if self.random_recs:
             to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
             not_label = None

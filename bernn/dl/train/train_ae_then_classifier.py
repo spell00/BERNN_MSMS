@@ -29,7 +29,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_data, get_bacteria
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_bacteria
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -323,9 +323,6 @@ class TrainAE:
             self.data, self.unique_labels, self.unique_batches = get_bacteria(self.path, args, seed=seed)
             self.pools = False
 
-        elif self.args.dataset == 'prostate':
-            self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
-
         elif self.args.dataset == 'mice':
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
         else:
@@ -364,7 +361,7 @@ class TrainAE:
                          dropout=dropout,
                          variational=self.args.variational, conditional=False,
                          zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                         use_gnn=self.args.use_gnn, device=self.args.device).to(self.args.device)
+                         device=self.args.device).to(self.args.device)
         ae.mapper.to(self.args.device)
         ae.dec.to(self.args.device)
         # if self.args.embeddings_meta > 0:
@@ -381,12 +378,13 @@ class TrainAE:
                                   dropout=dropout,
                                   variational=self.args.variational, conditional=False,
                                   zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                  use_gnn=self.args.use_gnn, device=self.args.device).to(self.args.device)
+                                  device=self.args.device).to(self.args.device)
         shap_ae.mapper.to(self.args.device)
         shap_ae.dec.to(self.args.device)
         loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
         loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
-        sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, args.dloss)
+        sceloss, celoss, mseloss, triplet_loss = self.get_losses(scale, smooth, margin, self.args.dloss)
+        self.mseloss = mseloss
 
         optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
         self.optimizer_c = get_optimizer(ae.classifier, nu * lr, wd, optimizer_type)
@@ -491,27 +489,27 @@ class TrainAE:
                     traces['rec_loss'] += [rec_loss.item()]
                     traces['dom_loss'] += [dloss.item()]
                     traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                                   zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                                       domain.detach().cpu().numpy())])]
+                                                   zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                                       domain.detach().int().cpu().numpy())])]
                     # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
                     lists['all']['domains'] += [np.array(
-                        [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-                    lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-                    # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-                    lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                        [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+                    lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+                    # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+                    lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
                     lists['all']['encoded_values'] += [
-                        enc.detach().cpu().numpy()]
+                        enc.detach().float().cpu().numpy()]
                     lists['all']['rec_values'] += [
-                        rec.detach().cpu().numpy()]
+                        rec.detach().float().cpu().numpy()]
                     lists['all']['names'] += [names]
-                    lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-                    lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+                    lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+                    lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
                     lists['all']['atn'] += [str(x) for x in
-                                            meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                            meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
                     lists['all']['inputs'] += [data['inputs']['all'].to_numpy()]
                     try:
                         lists['all']['labels'] += [np.array(
-                            [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                            [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
                     except:
                         pass
                     if warmup or self.args.train_after_warmup and not warmup_disc_b:
@@ -591,7 +589,7 @@ class TrainAE:
                     print('EARLY STOPPING.', epoch)
                 break
             lists, traces = get_empty_traces()
-            closs, _, _ = self.loop('train', ae, sceloss, loaders['train'], lists, traces, nu=nu)
+            closs, _, _ = self.loop2('train', ae, None, sceloss, loaders['train'], lists, traces, nu=nu)
 
             if torch.isnan(closs):
                 if self.log_mlflow:
@@ -959,39 +957,45 @@ class TrainAE:
                 if isinstance(to_rec, list):
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data['inputs']['all'].to_numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except:
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
+                                              zip(preds.detach().float().cpu().numpy().argmax(1),
+                                                  labels.detach().float().cpu().numpy())])]
             traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
                                                zip(preds.argsort(1), labels)])]
 
             traces[group]['closs'] += [classif_loss.item()]
             try:
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
             except:
                 traces[group]['mcc'] = []
                 traces[group]['mcc'] += [np.round(
-                    MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
                 ]
 
             if group in ['train'] and nu != 0:
@@ -1006,6 +1010,140 @@ class TrainAE:
                     pass
                 nn.utils.clip_grad_norm_(ae.classifier.parameters(), max_norm=1)
                 self.optimizer_c.step()
+
+        return classif_loss, lists, traces
+
+    def loop2(self, group, ae, scheduler, celoss, loader, lists, traces, nu=1, mapping=True):
+        """
+        Joint training/eval step combining classification and reconstruction losses.
+
+        Args:
+            group: 'train' | 'valid' | 'test'
+            ae: autoencoder model
+            scheduler: optional scheduler (unused here)
+            celoss: classification loss (CrossEntropyLoss)
+            loader: DataLoader
+            lists: accumulators dict
+            traces: metrics traces dict
+            nu: weight for classification loss
+            mapping: pass-through to AE forward
+
+        Returns:
+            classif_loss, lists, traces
+        """
+        sampling = True if (group in ['train', 'valid'] and nu != 0) else False
+        classif_loss = None
+
+        for i, batch in enumerate(loader):
+            # Zero grads for both optimizers if training
+            if group == 'train' and nu != 0:
+                if hasattr(self, 'optimizer_c') and self.optimizer_c is not None:
+                    self.optimizer_c.zero_grad()
+
+            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, \
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, \
+                meta_neg_batch_sample, set_name = batch
+
+            data = data.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            to_rec = to_rec.to(self.args.device).float()
+
+            # Concatenate meta to inputs if configured
+            if self.args.n_meta > 0:
+                data = torch.cat((data, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
+
+            not_to_rec = not_to_rec.to(self.args.device).float()
+
+            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+            rec = rec['mean']
+
+            # Classifier head
+            if self.args.embeddings_meta:
+                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
+            else:
+                preds = ae.classifier(enc)
+
+            domain_preds = ae.dann_discriminator(enc)
+
+            # One-hot targets (fallback if out of bounds)
+            try:
+                cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
+            except Exception:
+                cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
+                cats[:, 0] = 1
+
+            classif_loss = celoss(preds, cats)
+
+            # Handle possible list outputs
+            if not self.args.zinb:
+                if isinstance(rec, list):
+                    rec = rec[-1]
+                if isinstance(to_rec, list):
+                    to_rec = to_rec[-1]
+
+            # Reconstruction loss
+            if hasattr(self, 'mseloss') and self.mseloss is not None:
+                rec_loss = self.mseloss(rec, to_rec)
+            else:
+                # Fallback to L1 by default
+                rec_loss = nn.L1Loss()(rec, to_rec)
+
+            # Accumulate outputs
+            n = len(domain)
+            lists[group]['set'] += [np.array([group for _ in range(n)])]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
+            lists[group]['names'] += [names]
+            lists[group]['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data['inputs']['all'].to_numpy()]
+            try:
+                lists[group]['labels'] += [np.array(
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
+            except:
+                pass
+
+            traces[group]['acc'] += [np.mean([
+                0 if p != l else 1
+                for p, l in zip(preds.detach().float().cpu().numpy().argmax(1), labels.detach().float().cpu().numpy())
+            ])]
+            traces[group]['top3'] += [np.mean([
+                1 if lab.item() in pred.tolist()[::-1][:3] else 0
+                for pred, lab in zip(preds.argsort(1), labels)
+            ])]
+            traces[group]['closs'] += [classif_loss.item()]
+            try:
+                traces[group]['mcc'] += [np.round(
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+            except Exception:
+                if 'mcc' not in traces[group]:
+                    traces[group]['mcc'] = []
+                traces[group]['mcc'] += [np.round(
+                    MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)]
+
+            # Backprop when training (classifier only here)
+            if group == 'train' and nu != 0:
+                w = 1.0
+                total_loss = w * nu * classif_loss + rec_loss
+                try:
+                    total_loss.backward()
+                except Exception:
+                    pass
+                if hasattr(self, 'optimizer_c') and self.optimizer_c is not None:
+                    self.optimizer_c.step()
 
         return classif_loss, lists, traces
 
@@ -1186,7 +1324,6 @@ if __name__ == "__main__":
     parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')  # useless, TODO to remove
     parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')  # useless, TODO to remove
     parser.add_argument('--use_mapping', type=int, default=0, help="Use batch mapping for reconstruct")
-    parser.add_argument('--use_gnn', type=int, default=0, help="Use GNN layers")  # useless, TODO to remove
     parser.add_argument('--freeze_ae', type=int, default=0)
     parser.add_argument('--freeze_c', type=int, default=0)
     parser.add_argument('--bdisc', type=int, default=1)
@@ -1208,6 +1345,8 @@ if __name__ == "__main__":
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
     parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--n_move_test', type=int, default=0, help='Number of test samples to move to valid')
+    parser.add_argument('--n_move_valid', type=int, default=0, help='Number of valid samples to move to train')
 
     args = parser.parse_args()
 

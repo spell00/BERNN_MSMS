@@ -583,7 +583,7 @@ def get_data(path, args, seed=42):
 
             # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
             unique_labels = get_unique_labels(data['labels'][group])
-            data['cats'][group] = data['labels'][group]
+            data['cats'][group] = np.argwhere(data['labels'][group]==unique_labels)
 
             if args.pool:
                 pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]

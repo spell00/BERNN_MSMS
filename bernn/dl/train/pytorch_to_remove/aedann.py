@@ -86,10 +86,10 @@ class Classifier(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Classifier2(nn.Module):
@@ -122,10 +122,10 @@ class Classifier2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).detach().cpu().numpy()
+        return self.linear2(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.linear2(x).argmax(1).detach().cpu().numpy()
+        return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
 class Encoder(nn.Module):
@@ -417,14 +417,13 @@ class SHAPAutoEncoder2(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int,
                  n_meta: int, mapper: bool, variational: bool, layer1: int, layer2: int,
                  dropout: float, n_layers: int, zinb: bool = False, conditional: bool = True,
-                 add_noise: bool = False, tied_weights: int = 0, use_gnn: bool = False,
+                 add_noise: bool = False, tied_weights: int = 0,
                  device: str = 'cuda') -> None:
         super(SHAPAutoEncoder2, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -461,8 +460,6 @@ class SHAPAutoEncoder2(nn.Module):
         # rec = {}
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        # if self.use_gnn:
-        #     x = self.gnn1(x)
         enc = self.enc(x)
         if self.gaussian_sampling is not None:
             if sampling:
@@ -488,10 +485,10 @@ class SHAPAutoEncoder2(nn.Module):
                 nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -579,20 +576,18 @@ class SHAPAutoEncoder3(nn.Module):
         conditional (bool): Whether to use conditional decoding
         add_noise (bool): Whether to add noise during training
         tied_weights (int): Whether to tie encoder/decoder weights
-        use_gnn (bool): Whether to use graph neural network
         device (str): Device to use ('cuda' or 'cpu')
     """
 
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int, n_meta: int,
                  mapper: bool, variational: bool, layers: dict, dropout: float, n_layers: int,
                  zinb: bool = False, conditional: bool = True, add_noise: bool = False,
-                 tied_weights: int = 0, use_gnn: bool = False, device: str = 'cuda'):
+                 tied_weights: int = 0, device: str = 'cuda'):
         super(SHAPAutoEncoder3, self).__init__()
         self.n_emb = n_emb
         self.add_noise = add_noise
         self.n_meta = n_meta
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -699,7 +694,7 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Probability predictions
         """
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         """Get class predictions.
@@ -710,7 +705,7 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Class predictions
         """
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -803,14 +798,13 @@ class AutoEncoder2(nn.Module):
                  n_emb: int, mapper: bool, variational: bool, layer1: int, layer2: int,
                  dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, use_gnn: bool = False, device: str = 'cuda') -> None:
+                 update_grid: bool = False, device: str = 'cuda') -> None:
         """
         TODO MAKE DESCRIPTION
         """
         super(AutoEncoder2, self).__init__()
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -927,10 +921,10 @@ class AutoEncoder2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().cpu().numpy()
+        return self.classifier(x).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().cpu().numpy()
+        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None, 
@@ -1000,14 +994,13 @@ class AutoEncoder3(nn.Module):
                  n_emb: int, mapper: bool, variational: bool, layers: dict,
                  dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, use_gnn: bool = False, device: str = 'cuda') -> None:
+                 update_grid: bool = False, device: str = 'cuda') -> None:
         """
         TODO MAKE DESCRIPTION
         """
         super(AutoEncoder3, self).__init__()
         self.add_noise = add_noise
         self.device = device
-        self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.zinb = zinb
@@ -1126,11 +1119,11 @@ class AutoEncoder3(nn.Module):
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
         enc = self.enc(x)
-        return self.classifier(enc).detach().cpu().numpy()
+        return self.classifier(enc).detach().float().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         enc = self.enc(x)
-        return self.classifier(enc).argmax(1).detach().cpu().numpy()
+        return self.classifier(enc).argmax(1).detach().float().cpu().numpy()
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,

@@ -464,7 +464,11 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
     make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
     make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
     make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(explainer.expected_value[0], shap_values[0], misclassified, x_df.columns, group, run, 'DeepExplainer')
+    make_decision_deep(df=explainer.expected_value[0],
+                       values=shap_values[0],
+                       misclassified=misclassified,
+                       feature_names=x_df.columns,
+                       group=group, run=run, log_path=log_path, category='DeepExplainer', mlops=mlops)
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):
@@ -487,7 +491,7 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
 def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, log_path):
     unique_labels = np.unique(labels)
 
-    f = lambda x: model.to('cpu')(torch.from_numpy(x)).detach().cpu().numpy()
+    f = lambda x: model.to('cpu')(torch.from_numpy(x)).detach().float().cpu().numpy()
 
     # Convert my pandas dataframe to numpy
     data = x_df.to_numpy(dtype=np.float32)
@@ -536,7 +540,7 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
 
         # explainer = shap.DeepExplainer(ae, X_test)
         # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
-        # explanation.values = explanation.values.detach().cpu().numpy()
+        # explanation.values = explanation.values.detach().float().cpu().numpy()
         misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
                                                               np.concatenate(best_lists[group]['cats']).argmax(1))]
         log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
@@ -555,15 +559,46 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
 
 
 def log_neptune(run, traces):
-    if not np.isnan(traces['rec_loss']):
-        run["rec_loss"].log(traces['rec_loss'])
-    if not np.isnan(traces['dom_loss']):
-        run["dom_loss"].log(traces['dom_loss'])
-    if not np.isnan(traces['dom_acc']):
-        try:
-            run["dom_acc"].log(traces['dom_acc'])
-        except:
-            run["dom_acc"].log(traces['dom_acc'][0])
+    if 'rec_loss' in traces:
+        if isinstance(traces['rec_loss'], (list, np.ndarray)):
+            if len(traces['rec_loss']) > 0:
+                if not np.isnan(traces['rec_loss'][-1]):
+                    try:
+                        run["rec_loss"].log(traces['rec_loss'][-1])
+                    except Exception as e:
+                        print("log_neptune", e)
+                        print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+        else:
+            if not np.isnan(traces['rec_loss']):
+                try:
+                    run["rec_loss"].log(traces['rec_loss'][-1])
+                except Exception as e:
+                    print("log_neptune", e)
+                    print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+
+        if isinstance(traces['dom_loss'], (list, np.ndarray)):
+            if len(traces['dom_loss']) > 0:
+                if not np.isnan(traces['dom_loss'][-1]):
+                    run["dom_loss"].log(traces['dom_loss'])
+        else:
+            if not np.isnan(traces['dom_loss']):
+                run["dom_loss"].log(traces['dom_loss'])
+
+        if isinstance(traces['dom_acc'], (list, np.ndarray)):
+            if len(traces['dom_acc']) > 0:
+                if not np.isnan(traces['dom_acc'][-1]):
+                    try:
+                        run["dom_acc"].log(traces['dom_acc'][-1])
+                    except Exception as e:
+                        print("log_neptune", e)
+                        run["dom_acc"].log(traces['dom_acc'][0])
+        else:
+            if not np.isnan(traces['dom_acc']):
+                try:
+                    run["dom_acc"].log(traces['dom_acc'][-1])
+                except Exception as e:
+                    print("log_neptune", e)
+                    run["dom_acc"].log(traces['dom_acc'])
 
     # tf.summary.scalar('qc_aPCC', metrics['pool_metrics']['encoded']['all']['qc_aPCC'], step=1)
     # tf.summary.scalar('qc_aPCC_input', metrics['pool_metrics']['inputs']['all']['qc_aPCC'], step=1)
@@ -572,22 +607,23 @@ def log_neptune(run, traces):
     # tf.summary.scalar('qc_dist_input', metrics['pool_metrics']['inputs']['all']['qc_dist'], step=1)
     # tf.summary.scalar('qc_dist_rec', metrics['pool_metrics']['recs']['all']['qc_dist'], step=1)
 
-    for g in ['train', 'valid', 'test']:
-        run[f'{g}/loss'].log(traces[f'{g}_loss'])
-        run[f'{g}/acc'].log(traces[f'{g}_acc'])
-        run[f'{g}/top3'].log(traces[f'{g}_top3'])
-        run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
-    try:
-        run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
-        run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
-        run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
-        run['enc batch_entropy'].log(traces['enc batch_entropy']),
-        run['rec b_euclidean/tot_eucl'].log(traces['rec b_euclidean/tot_eucl']),
-        run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
-        run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
-        run['rec batch_entropy'].log(traces['rec batch_entropy']),
-    except:
-        pass
+    if 'train_loss' in traces:
+        for g in ['train', 'valid', 'test']:
+            run[f'{g}/loss'].log(traces[f'{g}_loss'])
+            run[f'{g}/acc'].log(traces[f'{g}_acc'])
+            run[f'{g}/top3'].log(traces[f'{g}_top3'])
+            run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
+    for rep in ['enc', 'rec']:
+        for g in ['all', 'train', 'valid', 'test']:
+            if 'enc b_euclidean/tot_eucl' in traces:
+                run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
+                run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
+                run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
+                run['enc batch_entropy'].log(traces['enc batch_entropy']),
+                run['rec b_euclidean/tot_eucl'].log(traces['rec b_euclidean/tot_eucl']),
+                run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
+                run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
+                run['rec batch_entropy'].log(traces['rec batch_entropy']),
 
 
 def log_mlflow(traces, step):

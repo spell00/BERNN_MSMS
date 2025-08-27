@@ -30,7 +30,7 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_prostate, get_mice, get_bacteria, get_cifar10
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_bacteria, get_cifar10
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
@@ -337,11 +337,10 @@ class TrainAE:
             self.columns = self.data['inputs']['train'].columns
             self.log_deep_only = True
 
-        elif self.args.dataset == 'prostate':
-            self.data, self.unique_labels, self.unique_batches = get_prostate(self.path, args, seed=seed)
-
         elif self.args.dataset == 'mice':
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
+        elif self.args.dataset == 'cifar10':
+            self.data, self.unique_labels, self.unique_batches = get_cifar10(self.path, args, seed=seed)
         else:
             exit('Wrong dataset name')
         # self.get_amide(self.path, seed=(1 + h) * 10)
@@ -386,7 +385,6 @@ class TrainAE:
                              dropout=dropout,
                              variational=self.args.variational, conditional=False,
                              zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                             use_gnn=0,  # TODO to remove
                              device=self.args.device).to(self.args.device)
             ae.mapper.to(self.args.device)
             ae.dec.to(self.args.device)
@@ -403,7 +401,6 @@ class TrainAE:
                                       dropout=dropout,
                                       variational=self.args.variational, conditional=False,
                                       zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                      use_gnn=0,  # TODO remove this
                                       device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
@@ -884,33 +881,33 @@ class TrainAE:
                 if isinstance(to_rec, list):
                     to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
-            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists[group]['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists[group]['classes'] += [labels.detach().cpu().numpy()]
-            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().cpu().numpy()]
+            lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists[group]['classes'] += [labels.detach().float().cpu().numpy()]
+            # lists[group]['encoded_values'] += [enc.view(enc.shape[0], -1).detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['cats'] += [cats.detach().cpu().numpy()]
-            lists[group]['gender'] += [data.detach().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [data.detach().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in data.detach().cpu().numpy()[:, -5:-2]]
-            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().cpu().numpy()]
-            lists[group]['encoded_values'] += [enc.detach().cpu().numpy()]
-            lists[group]['rec_values'] += [rec.detach().cpu().numpy()]
+            lists[group]['cats'] += [cats.detach().float().cpu().numpy()]
+            lists[group]['gender'] += [data.detach().float().cpu().numpy()[:, -1]]
+            lists[group]['age'] += [data.detach().float().cpu().numpy()[:, -2]]
+            lists[group]['atn'] += [str(x) for x in data.detach().float().cpu().numpy()[:, -5:-2]]
+            lists[group]['inputs'] += [data.view(rec.shape[0], -1).detach().float().cpu().numpy()]
+            lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
+            lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             try:
                 lists[group]['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except:
                 pass
             traces[group]['acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                              zip(preds.detach().cpu().numpy().argmax(1),
-                                                  labels.detach().cpu().numpy())])]
+                                              zip(preds.detach().float().cpu().numpy().argmax(1),
+                                                  labels.detach().float().cpu().numpy())])]
             traces[group]['top3'] += [np.mean([1 if label.item() in pred.tolist()[::-1][:3] else 0 for pred, label in
                                                zip(preds.argsort(1), labels)])]
 
             traces[group]['closs'] += [classif_loss.item()]
             traces[group]['mcc'] += [np.round(
-                MCC(labels.detach().cpu().numpy(), preds.detach().cpu().numpy().argmax(1)), 3)
+                MCC(labels.detach().float().cpu().numpy(), preds.detach().float().cpu().numpy().argmax(1)), 3)
             ]
             if group in ['train'] and nu != 0:
                 # w = np.mean([1/self.class_weights[x] for x in lists[group]['labels'][-1]])
@@ -1150,27 +1147,27 @@ class TrainAE:
             traces['rec_loss'] += [rec_loss.item()]
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
-                                           zip(domain_preds.detach().cpu().numpy().argmax(1),
-                                               domain.detach().cpu().numpy())])]
+                                           zip(domain_preds.detach().float().cpu().numpy().argmax(1),
+                                               domain.detach().int().cpu().numpy())])]
             # lists['all']['set'] += [np.array([group for _ in range(len(domain))])]
             lists['all']['domains'] += [np.array(
-                [self.unique_batches[d] for d in domain.detach().cpu().numpy()])]
-            lists['all']['domain_preds'] += [domain_preds.detach().cpu().numpy()]
-            # lists[group]['preds'] += [preds.detach().cpu().numpy()]
-            lists['all']['classes'] += [labels.detach().cpu().numpy()]
+                [self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
+            lists['all']['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
+            # lists[group]['preds'] += [preds.detach().float().cpu().numpy()]
+            lists['all']['classes'] += [labels.detach().float().cpu().numpy()]
             lists['all']['encoded_values'] += [
-                enc.detach().cpu().numpy()]
+                enc.detach().float().cpu().numpy()]
             lists['all']['rec_values'] += [
-                rec.detach().cpu().numpy()]
+                rec.detach().float().cpu().numpy()]
             lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().cpu().numpy()[:, -2]]
+            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
+            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
             lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().cpu().numpy()[:, -5:-2]]
+                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
-                    [self.unique_labels[x] for x in labels.detach().cpu().numpy()])]
+                    [self.unique_labels[x] for x in labels.detach().float().cpu().numpy()])]
             except:
                 pass
             (rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss).backward()

@@ -625,7 +625,7 @@ def get_data(path, args, seed=42):
             data['meta'][group] = data['inputs'][group].iloc[:, :2]
             data['orders'][group] = orders[pos]
             unique_labels = get_unique_labels(data['labels'][group])
-            data['cats'][group] = data['labels'][group]
+            data['cats'][group] = np.array([np.argwhere(x==unique_labels) for x in data['labels'][group]]).flatten()
 
     if not args.pool:
         for key in list(data.keys()):

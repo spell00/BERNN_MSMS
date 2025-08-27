@@ -46,14 +46,154 @@ def read_csv(path):
     data[np.isnan(data)] = 0
     return pd.DataFrame(data, index=labels, columns=list(row.keys())[1:])
 
+def read_csv(path):
+    with open(path, 'r', encoding='utf-8') as csv_file:
+        rows = csv.DictReader(csv_file)
+        data = []
+        labels = []
+        row = {}
+        for i, row in enumerate(rows):
+            labels += [list(row.values())[0]]
+            try:
+                data += [np.array(list(row.values())[1:], dtype=float)]
+            except Exception:
+                tmp = np.array(list(row.values())[1:])
+                tmp = np.array([x if x is not None else 0. for x in tmp])
+                tmp = np.array([float(x) if x != '' else 0. for x in tmp])
+                data += [tmp]
+
+    data = np.stack(data)
+    data[np.isnan(data)] = 0
+    return pd.DataFrame(data, index=labels, columns=list(row.keys())[1:])
+
 
 class MSDataset3(Dataset):
+    def __init__(self, data, meta, names=None, labels=None, batches=None, 
+                 sets=None, transform=None, crop_size=-1,
     def __init__(self, data, meta, names=None, labels=None, batches=None, 
                  sets=None, transform=None, crop_size=-1,
                  add_noise=False, random_recs=False, triplet_dloss=False):
         """
         
+        
         Args:
+            data: pd.DataFrame or np.ndarray, the input data
+            meta: pd.DataFrame or np.ndarray, metadata associated with the data
+            names: list or pd.Series, names of the samples
+            labels: list or np.ndarray, labels for each sample
+            batches: list or np.ndarray, batch identifiers for each sample
+            sets: list or np.ndarray, set identifiers for each sample
+            transform: torchvision.transforms, transformations to apply to the data
+            crop_size: int, size of the crop to apply to the data (default -1 means no cropping)
+            add_noise: bool, whether to add noise to the data
+            random_recs: bool, whether to use random reconstruction targets
+            triplet_dloss: str, type of triplet loss to use ('revTriplet', 'inverseTriplet', etc.)
+        """
+        self.samples = data.to_numpy()
+        self.meta = meta.to_numpy()
+        self.names = np.array(names)
+        self.labels = np.array(labels)
+        self.batches = np.array(batches)
+        self.sets = sets
+        self.transform = transform
+        self.crop_size = crop_size
+        self.add_noise = add_noise
+        self.random_recs = random_recs
+        self.triplet_dloss = triplet_dloss
+
+        self.unique_labels = np.unique(self.labels)
+        self.unique_batches = np.unique(self.batches)
+
+        # Encode labels/batches as ints if needed
+        # if isinstance(self.labels[0], str):
+        #     self.labels = np.array([np.argwhere(label == self.unique_labels).item() for label in self.labels])
+        # if isinstance(self.batches[0], str):
+        #     self.batches = np.array([np.argwhere(batch == self.unique_batches).item() for batch in self.batches])
+
+        # Group by label and batch for sampling
+        self.labels_data = {label: self.samples[self.labels == label] for label in np.unique(self.labels)}
+        self.labels_meta_data = {label: self.meta[self.labels == label] for label in np.unique(self.labels)}
+        self.batches_data = {batch: self.samples[self.batches == batch] for batch in np.unique(self.batches)}
+        self.batches_meta_data = {batch: self.meta[self.batches == batch] for batch in np.unique(self.batches)}
+
+        self.n_labels = {label: len(self.labels_data[label]) for label in self.labels_data}
+        self.n_batches = {batch: len(self.batches_data[batch]) for batch in self.batches_data}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        label = self.labels[idx]
+        batch = self.batches[idx]
+        set_name = self.sets[idx] if self.sets is not None and len(self.sets) > 0 else 'unknown'
+        try:
+            name = str(self.names[idx]) if self.names is not None else None
+        except Exception as e:
+            name = None
+        meta_to_rec = self.meta[idx]
+        x = self.samples[idx]
+
+        # Reconstruction targets
+        if self.random_recs:
+            to_rec = self.labels_data[label][np.randint(0, self.n_labels[label], (1,))].squeeze()
+            not_label = label
+            while not_label == label:
+                not_label = np.random.choice(list(self.labels_data.keys()))
+            not_to_rec = self.labels_data[not_label][np.randint(0, self.n_labels[not_label], (1,))].squeeze()
+        else:
+            to_rec = x
+            not_to_rec = np.zeros_like(to_rec)
+
+        # Always provide positive/negative samples for reconstruction context
+        pos_to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label], (1,))].squeeze()
+        neg_label_for_rec = label
+        while neg_label_for_rec == label:
+            neg_label_for_rec = np.random.choice(list(self.labels_data.keys()))
+        neg_to_rec = self.labels_data[neg_label_for_rec][np.random.randint(0, self.n_labels[neg_label_for_rec], (1,))].squeeze()
+
+        # Triplet sampling
+        if self.triplet_dloss in {'revTriplet', 'inverseTriplet'} and len(self.unique_batches) > 1:
+            not_batch = batch
+            while not_batch == batch:
+                not_batch = np.random.choice(list(self.batches_data.keys()))
+            pos = self.batches_data[batch][np.random.randint(0, self.n_batches[batch], (1,))].squeeze()
+            neg = self.batches_data[not_batch][np.random.randint(0, self.n_batches[not_batch], (1,))].squeeze()
+            meta_pos = self.batches_meta_data[batch][np.random.randint(0, self.n_batches[batch], (1,))].squeeze()
+            meta_neg = self.batches_meta_data[not_batch][np.random.randint(0, self.n_batches[not_batch], (1,))].squeeze()
+        else:
+            pos = neg = meta_pos = meta_neg = x
+
+        # Optional crop
+        if self.crop_size != -1:
+            max_start = x.shape[-1] - self.crop_size
+            start = torch.randint(0, max_start, (1,)).item()
+            x = x[start:start + self.crop_size]
+
+        # Optional transform
+        if self.transform:
+            x = self.transform(x)
+            to_rec = self.transform(to_rec)
+            not_to_rec = self.transform(not_to_rec)
+            pos_to_rec = self.transform(pos_to_rec)
+            neg_to_rec = self.transform(neg_to_rec)
+            pos = self.transform(pos)
+            neg = self.transform(neg)
+
+        if self.add_noise:
+            if np.random.rand() > 0.5:
+                x = x + np.random.randn(*x.shape) * 0.1
+            if np.random.rand() > 0.5:
+                x = x * (np.random.rand(*x.shape) < 0.9)
+
+        return (
+            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos, neg, meta_pos, meta_neg, set_name
+        )
+
+class MSDataset4(Dataset):
+    def __init__(self, data, meta, cultpures, names=None, labels=None,
+                 batches=None, sets=None, transform=None, crop_size=-1,
+                 add_noise=False, random_recs=False, triplet_dloss=False):
             data: pd.DataFrame or np.ndarray, the input data
             meta: pd.DataFrame or np.ndarray, metadata associated with the data
             names: list or pd.Series, names of the samples
@@ -176,6 +316,8 @@ class MSDataset4(Dataset):
             self.samples = data.to_numpy()
         except Exception as e:
             print(f"Error in samples: {e}")
+        except Exception as e:
+            print(f"Error in samples: {e}")
             self.samples = data
 
         self.add_noise = add_noise
@@ -190,6 +332,7 @@ class MSDataset4(Dataset):
         self.batches = batches
         self.unique_batches = np.unique(batches)
         self.cultpures = cultpures
+        self.cultpures = cultpures
         labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels}
         batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
         try:
@@ -197,6 +340,8 @@ class MSDataset4(Dataset):
             self.labels_meta_data = {label: meta.iloc[labels_inds[label]].to_numpy() for label in labels}
             self.batches_data = {batch: data.iloc[batches_inds[batch]].to_numpy() for batch in batches}
             self.batches_meta_data = {batch: meta.iloc[batches_inds[batch]].to_numpy() for batch in batches}
+        except Exception as e:
+            print(f"Error in labels_data: {e}")
         except Exception as e:
             print(f"Error in labels_data: {e}")
             self.labels_data = {label: data[labels_inds[label]] for label in labels}
@@ -220,7 +365,21 @@ class MSDataset4(Dataset):
         if self.labels is not None:
             label = self.labels[idx]
             label_name = self.labels_names[idx]
+            label_name = self.labels_names[idx]
             batch = self.batches[idx]
+            if len(self.sets) > 0:
+                set1 = self.sets[idx]
+            else:
+                set1 = 'unknown'
+            try:
+                if isinstance(self.names, pd.Series):
+                    name = self.names.iloc[idx]
+                else:
+                    name = str(self.names[idx])
+            except Exception as e:
+                print(f"Error in names: {e}")
+                name = str(self.names[idx])
+            if isinstance(self.meta, pd.DataFrame):
             if len(self.sets) > 0:
                 set1 = self.sets[idx]
             else:
@@ -237,8 +396,11 @@ class MSDataset4(Dataset):
                 meta_to_rec = self.meta.iloc[idx].to_numpy()
             else:
                 meta_to_rec = self.meta[idx]
+            else:
+                meta_to_rec = self.meta[idx]
         else:
             label = None
+            label_name = None
             label_name = None
             batch = None
             name = None
@@ -285,16 +447,28 @@ class MSDataset4(Dataset):
             max_start_crop = x.shape[1] - self.crop_size
             ran = np.random.randint(0, max_start_crop)
             x = torch.Tensor(x)[:, ran:ran + self.crop_size]
+            x = torch.Tensor(x)[:, ran:ran + self.crop_size]
         if self.transform:
             x = self.transform(np.expand_dims(x, 0)).squeeze()
             to_rec = self.transform(np.expand_dims(to_rec, 0)).squeeze()
             not_to_rec = self.transform(np.expand_dims(not_to_rec, 0)).squeeze()
             pos_to_rec = self.transform(np.expand_dims(pos_to_rec, 0)).squeeze()
             neg_to_rec = self.transform(np.expand_dims(neg_to_rec, 0)).squeeze()
+            pos_to_rec = self.transform(np.expand_dims(pos_to_rec, 0)).squeeze()
+            neg_to_rec = self.transform(np.expand_dims(neg_to_rec, 0)).squeeze()
             pos_batch_sample = self.transform(np.expand_dims(pos_batch_sample, 0)).squeeze()
             neg_batch_sample = self.transform(np.expand_dims(neg_batch_sample, 0)).squeeze()
 
         if self.add_noise:
+            if np.random.rand() > 0.5:
+                x = x + np.random.randn(*x.shape) * 0.1
+            if np.random.rand() > 0.5:
+                x = x * (np.random.rand(*x.shape) < 0.9)
+
+        return (
+            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set1
+        )
             if np.random.rand() > 0.5:
                 x = x + np.random.randn(*x.shape) * 0.1
             if np.random.rand() > 0.5:
@@ -346,6 +520,8 @@ def load_checkpoint(checkpoint_path,
     try:
         losses_recon = checkpoint_dict['losses_recon']
         kl_divs = checkpoint_dict['kl_divs']
+    except Exception as e:
+        print(f"Error in loading checkpoint: {e}")
     except Exception as e:
         print(f"Error in loading checkpoint: {e}")
         losses_recon = None
@@ -445,6 +621,11 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     #     # torchvision.transforms.Normalize(0.5, 0.5),
     # ])
     transform = None
+    # transform = torchvision.transforms.Compose([
+    #     torchvision.transforms.ToTensor(),
+    #     # torchvision.transforms.Normalize(0.5, 0.5),
+    # ])
+    transform = None
 
     train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'].to_numpy(),
                            data['cats']['train'], [x for x in data['batches']['train']],
@@ -486,6 +667,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                                           replacement=True),
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -494,12 +676,14 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                                          replacement=False),
                            batch_size=bs,
                            pin_memory=True,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
+                            pin_memory=True,
                             pin_memory=True,
                             drop_last=False),
 
@@ -508,6 +692,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                  shuffle=True,
                                  batch_size=bs,
                                  pin_memory=True,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test_pool': DataLoader(test_pool_set,
@@ -515,11 +700,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=True,
+                                pin_memory=True,
                                 drop_last=False),
         'valid_pool': DataLoader(valid_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
+                                 pin_memory=True,
                                  pin_memory=True,
                                  drop_last=False),
 
@@ -528,11 +715,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
+                             pin_memory=True,
                              pin_memory=True,
                              drop_last=True)
     }
@@ -554,6 +743,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
             valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -568,6 +758,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
             # else:
             #     preds = classifier(enc)
             test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -581,11 +772,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=True,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
+                                      pin_memory=True,
                                       pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
@@ -609,11 +802,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=True,
+                                pin_memory=True,
                                 drop_last=True)
     loaders['all_pool'] = DataLoader(all_set_pool,
                                      num_workers=0,
                                      shuffle=False,
                                      batch_size=bs,
+                                     pin_memory=True,
                                      pin_memory=True,
                                      drop_last=False)
 
@@ -687,6 +882,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                                           replacement=True),
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -695,12 +891,14 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                                          replacement=False),
                            batch_size=bs,
                            pin_memory=True,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
+                            pin_memory=True,
                             pin_memory=True,
                             drop_last=False),
 
@@ -709,6 +907,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                  shuffle=True,
                                  batch_size=bs,
                                  pin_memory=True,
+                                 pin_memory=True,
                                  drop_last=False),
 
         'test_pool': DataLoader(test_pool_set,
@@ -716,11 +915,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=True,
+                                pin_memory=True,
                                 drop_last=False),
         'valid_pool': DataLoader(valid_pool_set,
                                  num_workers=0,
                                  shuffle=True,
                                  batch_size=bs,
+                                 pin_memory=True,
                                  pin_memory=True,
                                  drop_last=False),
 
@@ -729,11 +930,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
+                             pin_memory=True,
                              pin_memory=True,
                              drop_last=True)
     }
@@ -755,6 +958,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
             valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -769,6 +973,7 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
             # else:
             #     preds = classifier(enc)
             test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -782,11 +987,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=True,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
+                                      pin_memory=True,
                                       pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
@@ -809,11 +1016,13 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=True,
+                                pin_memory=True,
                                 drop_last=True)
     loaders['all_pool'] = DataLoader(all_set_pool,
                                      num_workers=0,
                                      shuffle=False,
                                      batch_size=bs,
+                                     pin_memory=True,
                                      pin_memory=True,
                                      drop_last=False)
 
@@ -914,6 +1123,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                             #                               replacement=True),
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -922,12 +1132,14 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                            #                               replacement=False),
                            batch_size=bs,
                            pin_memory=True,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             # sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                             #                               replacement=False),
                             batch_size=bs,
+                            pin_memory=True,
                             pin_memory=True,
                             drop_last=False),
 
@@ -936,11 +1148,13 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
+                             pin_memory=True,
                              pin_memory=True,
                              drop_last=True)
     }
@@ -962,6 +1176,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
             valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -975,6 +1190,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
             domain_preds = ae.dann_discriminator(enc)
             # else:
             #     preds = classifier(enc)
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
@@ -993,11 +1209,13 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=True,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
+                                      pin_memory=True,
                                       pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
@@ -1020,6 +1238,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=True,
+                                pin_memory=True,
                                 drop_last=True)
 
     return loaders
@@ -1037,6 +1256,11 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
     Returns:
 
     """
+    # transform = torchvision.transforms.Compose([
+    #     torchvision.transforms.ToTensor(),
+    #     # torchvision.transforms.Normalize(0.5, 0.5),
+    # ])
+    transform = None
     # transform = torchvision.transforms.Compose([
     #     torchvision.transforms.ToTensor(),
     #     # torchvision.transforms.Normalize(0.5, 0.5),
@@ -1067,6 +1291,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                                           replacement=True),
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
 
         'test': DataLoader(test_set,
@@ -1075,12 +1300,14 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                                          replacement=False),
                            batch_size=bs,
                            pin_memory=True,
+                           pin_memory=True,
                            drop_last=False),
         'valid': DataLoader(valid_set,
                             num_workers=0,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
+                            pin_memory=True,
                             pin_memory=True,
                             drop_last=False),
 
@@ -1089,11 +1316,13 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=True,
+                            pin_memory=True,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
                              num_workers=0,
                              shuffle=True,
                              batch_size=bs,
+                             pin_memory=True,
                              pin_memory=True,
                              drop_last=True)
     }
@@ -1115,6 +1344,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             preds = ae.classifier(enc)
             domain_preds = ae.dann_discriminator(enc)
             valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            valid_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             valid_names += [names]
         for i, batch in enumerate(loaders['test']):
             # optimizer_ae.zero_grad()
@@ -1129,6 +1359,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
             # else:
             #     preds = classifier(enc)
             test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
+            test_cats += [preds.detach().float().cpu().numpy().argmax(1)]
             test_names += [names]
 
         valid_set2 = MSDataset3(data['inputs']['valid'], valid_names, np.concatenate(valid_cats),
@@ -1142,11 +1373,13 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=True,
+                                       pin_memory=True,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
                                       num_workers=0,
                                       shuffle=True,
                                       batch_size=bs,
+                                      pin_memory=True,
                                       pin_memory=True,
                                       drop_last=True)
         all_cats = np.concatenate(
@@ -1552,7 +1785,11 @@ class MSCSV:
                 torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             except Exception as e:
                 print(f"Error in {fname}: {e}")
+                torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
+            except Exception as e:
+                print(f"Error in {fname}: {e}")
                 mat_data = transforms.Resize((self.new_size, self.new_size))(
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
                 torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
@@ -1633,9 +1870,14 @@ class MS2CSV:
                     torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
                 except Exception as e:
                     print(f"Error in {fname}: {e}")
+                    torch.Tensor(mat_data.values).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
+                except Exception as e:
+                    print(f"Error in {fname}: {e}")
                     mat_data = transforms.Resize((self.new_size, self.new_size))(
                     torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
+                    torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
             mat_datas += [mat_data]
+
 
         mat_data = np.stack(mat_datas, 0)
         return mat_data.astype('float'), label, batch, plate, fname.split('.csv')[0]
@@ -1721,12 +1963,126 @@ class MSCSV2:
         if self.resize:
             mat_data = transforms.Resize((299, 299))(
                 torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
+                torch.Tensor(mat_data).unsqueeze(0)).squeeze().detach().float().cpu().numpy()
 
         return mat_data.astype('float'), label, low, batch, fname
 
     def __len__(self):
         return len(self.fnames)
 
+
+class MSDataset5(Dataset):
+    def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,
+                 remove_paddings=False, crop_size=-1, add_noise=False, random_recs=False, triplet_dloss=False,
+                 device='cuda'):
+        self.random_recs = random_recs
+        self.crop_size = crop_size
+        self.samples = data
+        self.sets = sets
+        self.add_noise = add_noise
+        self.names = names
+        self.meta = meta
+        self.transform = transform
+        self.crop_size = crop_size
+        self.labels = labels
+        self.unique_labels = list(set(labels))
+        self.batches = batches
+        self.unique_batches = np.unique(batches)
+        self.quantize = quantize
+        self.remove_paddings = remove_paddings
+        self.labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels}
+        self.batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
+        # try:
+        # self.labels_data = {label: data[labels_inds[label]] for label in labels}
+        # self.labels_meta_data = {label: meta[labels_inds[label]] for label in labels}
+        # self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
+        # self.batches_meta_data = {batch: meta[batches_inds[batch]] for batch in batches}
+        # except:
+        #     print(labels)
+        # self.n_labels = {label: len(self.labels_data[label]) for label in labels}
+        # self.n_batches = {batch: len(self.batches_data[batch]) for batch in batches}
+        self.triplet_dloss = triplet_dloss
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        meta_pos_batch_sample = None
+        meta_neg_batch_sample = None
+        meta_to_rec = None
+        if self.labels is not None:
+            label = self.labels[idx]
+            set = self.sets[idx]
+            batch = self.batches[idx]
+            try:
+                name = self.names[idx]
+            except:
+                name = str(self.names.iloc[idx])
+            try:
+                meta_to_rec = self.meta[idx]
+            except:
+                meta_to_rec = self.meta.iloc[idx].to_numpy()
+
+        else:
+            label = None
+            batch = None
+            name = None
+            set = None
+        if self.random_recs:
+            to_rec = self.samples[self.labels_inds[label][np.random.randint(0, len(self.labels_inds[label]))].copy()]
+            not_label = None
+            while not_label == label or not_label is None:
+                not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+            ind = np.random.randint(0, len(self.labels_inds[not_label]))
+            not_to_rec = self.samples[self.labels_inds[not_label][not_label][ind].copy()]
+            meta_not_to_rec = self.meta[self.labels_inds[not_label][not_label][ind].copy()]
+            meta_to_rec = self.meta[idx]
+        else:
+            to_rec = self.samples[idx]
+            not_to_rec = np.array([0])
+        if (self.triplet_dloss == 'revTriplet' or 'inverseTriplet' in self.triplet_dloss) and len(self.unique_batches) > 1:
+            not_batch_label = None
+            while not_batch_label == batch or not_batch_label is None:
+                not_batch_label = self.unique_batches[np.random.randint(0, len(self.unique_batches))]#.copy()
+            pos_ind = np.random.randint(0, len(self.batches_inds[batch]))
+            neg_ind = np.random.randint(0, len(self.batches_inds[not_batch_label]))
+            pos_batch_sample = self.samples[self.batches_inds[batch][pos_ind]].copy()
+            neg_batch_sample = self.samples[self.batches_inds[not_batch_label][neg_ind]].copy()
+            meta_pos_batch_sample = self.meta[self.batches_inds[batch][pos_ind]].copy()
+            meta_neg_batch_sample = self.meta[self.batches_inds[not_batch_label][neg_ind]].copy()
+        else:
+            pos_batch_sample = np.array([0])
+            neg_batch_sample = np.array([0])
+            meta_pos_batch_sample = np.array([0])
+            meta_neg_batch_sample = np.array([0])
+        x = self.samples[idx]
+        if self.crop_size != -1:
+            max_start_crop = x.shape[1] - self.crop_size
+            ran = np.random.randint(0, max_start_crop)
+            x = torch.Tensor(x)[:, ran:ran + self.crop_size]  # .to(device)
+        if self.transform:
+            if len(x.shape) > 2:
+                r = np.random.randint(0, len(x))
+                x = x[r]
+                to_rec = to_rec[r]
+            x = self.transform(x).squeeze()
+            to_rec = self.transform(to_rec).squeeze()
+            if len(not_to_rec.shape) > 1:
+                not_to_rec = self.transform(not_to_rec).squeeze()
+                if len(not_to_rec.shape) > 2:
+                    not_to_rec = not_to_rec[r]
+            if len(pos_batch_sample.shape) > 1:
+                if len(neg_batch_sample.shape) > 2:
+                    neg_batch_sample = neg_batch_sample[r]
+                    pos_batch_sample = pos_batch_sample[r]
+                pos_batch_sample = self.transform(pos_batch_sample).squeeze()
+                neg_batch_sample = self.transform(neg_batch_sample).squeeze()
+
+        if self.add_noise:
+            if np.random.random() > 0.5:
+                x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
+        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
+            meta_pos_batch_sample, meta_neg_batch_sample, set
 
 class MSDataset5(Dataset):
     def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,
