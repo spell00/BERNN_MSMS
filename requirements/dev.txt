@@ -1,0 +1,6 @@
+# Development and test dependencies
+-r stable.txt
+
+pytest
+pytest-cov
+codecov

@@ -81,7 +81,7 @@ class Classifier(nn.Module):
         prev_size = in_shape
         for h in hidden_sizes:
             layers.append(nn.Linear(prev_size, h))
-            layers.append(nn.BatchNorm1d(h))
+            layers.append(nn.LayerNorm(h))
             layers.append(nn.Dropout(dropout))
             layers.append(activation())
             prev_size = h
@@ -121,7 +121,7 @@ class Classifier2(nn.Module):
         self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, hidden),
-            nn.BatchNorm1d(hidden),
+            nn.LayerNorm(hidden),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
@@ -156,13 +156,58 @@ class Classifier2(nn.Module):
         return self.linear2(x).argmax(1).detach().float().cpu().numpy()
 
 
+class Classifier3(nn.Module):
+    def __init__(self, in_shape: int = 64, hidden: int = 64, out_shape: int = 9,
+                 use_softmax: bool = True, dropout: float = 0.1) -> None:
+        super(Classifier3, self).__init__()
+        self.use_softmax = use_softmax
+        self.linear1 = nn.Sequential(
+            nn.Linear(in_shape, hidden),
+            nn.LayerNorm(hidden),
+            nn.Dropout(dropout),
+            nn.ReLU(),
+        )
+        self.linear2 = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.LayerNorm(hidden),
+            nn.Dropout(dropout),
+            nn.ReLU(),
+        )
+        self.linear3 = nn.Sequential(
+            nn.Linear(hidden, out_shape),
+        )
+        self.random_init()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear1(x)
+        x = self.linear2(x)
+        x = self.linear3(x)
+        return x
+
+    def random_init(self, init_func: Any = nn.init.kaiming_uniform_) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                init_func(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+
+    def predict_proba(self, x: torch.Tensor) -> np.ndarray:
+        x = self.linear3(self.linear2(self.linear1(x)))
+        if self.use_softmax:
+            x = F.softmax(x, dim=1)
+        return x.detach().float().cpu().numpy()
+
+    def predict(self, x: torch.Tensor) -> np.ndarray:
+        return self.linear3(self.linear2(self.linear1(x))).argmax(1).detach().float().cpu().numpy()
+
+
 class Encoder(nn.Module):
     def __init__(self, in_shape: int, layer1: int, dropout: float) -> None:
         super(Encoder, self).__init__()
 
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, layer1),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             # nn.LeakyReLU(),
         )
         self.random_init()
@@ -188,13 +233,13 @@ class Encoder2(nn.Module):
         super(Encoder2, self).__init__()
         self.linear1 = nn.Sequential(
             nn.Linear(in_shape, layer1),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
             nn.Linear(layer1, layer2),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             # nn.Dropout(dropout),
             # nn.Sigmoid(),
             # nn.ReLU(),
@@ -243,7 +288,7 @@ class Encoder3(nn.Module):
         for layer_size in list(layers.values())[:-1]:
             self.layers.append(nn.Sequential(
                 nn.Linear(prev_size, layer_size),
-                nn.BatchNorm1d(layer_size),
+                nn.LayerNorm(layer_size),
                 nn.Dropout(dropout),
                 nn.LeakyReLU(),
             ))
@@ -252,7 +297,7 @@ class Encoder3(nn.Module):
         # Add the final layer without activation
         self.layers.append(nn.Sequential(
             nn.Linear(prev_size, layers[list(layers.keys())[-1]]),
-            # nn.BatchNorm1d(layers[list(layers.keys())[-1]]),
+            # nn.LayerNorm(layers[list(layers.keys())[-1]]),
         ))
 
         self.random_init()
@@ -288,14 +333,14 @@ class Decoder2(nn.Module):
         super(Decoder2, self).__init__()
         self.linear1 = nn.Sequential(
             nn.Linear(layer1 + n_batches, layer2),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
 
         self.linear2 = nn.Sequential(
             nn.Linear(layer2, in_shape),
-            # nn.BatchNorm1d(in_shape),
+            # nn.LayerNorm(in_shape),
             # nn.Sigmoid(),
         )
         self.n_batches = n_batches
@@ -384,14 +429,14 @@ class Decoder3(nn.Module):
             if n_batches > 0:
                 self.layers[layer_name] = nn.Sequential(
                     nn.Linear(prev_size + n_batches, layer_size),
-                    nn.BatchNorm1d(layer_size),
+                    nn.LayerNorm(layer_size),
                     nn.Dropout(dropout),
                     nn.ReLU(),
                 )
             else:
                 self.layers[layer_name] = nn.Sequential(
                     nn.Linear(prev_size, layer_size),
-                    nn.BatchNorm1d(layer_size),
+                    nn.LayerNorm(layer_size),
                     nn.Dropout(dropout),
                     nn.ReLU(),
                 )
@@ -400,7 +445,7 @@ class Decoder3(nn.Module):
         # Add the final layer without activation
         self.layers[list(layers.keys())[-1]] = nn.Sequential(
             nn.Linear(prev_size, in_shape),
-            # nn.BatchNorm1d(in_shape),
+            # nn.LayerNorm(in_shape),
         )
 
         # Create a new ModuleDict with reversed order
@@ -505,7 +550,7 @@ class SHAPAutoEncoder2(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
 
@@ -629,7 +674,7 @@ class SHAPAutoEncoder3(nn.Module):
             self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
 
         # Create mapper for batch effect removal
-        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], dropout=dropout, n_layers=1)
+        self.mapper = Classifier(n_batches + 1, layers[list(layers.keys())[-1]], dropout=dropout, n_layers=n_layers)
 
         # Create variational sampling if needed
         if variational:
@@ -712,7 +757,7 @@ class SHAPAutoEncoder3(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            if isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
+            if isinstance(m, (nn.BatchNorm2d, nn.LayerNorm)):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
 
@@ -935,7 +980,7 @@ class AutoEncoder2(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
             #     nn.init.constant_(m.weight, 0.975)
             #     nn.init.constant_(m.bias, 0.125)
 
@@ -1129,7 +1174,7 @@ class AutoEncoder3(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
             #     nn.init.constant_(m.weight, 0.975)
             #     nn.init.constant_(m.bias, 0.125)
 

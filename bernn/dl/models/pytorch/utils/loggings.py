@@ -458,17 +458,27 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
     explainer = shap.DeepExplainer(model.to(device), torch.Tensor(x_df.values).to(device))
 
     # Get the shap values from my test data
-    shap_values = explainer.shap_values(torch.Tensor(x_df.values).to(device))
+    try:
+        shap_values = explainer.shap_values(torch.Tensor(x_df.values).to(device))
+    except AssertionError as e:
+        print("[SHAP WARNING] SHAP explanations do not sum up to the model's output! This may be a rounding error or unsupported operator. Skipping SHAP logging for this trial.\n", str(e))
+        return
+    except Exception as e:
+        print("[SHAP ERROR] Unexpected error during SHAP value computation:", str(e))
+        return
 
     # Summary plot
-    make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
-    make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
-    make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
-    make_decision_deep(df=explainer.expected_value[0],
-                       values=shap_values[0],
-                       misclassified=misclassified,
-                       feature_names=x_df.columns,
-                       group=group, run=run, log_path=log_path, category='DeepExplainer', mlops=mlops)
+    try:
+        make_summary_plot(x_df, shap_values, group, run, log_path, 'DeepExplainer', mlops)
+        make_force_plot(explainer.expected_value[0], shap_values[0][0], x_df.columns, group, run, log_path, 'DeepExplainer', mlops)
+        make_deep_beeswarm(x_df, shap_values[0], group, run, log_path, 'DeepExplainer', mlops)
+        make_decision_deep(df=explainer.expected_value[0],
+                           values=shap_values[0],
+                           misclassified=misclassified,
+                           feature_names=x_df.columns,
+                           group=group, run=run, log_path=log_path, category='DeepExplainer', mlops=mlops)
+    except Exception as e:
+        print("[SHAP PLOT ERROR] Error during SHAP plotting:", str(e))
 
     for i, label in enumerate(unique_labels):
         if i == len(shap_values):
@@ -476,8 +486,8 @@ def log_deep_explainer(model, x_df, misclassified, labels, group, run, cats, log
         shap_values_df = pd.DataFrame(shap_values[i], columns=x_df.columns, index=x_df.index)
         try:
             shap_values_df.to_csv(f"{log_path}/{group}_deep_shap_{label}.csv")
-        except:
-            pass
+        except Exception as e:
+            print(f"[SHAP CSV ERROR] Could not save SHAP values for label {label}: {e}")
 
     try:
         make_dependence_plot(x_df, shap_values, 'APOE', group, run, log_path, 'DeepExplainer', mlops)
@@ -543,19 +553,25 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
         # explanation.values = explanation.values.detach().float().cpu().numpy()
         misclassified = [pred != label for pred, label in zip(np.concatenate(best_lists[group]['preds']).argmax(1),
                                                               np.concatenate(best_lists[group]['cats']).argmax(1))]
-        log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
-                           group, run, best_lists[group]['cats'], log_path, mlops, device
-                           )
+        try:
+            log_deep_explainer(ae, X_test_df, misclassified, np.concatenate(best_lists[group]['labels']),
+                               group, run, best_lists[group]['cats'], log_path, mlops, device)
+        except Exception as e:
+            print(f"[LISI/SHAP ERROR] Problem with log_deep_explainer: {e}")
         if not log_deep_only:
             # TODO Problem with not enough memory...
-            log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
-                          group, run, best_lists[group]['cats'], log_path, device
-                          )
-            log_kernel_explainer(ae, X_test_df,
-                                 misclassified,
-                                 np.concatenate(best_lists[group]['labels']),
-                                 group, run, best_lists[group]['cats'], log_path
-                                 )
+            try:
+                log_explainer(ae, X_test_df, np.concatenate(best_lists[group]['labels']),
+                              group, run, best_lists[group]['cats'], log_path, device)
+            except Exception as e:
+                print(f"[LISI/SHAP ERROR] Problem with log_explainer: {e}")
+            try:
+                log_kernel_explainer(ae, X_test_df,
+                                     misclassified,
+                                     np.concatenate(best_lists[group]['labels']),
+                                     group, run, best_lists[group]['cats'], log_path)
+            except Exception as e:
+                print(f"[LISI/SHAP ERROR] Problem with log_kernel_explainer: {e}")
 
 
 def log_neptune(run, traces):
@@ -626,6 +642,74 @@ def log_neptune(run, traces):
                 run['rec batch_entropy'].log(traces['rec batch_entropy']),
 
 
+def log_dvclive(live, traces):
+    import numpy as np
+    # rec_loss
+    if 'rec_loss' in traces:
+        if isinstance(traces['rec_loss'], (list, np.ndarray)):
+            if len(traces['rec_loss']) > 0:
+                if not np.isnan(traces['rec_loss'][-1]):
+                    try:
+                        live.log_metric("rec_loss", traces['rec_loss'][-1])
+                    except Exception as e:
+                        print("log_dvclive", e)
+                        print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+        else:
+            if not np.isnan(traces['rec_loss']):
+                try:
+                    live.log_metric("rec_loss", traces['rec_loss'])
+                except Exception as e:
+                    print("log_dvclive", e)
+                    print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
+
+        # dom_loss
+        if isinstance(traces['dom_loss'], (list, np.ndarray)):
+            if len(traces['dom_loss']) > 0:
+                if not np.isnan(traces['dom_loss'][-1]):
+                    live.log_metric("dom_loss", traces['dom_loss'][-1])
+        else:
+            if not np.isnan(traces['dom_loss']):
+                live.log_metric("dom_loss", traces['dom_loss'])
+
+        # dom_acc
+        if isinstance(traces['dom_acc'], (list, np.ndarray)):
+            if len(traces['dom_acc']) > 0:
+                if not np.isnan(traces['dom_acc'][-1]):
+                    try:
+                        live.log_metric("dom_acc", traces['dom_acc'][-1])
+                    except Exception as e:
+                        print("log_dvclive", e)
+                        live.log_metric("dom_acc", traces['dom_acc'][0])
+        else:
+            if not np.isnan(traces['dom_acc']):
+                try:
+                    live.log_metric("dom_acc", traces['dom_acc'])
+                except Exception as e:
+                    print("log_dvclive", e)
+                    live.log_metric("dom_acc", traces['dom_acc'])
+
+    # train/valid/test metrics
+    if 'train_loss' in traces:
+        for g in ['train', 'valid', 'test']:
+            live.log_metric(f'{g}/loss', traces.get(f'{g}_loss', np.nan))
+            live.log_metric(f'{g}/acc', traces.get(f'{g}_acc', np.nan))
+            live.log_metric(f'{g}/top3', traces.get(f'{g}_top3', np.nan))
+            live.log_metric(f'{g}/mcc', traces.get(f'{g}_mcc', np.nan))
+
+    # enc/rec metrics
+    for rep in ['enc', 'rec']:
+        for g in ['all', 'train', 'valid', 'test']:
+            if 'enc b_euclidean/tot_eucl' in traces:
+                live.log_metric('enc b_euclidean/tot_eucl', traces.get('enc b_euclidean/tot_eucl', np.nan))
+                live.log_metric('enc qc_dist/tot_eucl', traces.get('enc qc_dist/tot_eucl', np.nan))
+                live.log_metric('enc qc_aPCC', traces.get('enc qc_aPCC', np.nan))
+                live.log_metric('enc batch_entropy', traces.get('enc batch_entropy', np.nan))
+                live.log_metric('rec b_euclidean/tot_eucl', traces.get('rec b_euclidean/tot_eucl', np.nan))
+                live.log_metric('rec qc_dist/tot_eucl', traces.get('rec qc_dist/tot_eucl', np.nan))
+                live.log_metric('rec qc_aPCC', traces.get('rec qc_aPCC', np.nan))
+                live.log_metric('rec batch_entropy', traces.get('rec batch_entropy', np.nan))
+
+
 def log_mlflow(traces, step):
     if 'rec_loss' in traces:
         if not np.isnan(traces['rec_loss']):
@@ -693,23 +777,26 @@ def get_metrics(lists, values, model):
         if len(lists[group]['inputs']) > 0:
             try:
                 classes = np.array(np.concatenate(lists[group]['classes']), np.int)
-            except:
-                pass
+            except Exception as e:
+                print(f"[LISI ERROR] Problem with concatenating classes for group {group}: {e}")
 
             if group == 'all':
-                knns['enc']['domains'].fit(
-                    np.concatenate(lists[group]['encoded_values']),
-                    np.concatenate(lists[group]['domains'])
-                )
-                if len(lists[group]['rec_values']) > 0:
-                    knns['rec']['domains'].fit(
-                        np.concatenate(lists[group]['rec_values']),
+                try:
+                    knns['enc']['domains'].fit(
+                        np.concatenate(lists[group]['encoded_values']),
                         np.concatenate(lists[group]['domains'])
                     )
-                knns['inputs']['domains'].fit(
-                    np.concatenate(lists[group]['inputs']),
-                    np.concatenate(lists[group]['domains'])
-                )
+                    if len(lists[group]['rec_values']) > 0:
+                        knns['rec']['domains'].fit(
+                            np.concatenate(lists[group]['rec_values']),
+                            np.concatenate(lists[group]['domains'])
+                        )
+                    knns['inputs']['domains'].fit(
+                        np.concatenate(lists[group]['inputs']),
+                        np.concatenate(lists[group]['domains'])
+                    )
+                except Exception as e:
+                    print(f"[LISI ERROR] Problem with fitting KNNs for group {group}: {e}")
 
                 try:
                     knns['enc']['labels'].fit(
@@ -725,12 +812,15 @@ def get_metrics(lists, values, model):
                         np.concatenate(lists[group]['inputs']),
                         np.concatenate(lists[group]['classes'])
                     )
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[LISI ERROR] Problem with fitting KNNs for labels in group {group}: {e}")
 
-            lists[group]['domain_proba'] = knns['inputs']['domains'].predict_proba(
-                np.concatenate(lists[group]['inputs']),
-            )
+            try:
+                lists[group]['domain_proba'] = knns['inputs']['domains'].predict_proba(
+                    np.concatenate(lists[group]['inputs']),
+                )
+            except Exception as e:
+                print(f"[LISI ERROR] Problem with domain_proba prediction for group {group}: {e}")
             lists[group]['domain_preds'] = knns['inputs']['domains'].predict(
                 np.concatenate(lists[group]['inputs']),
             )

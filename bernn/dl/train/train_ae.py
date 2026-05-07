@@ -22,10 +22,9 @@ except ImportError as e:
 from sklearn.metrics import matthews_corrcoef as MCC
 from sklearn.neighbors import KNeighborsClassifier
 # from ...ml.train.params_gp import *
-from .pytorch.aedann import ReverseLayerF
-from .pytorch.aeekandann import KANAutoencoder2
-from .pytorch.ekan.src.efficient_kan.kan import KANLinear
-from .pytorch.utils.loggings import log_metrics, \
+from ..models.pytorch.aedann import ReverseLayerF
+from ..models.pytorch.ekan.src.efficient_kan.kan import KANLinear
+from ..models.pytorch.utils.loggings import log_metrics, \
     log_plots, log_neptune, log_shap, log_mlflow, log_dvclive
 from bernn.utils.utils import to_csv
 from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
@@ -80,7 +79,7 @@ def binarize_labels(data, controls):
 class TrainAE:
 
     def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True, pools=True):
+                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, log_dvclive=False, groupkfold=True, pools=True):
         """
 
         Args:
@@ -115,6 +114,7 @@ class TrainAE:
         self.log_metrics = log_metrics
         self.log_plots = log_plots
         self.log_inputs = log_inputs
+        self.log_dvclive = log_dvclive
         self.keep_models = keep_models
         self.fix_thres = fix_thres
         self.load_tb = load_tb
@@ -179,8 +179,8 @@ class TrainAE:
         self.gamma = params['gamma']
         self.beta = params['beta']
         self.zeta = params['zeta']
-        self.l1 = params['l1']
-        self.reg_entropy = params['reg_entropy']
+        self.l1 = params.get('l1', 0)
+        self.reg_entropy = params.get('reg_entropy', 0)
         self.args.scaler = params['scaler']
         self.args.warmup = params['warmup']
         self.args.disc_b_warmup = params['disc_b_warmup']
@@ -225,6 +225,8 @@ class TrainAE:
         if self.args.controls != '':
             self.data = binarize_labels(self.data, self.args.controls)
             self.unique_labels = np.unique(self.data['labels']['all'])
+
+        print('Data loaded')
 
         # Move n_move_test samples from test to train, and n_move_valid from valid to train, randomly
         n_move_test = getattr(self.args, 'n_move_test', 0)
@@ -548,7 +550,7 @@ class TrainAE:
         if self.log_mlflow:
             log_mlflow(best_values, h)
         if self.log_dvclive:
-            log_dvclive(best_values, h)
+            log_dvclive(self.live, best_values)
 
         # except BrokenPipeError:
         #     print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -1282,7 +1284,7 @@ class TrainAE:
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
             if self.log_dvclive:
-                log_dvclive(values, epoch)
+                log_dvclive(self.live, values)
         ae.train()
         ae.mapper.train()
 
@@ -1351,12 +1353,19 @@ class TrainAE:
         """
         neurons = 0
         for m in ae.modules():
-            if isinstance(m, KANAutoEncoder2):
-                for n in m.modules():
-                    for i in n.modules():
-                        if isinstance(i, KANLinear):
-                            i.count_active_neurons()
+            if isinstance(m, KANLinear):
+                try:
+                    n_active = int(m.count_active_neurons())
+                except Exception:
+                    n_active = 0
+                neurons += n_active
         return neurons
+
+
+def main():
+    import runpy
+
+    runpy.run_module("bernn.dl.train.train_ae", run_name="__main__")
 
 
 if __name__ == "__main__":

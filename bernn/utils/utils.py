@@ -27,7 +27,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -38,7 +38,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -54,7 +54,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -65,7 +65,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -81,7 +81,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -92,7 +92,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -106,7 +106,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -120,7 +120,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -134,7 +134,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -148,7 +148,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -162,7 +162,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -176,7 +176,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -190,7 +190,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -204,7 +204,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -218,7 +218,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -233,7 +233,7 @@ def scale_data(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
@@ -272,7 +272,7 @@ def scale_data_images(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
@@ -293,7 +293,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -304,7 +304,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -320,7 +320,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -331,7 +331,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -347,7 +347,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -358,7 +358,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -373,7 +373,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
@@ -454,57 +454,87 @@ def get_combinations(cm, acc_cutoff=0.6, prop_cutoff=0.8):
 
 
 def to_csv(lists, complete_log_path, columns):
-    encoded_data = {}
-    encoded_batches = {}
-    encoded_cats = {}
-    encoded_names = {}
-    for group in list(lists.keys()):
-        if len(lists[group]['encoded_values']) == 0 and group == 'all':
-            continue
-        if len(lists[group]['encoded_values']) > 0:
-            encoded_data[group] = pd.DataFrame(np.concatenate(lists[group]['encoded_values']),
-                                               # index=np.concatenate(lists[group]['labels']),
-                                               ).round(4)
-            encoded_data[group] = pd.concat((pd.DataFrame(np.concatenate(lists[group]['labels']), columns=['labels']), encoded_data[group]), 1)
-            encoded_data[group] = pd.concat((pd.DataFrame(np.concatenate(lists[group]['domains']), columns=['batches']), encoded_data[group]), 1)
-            encoded_data[group].index = np.concatenate(lists[group]['names'])
-            encoded_batches[group] = np.concatenate(lists[group]['domains'])
-            encoded_cats[group] = np.concatenate(lists[group]['classes'])
-            encoded_names[group] = np.concatenate(lists[group]['names'])
+    """
+    Build reconstructed (rec) and encoded (enc) CSVs from collected lists.
+    Robust against empty splits and avoids ambiguous pd.concat positional args.
+    """
+    encoded_data, encoded_batches, encoded_cats, encoded_names = {}, {}, {}, {}
+    rec_data_raw, rec_batches, rec_cats, rec_names = {}, {}, {}, {}
+
+    splits = list(lists.keys())
+
+    for group in splits:
+        # ----- Encoded -----
+        enc_vals = lists[group].get('encoded_values', [])
+        if enc_vals:
+            enc_array = np.concatenate(enc_vals)
+            labels_array = np.concatenate(lists[group]['labels'])
+            domains_array = np.concatenate(lists[group]['domains'])
+            names_array = np.concatenate(lists[group]['names'])
+            classes_array = np.concatenate(lists[group]['classes'])
+
+            enc_df = pd.DataFrame(enc_array).round(4)
+            frames = [
+                pd.DataFrame(labels_array, columns=['labels']),
+                pd.DataFrame(domains_array, columns=['batches']),
+                enc_df
+            ]
+            encoded_df = pd.concat(frames, axis=1)
+            encoded_df.index = names_array
+
+            encoded_data[group] = encoded_df
+            encoded_batches[group] = domains_array
+            encoded_cats[group] = classes_array
+            encoded_names[group] = names_array
         else:
-            encoded_data[group] = pd.DataFrame(
-                np.empty(shape=(0, encoded_data['train'].shape[1]), dtype='float')).round(4)
+            # create empty shell lazily (use train columns if available later)
+            encoded_data[group] = pd.DataFrame()
             encoded_batches[group] = np.array([])
             encoded_cats[group] = np.array([])
             encoded_names[group] = np.array([])
 
-    rec_data = {}
-    rec_batches = {}
-    rec_cats = {}
-    rec_names = {}
-    for group in list(lists.keys()):
-        if len(lists[group]['rec_values']) == 0 and group == 'all':
-            continue
-        if len(lists[group]['rec_values']) > 0:
-            rec_data[group] = pd.DataFrame(np.concatenate(lists[group]['rec_values']),
-                                           # index=np.concatenate(lists[group]['names']),
-                                           columns=list(columns)  # + ['gender', 'age']
-                                           ).round(4)
+        # ----- Reconstructions -----
+        rec_vals = lists[group].get('rec_values', [])
+        if rec_vals:
+            rec_array = np.concatenate(rec_vals)
+            labels_array = np.concatenate(lists[group]['labels'])
+            domains_array = np.concatenate(lists[group]['domains'])
+            names_array = np.concatenate(lists[group]['names'])
+            classes_array = np.concatenate(lists[group]['classes'])
 
-            rec_data[group] = pd.concat((pd.DataFrame(np.concatenate(lists[group]['labels']), columns=['labels']), rec_data[group]), 1)
-            rec_data[group] = pd.concat((pd.DataFrame(np.concatenate(lists[group]['domains']), columns=['batches']), rec_data[group]), 1)
-            rec_data[group].index = np.concatenate(lists[group]['names'])
-            rec_batches[group] = np.concatenate(lists[group]['domains'])
-            rec_cats[group] = np.concatenate(lists[group]['classes'])
-            rec_names[group] = np.concatenate(lists[group]['names'])
+            rec_df = pd.DataFrame(rec_array, columns=list(columns)).round(4)
+            frames = [
+                pd.DataFrame(labels_array, columns=['labels']),
+                pd.DataFrame(domains_array, columns=['batches']),
+                rec_df
+            ]
+            rec_full_df = pd.concat(frames, axis=1)
+            rec_full_df.index = names_array
+
+            rec_data_raw[group] = rec_full_df
+            rec_batches[group] = domains_array
+            rec_cats[group] = classes_array
+            rec_names[group] = names_array
         else:
-            rec_data[group] = pd.DataFrame(np.empty(shape=(0, rec_data['train'].shape[1]), dtype='float')).round(4)
+            rec_data_raw[group] = pd.DataFrame()
             rec_batches[group] = np.array([])
             rec_cats[group] = np.array([])
             rec_names[group] = np.array([])
 
+    # Fill empty frames with consistent columns if train exists
+    if 'train' in encoded_data and not encoded_data['train'].empty:
+        enc_cols = encoded_data['train'].columns
+        for g, df in encoded_data.items():
+            if df.empty:
+                encoded_data[g] = pd.DataFrame(columns=enc_cols)
+    if 'train' in rec_data_raw and not rec_data_raw['train'].empty:
+        rec_cols = rec_data_raw['train'].columns
+        for g, df in rec_data_raw.items():
+            if df.empty:
+                rec_data_raw[g] = pd.DataFrame(columns=rec_cols)
+
     rec_data = {
-        "inputs": rec_data,
+        "inputs": rec_data_raw,
         "cats": rec_cats,
         "batches": rec_batches,
     }
@@ -513,12 +543,24 @@ def to_csv(lists, complete_log_path, columns):
         "cats": encoded_cats,
         "batches": encoded_batches,
     }
+
+    # Write CSVs (combine splits if 'all' missing or empty)
+    def write_df(dct, name):
+        if 'all' in dct and not dct['all'].empty:
+            dct['all'].to_csv(f'{complete_log_path}/{name}.csv')
+        else:
+            combo = pd.concat(
+                [df for k, df in dct.items() if k in ['train', 'valid', 'test'] and not df.empty],
+                axis=0
+            )
+            combo.to_csv(f'{complete_log_path}/{name}.csv')
+
     try:
-        rec_data['inputs']['all'].to_csv(f'{complete_log_path}/recs.csv')
-        enc_data['inputs']['all'].to_csv(f'{complete_log_path}/encs.csv')
-    except:
-        pd.concat((rec_data['inputs']['train'], rec_data['inputs']['valid'], rec_data['inputs']['test'])).to_csv(
-            f'{complete_log_path}/recs.csv')
-        pd.concat((enc_data['inputs']['train'], enc_data['inputs']['valid'], enc_data['inputs']['test'])).to_csv(
-            f'{complete_log_path}/encs.csv')
+        write_df(rec_data['inputs'], 'recs')
+        write_df(enc_data['inputs'], 'encs')
+    except Exception as e:
+        print(f"[WARN] Failed writing recs/encs directly: {e}")
+        write_df(rec_data['inputs'], 'recs')
+        write_df(enc_data['inputs'], 'encs')
+
     return rec_data, enc_data

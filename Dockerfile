@@ -1,7 +1,7 @@
 FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04
 
 # Build argument for Python version
-ARG PYTHON_VERSION=3.10
+ARG PYTHON_VERSION=3.11
 
 # Set environment variables to prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,26 +33,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python version and upgrade pip
-RUN if [ "$PYTHON_VERSION" = "3.8" ]; then \
-        apt-get update && \
-        apt-get install -y --no-install-recommends python3.8 python3.8-dev python3.8-distutils && \
-        ln -sf /usr/bin/python3.8 /usr/bin/python && \
-        ln -sf /usr/bin/python3.8 /usr/bin/python3 && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-        python3.8 get-pip.py && \
-        python3.8 -m pip install --upgrade pip setuptools wheel && \
-        rm get-pip.py; \
-    elif [ "$PYTHON_VERSION" = "3.10" ]; then \
-        add-apt-repository ppa:deadsnakes/ppa && \
-        apt-get update && \
-        apt-get install -y --no-install-recommends python3.10 python3.10-dev python3.10-distutils && \
-        ln -sf /usr/bin/python3.10 /usr/bin/python && \
-        ln -sf /usr/bin/python3.10 /usr/bin/python3 && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-        python3.10 get-pip.py && \
-        python3.10 -m pip install --upgrade pip setuptools wheel && \
-        rm get-pip.py; \
-    elif [ "$PYTHON_VERSION" = "3.11" ]; then \
+RUN if [ "$PYTHON_VERSION" = "3.11" ]; then \
         add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update && \
         apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
@@ -87,7 +68,6 @@ ADD mlflow_eval_runs.py ./
 ADD bernn ./bernn/
 ADD tests ./tests/
 ADD test_python_versions.py ./
-# ADD resolve_python38_conflicts.py ./
 # ADD resolve_conflicts.py ./
 COPY requirements.txt ./requirements.txt
 COPY README.md ./README.md
@@ -104,19 +84,15 @@ RUN R -e "install.packages(c('cpp11', 'systemfonts', 'textshaping', 'ragg', 'pkg
 
 # Install Python packages with version-specific logic
 RUN echo "Installing for Python $PYTHON_VERSION" && \
-    # ...existing code...
-    if [ "$PYTHON_VERSION" = "3.8" ]; then \
-        echo "Installing Python 3.8 specific packages..." && \
-        pip install .[python38-full]; \
-    elif [ "$PYTHON_VERSION" = "3.10" ]; then \
-        echo "Installing Python 3.10 specific packages..." && \
-        pip install .[full]; \
-    elif [ "$PYTHON_VERSION" = "3.11" ]; then \
+    if [ "$PYTHON_VERSION" = "3.11" ]; then \
         echo "Installing Python 3.11 specific packages..." && \
         pip install .[python311-plus]; \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         echo "Installing Python 3.12 specific packages..." && \
         pip install .[py312-plus]; \
+    elif [ "$PYTHON_VERSION" = "3.13" ]; then \
+        echo "Installing Python 3.13 specific packages..." && \
+        pip install .[py313-plus]; \
     else \
         echo "Installing default packages..." && \
         pip install .; \

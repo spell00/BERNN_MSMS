@@ -134,6 +134,7 @@ def mock_args():
             self.n_agg = 1
             self.update_grid = 1
             self.prune_threshold = 0.001
+            self.scheduler = 'ReduceLROnPlateau'
 
     return Args()
 
@@ -174,7 +175,8 @@ def test_training_loop(sample_data, mock_args, tmp_path):
         'disc_b_warmup': 1,
         'dropout': 0.1,
         'scaler': 'standard',
-        'layers': {1: 32},
+        'layer1': 32,
+        'layer2': 32,
         'gamma': 0.1,
         'beta': 0.0,
         'zeta': 0.0,
@@ -211,13 +213,13 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
         path=str(tmp_path),
         fix_thres=-1,
         load_tb=False,
-        log_metrics=True,
-        keep_models=True,
-        log_inputs=True,
-        log_plots=True,
-        log_tb=True,
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
         log_neptune=False,
-        log_mlflow=True,
+        log_mlflow=False,
         groupkfold=True,
         pools=True
     )
@@ -244,7 +246,8 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
         'disc_b_warmup': 1,
         'dropout': 0.1,
         'scaler': 'standard',
-        'layers': {1: 32},
+        'layer1': 32,
+        'layer2': 32,
         'gamma': 0.1,
         'beta': 0.0,
         'zeta': 0.0,

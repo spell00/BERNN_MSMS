@@ -1,0 +1,2 @@
+# Python 3.11 dependency profile
+-r stable.txt

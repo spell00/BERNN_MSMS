@@ -11,14 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
         include:
-          - python-version: '3.8'
-            install-extra: 'python38-full'
-          - python-version: '3.9'
-            install-extra: 'py39'
-          - python-version: '3.10'
-            install-extra: 'py310-plus'
           - python-version: '3.11'
             install-extra: 'py311-plus'
           - python-version: '3.12'
@@ -89,21 +83,6 @@ jobs:
           docker run --rm bernn:py${{ matrix.python-version }} bash -c "
           echo 'Testing Python ${{ matrix.python-version }} specific installations...'
           case '${{ matrix.python-version }}' in
-            '3.8')
-              echo 'Testing Python 3.8 specific extras...'
-              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
-              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
-              ;;
-            '3.9')
-              echo 'Testing Python 3.9 extras...'
-              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
-              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
-              ;;
-            '3.10')
-              echo 'Testing Python 3.10 extras...'
-              pip list | grep -E '(tensorflow|torch|scikit-learn)' || echo 'Core ML packages check'
-              python -c 'import sys; print(f\"Python {sys.version_info.major}.{sys.version_info.minor} environment ready\")'
-              ;;
             '3.11')
               echo 'Testing Python 3.11 extras...'
               pip list | grep -E '(tensorflow|torch|scikit-learn|mlflow)' || echo 'Core ML packages check'
@@ -157,7 +136,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12', '3.13']
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

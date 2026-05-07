@@ -21,7 +21,7 @@ def log_standard_categorical(p):
 
 
 def log_bernoulli(x, p, eps=0.0):
-    """
+    r"""
     Compute log pdf of a Bernoulli distribution with success probability p, at values x.
         .. math:: \log p(x; p) = \log \mathcal{B}(x; p)
     Parameters

@@ -45,7 +45,10 @@ from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_po
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
-import neptune
+try:
+    import neptune
+except ImportError:
+    neptune = None
 import mlflow
 import warnings
 from datetime import datetime
@@ -55,12 +58,22 @@ matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
 NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
 NEPTUNE_PROJECT_NAME = "BERNN"
+DEPRECATED_NEPTUNE_MESSAGE = (
+    "[DEPRECATED] Neptune integration is disabled and no longer supported. "
+    "Please use MLflow logging instead (--log_mlflow=1)."
+)
 
 warnings.filterwarnings("ignore")
 
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
+
+
+def _disable_deprecated_neptune(log_neptune: bool) -> bool:
+    if bool(log_neptune):
+        print(DEPRECATED_NEPTUNE_MESSAGE)
+    return False
 
 
 def keep_top_features(data, path, args):
@@ -226,9 +239,30 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 # If conversion fails, keep original args and create default config
                 args = config
                 self.config = TrainingConfig()
+        log_neptune = _disable_deprecated_neptune(log_neptune)
+        self.log_neptune = log_neptune
 
-        super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
-                         log_neptune, log_mlflow, groupkfold, pools)
+        super().__init__(
+            args,
+            path,
+            fix_thres,
+            load_tb,
+            log_metrics,
+            keep_models,
+            log_inputs,
+            log_plots,
+            log_tb,
+            log_neptune,
+            log_mlflow,
+            False,
+            groupkfold,
+            pools,
+        )
+        self.log_neptune = log_neptune
+
+    def get_ordered_layers(self, params):
+        layer_params = {k: v for k, v in params.items() if k.startswith('layer')}
+        return dict(sorted(layer_params.items(), key=lambda x: int(x[0].replace('layer', ''))))
 
     def train(self, params):
         """
@@ -278,7 +312,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
         nu = params['nu']
         lr = params['lr']
         self.l1 = params['l1']
-        self.reg_entropy = params['reg_entropy']
+        self.reg_entropy = params.get('reg_entropy', 0)
 
         if params['prune_threshold'] > 0:
             dropout = 0
@@ -313,51 +347,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                                          berm='no',  # to remove
                                                          args=self.args)
         if self.log_neptune:
-            # Create a Neptune run object
-            run = neptune.init_run(
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-            )  # your credentials
-            # model = neptune.init_model_version(
-            #     model=NEPTUNE_MODEL_NAME,
-            #     project=NEPTUNE_PROJECT_NAME,
-            #     api_token=NEPTUNE_API_TOKEN,
-            #     # your credentials
-            # )
-            run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
-            run["metadata"].track_files(
-                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
-            )
-            # Track metadata and hyperparameters by assigning them to the run
-            run["inputs_type"] = self.args.csv_file.split(".csv")[0]
-            run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
-            # run["use_valid"] = self.args.use_valid
-            # run["use_test"] = self.args.use_test
-            run["tied_weights"] = self.args.tied_weights
-            run["random_recs"] = self.args.random_recs
-            run["train_after_warmup"] = self.args.train_after_warmup
-            # run["triplet_loss"] = self.args.triplet_loss
-            run["dloss"] = self.args.dloss
-            run["predict_tests"] = self.args.predict_tests
-            run["variational"] = self.args.variational
-            run["zinb"] = self.args.zinb
-            run["threshold"] = self.args.threshold
-            run["rec_loss_type"] = self.args.rec_loss
-            run["strategy"] = self.args.strategy
-            run["bad_batches"] = self.args.bad_batches
-            run["remove_zeros"] = self.args.remove_zeros
-            run["parameters"] = params
-            run["csv_file"] = self.args.csv_file
-            run["model_name"] = 'ae_then_classifier_holdout'
-            run["n_meta"] = self.args.n_meta
-            run["n_emb"] = self.args.embeddings_meta
-            run["groupkfold"] = self.args.groupkfold
-            run["embeddings_meta"] = self.args.embeddings_meta
-            run["foldername"] = self.foldername
-            run["use_mapping"] = self.args.use_mapping
-            run["dataset_name"] = self.args.dataset
-            run["n_agg"] = self.args.n_agg
-            run["kan"] = self.args.kan
+            print(DEPRECATED_NEPTUNE_MESSAGE)
+            self.log_neptune = False
+            model = None
+            run = None
         else:
             model = None
             run = None
@@ -461,21 +454,28 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
                                               None, None, bs=8)
 
-            ae = self.ae(data['inputs']['all'].shape[1],
-                         n_batches=self.n_batches,
-                         nb_classes=self.n_cats,
-                         mapper=self.args.use_mapping,
-                         layer1=layer1,
-                         layer2=layer2,
-                         n_layers=self.args.n_layers,
-                         n_meta=self.args.n_meta,
-                         n_emb=self.args.embeddings_meta,
-                         dropout=dropout,
-                         variational=self.args.variational, conditional=False,
-                         zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                         prune_threshold=params['prune_threshold'],
-                         device=self.args.device).to(self.args.device)
-            self.count_neurons(ae)
+            ae = self.ae(
+                data['inputs']['all'].shape[1],
+                is_sigmoid=self.args.use_sigmoid,
+                n_batches=self.n_batches,
+                nb_classes=self.n_cats,
+                mapper=self.args.use_mapping,
+                layers=self.get_ordered_layers(params),
+                n_layers=self.args.n_layers,
+                n_meta=self.args.n_meta,
+                n_emb=self.args.embeddings_meta,
+                dropout=dropout,
+                variational=self.args.variational,
+                conditional=False,
+                zinb=self.args.zinb,
+                add_noise=0,
+                tied_weights=self.args.tied_weights,
+                prune_threshold=params['prune_threshold'],
+                device=self.args.device,
+                update_grid=self.args.update_grid,
+            ).to(self.args.device)
+            if self.args.kan:
+                self.count_neurons(ae)
             ae.mapper.to(self.args.device)
             ae.dec.to(self.args.device)
             n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
@@ -483,19 +483,24 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
             # if self.args.embeddings_meta > 0:
             #     n_meta = self.n_meta
-            shap_ae = self.shap_ae(data['inputs']['all'].shape[1],
-                                   n_batches=self.n_batches,
-                                   nb_classes=self.n_cats,
-                                   mapper=self.args.use_mapping,
-                                   layer1=layer1,
-                                   layer2=layer2,
-                                   n_layers=self.args.n_layers,
-                                   n_meta=self.args.n_meta,
-                                   n_emb=self.args.embeddings_meta,
-                                   dropout=dropout,
-                                   variational=self.args.variational, conditional=False,
-                                   zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
-                                   device=self.args.device).to(self.args.device)
+            shap_ae = self.shap_ae(
+                data['inputs']['all'].shape[1],
+                is_sigmoid=self.args.use_sigmoid,
+                n_batches=self.n_batches,
+                nb_classes=self.n_cats,
+                mapper=self.args.use_mapping,
+                layers=self.get_ordered_layers(params),
+                n_layers=self.args.n_layers,
+                n_meta=self.args.n_meta,
+                n_emb=self.args.embeddings_meta,
+                dropout=dropout,
+                variational=self.args.variational,
+                conditional=False,
+                zinb=self.args.zinb,
+                add_noise=0,
+                tied_weights=self.args.tied_weights,
+                device=self.args.device,
+            ).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
             loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
@@ -714,7 +719,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         warmup_disc_b = False
 
                     # End-of-epoch update (skip during warmup if set)
-                    if args.update_grid and epoch >= args.update_grid_warmup:
+                    if self.args.update_grid and epoch >= self.args.update_grid_warmup:
                         updated = model.update_grids()
                         print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
@@ -736,7 +741,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     "mseloss": mseloss,
                     "celoss": sceloss,
                 }
-                closs, _, _ = self.loop_train('train', optimizer_c, ae, None, losses, loaders['train'], lists, traces, nu=nu)
+                closs = self.loop_train('train', optimizer_c, ae, None, losses, loaders['train'], lists, traces, nu=nu)
 
                 if torch.isnan(closs):
                     if self.log_mlflow:
@@ -898,6 +903,12 @@ class TrainAEThenClassifierHoldout(TrainAE):
         return self.best_mcc
 
 
+def main():
+    import runpy
+
+    runpy.run_module("bernn.dl.train.train_ae_then_classifier_holdout", run_name="__main__")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -944,8 +955,8 @@ if __name__ == "__main__":
     parser.add_argument('--log_plots', type=int, default=1, help='')
     parser.add_argument('--log_inputs', type=int, default=0, help='')
     parser.add_argument('--prune_network', type=float, default=1, help='')
-    parser.add_argument('--log_neptune', type=int, default=0, help='')
-    parser.add_argument('--log_mlflow', type=int, default=0, help='')
+    parser.add_argument('--log_neptune', type=int, default=0, help='Deprecated and ignored. Use --log_mlflow=1.')
+    parser.add_argument('--log_mlflow', type=int, default=1, help='Enable MLflow logging (recommended).')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
     parser.add_argument('--update_grid_warmup', type=int, default=5, help='Update grid after warmup?')

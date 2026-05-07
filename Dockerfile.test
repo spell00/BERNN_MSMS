@@ -1,10 +1,23 @@
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install R and system dependencies needed for rpy2
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        r-base \
+        r-base-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV R_HOME=/usr/lib/R
+ENV LD_LIBRARY_PATH=/usr/lib/R/lib
+
 # Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
+COPY requirements/ /app/requirements/
+RUN pip install --no-cache-dir -r /app/requirements/dev.txt && \
     pip install pytest pytest-cov codecov
 
 # Copy the package and tests
@@ -12,9 +25,10 @@ COPY bernn/ /app/bernn/
 COPY tests/ /app/tests/
 COPY setup.py .
 COPY pytest.ini .
+COPY README.md .
 
 # Install the package in development mode
-RUN pip install -e .
+RUN pip install --no-deps --no-input -e .
 
 # Run tests with coverage
 CMD ["pytest", "--cov=bernn", "--cov-report=term", "--cov-report=xml:coverage.xml", "tests/"] 

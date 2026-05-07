@@ -98,7 +98,7 @@ def get_alzheimer(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=1) < 0.2
                 matrix = matrix.loc[mask1]
             if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
+                matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
 
             def impute_zero(peak):
                 zero_mask = peak == 0
@@ -210,6 +210,9 @@ def get_alzheimer(path, args, seed=42):
                 np.array(['train' for _ in data['names']['train']]),
                 np.array(['valid' for _ in data['names']['valid']]),
                 np.array(['test' for _ in data['names']['test']]),
+                np.array(['train_pool' for _ in data['names']['train_pool']]),
+                np.array(['valid_pool' for _ in data['names']['valid_pool']]),
+                np.array(['test_pool' for _ in data['names']['test_pool']]),
             ), axis=0)
         elif group == 'all_pool':
             data['sets'][group] = np.concatenate((
@@ -221,6 +224,12 @@ def get_alzheimer(path, args, seed=42):
             data['sets'][group] = np.array([group.split('_')[0] for _ in data['names'][group]])
         else:
             data['sets'][group] = np.array([group for _ in data['names'][group]])
+
+    # Guard against silent set-length mismatches that later crash in DataLoader.
+    n_all_inputs = len(data['inputs']['all'])
+    n_all_sets = len(data['sets']['all'])
+    if n_all_inputs != n_all_sets:
+        raise ValueError(f"[get_amide] Inconsistent all lengths: len(inputs/all)={n_all_inputs}, len(sets/all)={n_all_sets}")
 
     unique_batches = np.unique(data['batches']['all'])
     for group in ['train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all', 'all_pool']:
@@ -314,7 +323,7 @@ def get_amide(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=0) < 0.2
                 matrix = matrix.loc[:, mask1]
             if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
+                matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
 
             def impute_zero(peak):
                 zero_mask = peak == 0
@@ -331,7 +340,7 @@ def get_amide(path, args, seed=42):
             pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
             pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
-            data['names'][group] = names
+            data['names'][group] = names.iloc[pos]
             data['labels'][group] = labels.to_numpy()[pos]
             data['batches'][group] = batches[pos]
             # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
@@ -379,6 +388,9 @@ def get_amide(path, args, seed=42):
                 np.array(['train' for _ in data['names']['train']]),
                 np.array(['valid' for _ in data['names']['valid']]),
                 np.array(['test' for _ in data['names']['test']]),
+                np.array(['train_pool' for _ in data['names']['train_pool']]),
+                np.array(['valid_pool' for _ in data['names']['valid_pool']]),
+                np.array(['test_pool' for _ in data['names']['test_pool']]),
             ), axis=0)
         elif group == 'all_pool':
             data['sets'][group] = np.concatenate((
@@ -390,6 +402,13 @@ def get_amide(path, args, seed=42):
             data['sets'][group] = np.array([group.split('_')[0] for _ in data['names'][group]])
         else:
             data['sets'][group] = np.array([group for _ in data['names'][group]])
+
+    n_all_inputs = len(data['inputs']['all'])
+    n_all_sets = len(data['sets']['all'])
+    if n_all_inputs != n_all_sets:
+        raise ValueError(
+            f"[get_amide] Inconsistent all lengths: len(inputs/all)={n_all_inputs}, len(sets/all)={n_all_sets}"
+        )
 
     unique_batches = np.unique(data['batches']['all'])
     for group in ['train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all', 'all_pool']:
@@ -616,7 +635,7 @@ def get_data(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=0) < 0.1
                 matrix = matrix.loc[:, mask1]
             if args.log1p:
-                matrix.iloc[:] = np.log1p(matrix.values)
+                matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
             pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
             data['names'][group] = names

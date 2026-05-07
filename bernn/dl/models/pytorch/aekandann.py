@@ -125,7 +125,7 @@ class Classifier2(nn.Module):
         super(Classifier2, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(in_shape, hidden, device=device),
-            nn.BatchNorm1d(hidden),
+            nn.LayerNorm(hidden),
             nn.Dropout(),
             nn.ReLU(),
         )
@@ -161,13 +161,13 @@ class Classifier3(nn.Module):
         super(Classifier3, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(in_shape, hidden, device=device),
-            nn.BatchNorm1d(hidden),
+            nn.LayerNorm(hidden),
             nn.Dropout(),
             nn.ReLU(),
         )
         self.linear2 = nn.Sequential(
             KANLayer(hidden, hidden, device=device),
-            nn.BatchNorm1d(hidden),
+            nn.LayerNorm(hidden),
             nn.Dropout(),
             nn.ReLU(),
         )
@@ -205,7 +205,7 @@ class Encoder(nn.Module):
 
         self.linear1 = nn.Sequential(
             KANLayer(in_shape, layer1, device=device),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             # nn.LeakyReLU(),
         )
         self.random_init()
@@ -231,13 +231,13 @@ class Encoder2(nn.Module):
         super(Encoder2, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(in_shape, layer1, device=device),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
             KANLayer(layer1, layer2, device=device),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             # nn.Dropout(dropout),
             # nn.Sigmoid(),
             # nn.ReLU(),
@@ -272,14 +272,14 @@ class Decoder2(nn.Module):
         super(Decoder2, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(layer1 + n_batches, layer2, device=device),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
 
         self.linear2 = nn.Sequential(
             KANLayer(layer2, in_shape, device=device),
-            # nn.BatchNorm1d(in_shape),
+            # nn.LayerNorm(in_shape),
             # nn.Sigmoid(),
         )
         self.n_batches = n_batches
@@ -394,7 +394,7 @@ class SHAPKANAutoEncoder2(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
 
@@ -555,7 +555,7 @@ class KANAutoEncoder2(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            # if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
             #     nn.init.constant_(m.weight, 0.975)
             #     nn.init.constant_(m.bias, 0.125)
 
@@ -629,19 +629,19 @@ class Encoder3(nn.Module):
         super(Encoder3, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(in_shape, layer1, device=device),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
             KANLayer(layer1, layer2, device=device),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear3 = nn.Sequential(
             KANLayer(layer2, layer3, device=device),
-            nn.BatchNorm1d(layer3),
+            nn.LayerNorm(layer3),
             # nn.Dropout(dropout),
             # nn.Sigmoid(),
         )
@@ -670,20 +670,20 @@ class Decoder3(nn.Module):
         super(Decoder3, self).__init__()
         self.linear1 = nn.Sequential(
             KANLayer(layer1 + n_batches, layer2, device=device),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
         self.linear2 = nn.Sequential(
             KANLayer(layer2 + n_batches, layer3, device=device),
-            nn.BatchNorm1d(layer3),
+            nn.LayerNorm(layer3),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
 
         self.linear3 = nn.Sequential(
             KANLayer(layer3, in_shape),
-            # nn.BatchNorm1d(in_shape),
+            # nn.LayerNorm(in_shape),
             # nn.Sigmoid(),
         )
         self.n_batches = n_batches
@@ -801,7 +801,7 @@ class SHAPKANAutoEncoder3(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
 
@@ -961,7 +961,7 @@ class KANAutoEncoder3(nn.Module):
                 init_func(m.weight.data)
                 if m.bias is not None:
                     m.bias.data.zero_()
-            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 0.975)
                 nn.init.constant_(m.bias, 0.125)
             if isinstance(m, KANLayer):

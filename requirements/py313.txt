@@ -1,0 +1,5 @@
+# Python 3.13 dependency profile
+-r base.txt
+
+# Keep estimator unconstrained on 3.13 when upstream resolver changes.
+tensorflow>=2.15.0

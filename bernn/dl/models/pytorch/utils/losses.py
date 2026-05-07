@@ -73,8 +73,8 @@ def get_losses(scale, smooth, margin, args):
         mseloss = nn.BCELoss()
 
     if args.dloss == 'revTriplet':
-        triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
+        triplet_loss = nn.TripletMarginLoss(max(float(margin), 1e-6), p=2, swap=True)
     else:
-        triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+        triplet_loss = nn.TripletMarginLoss(max(float(margin), 1e-6), p=2, swap=False)
 
     return sceloss, celoss, mseloss, triplet_loss

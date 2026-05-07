@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import traceback
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
 import uuid
@@ -25,7 +26,10 @@ from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, 
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 import mlflow
 import warnings
-import neptune
+try:
+    import neptune
+except ImportError:
+    neptune = None
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
 from typing import Union
@@ -34,7 +38,11 @@ from bernn.config.training_config import TrainingConfig
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
 NEPTUNE_API_TOKEN = os.environ.get("NEPTUNE_API_TOKEN")
-NEPTUNE_PROJECT_NAME = "BERNN"
+NEPTUNE_PROJECT_NAME = os.environ.get("NEPTUNE_PROJECT_NAME", os.environ.get("NEPTUNE_PROJECT", "BERNN"))
+DEPRECATED_NEPTUNE_MESSAGE = (
+    "[DEPRECATED] Neptune integration is disabled and no longer supported. "
+    "Please use MLflow logging instead (--log_mlflow=1)."
+)
 
 # import StratifiedGroupKFold
 # from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
@@ -50,6 +58,12 @@ warnings.filterwarnings("ignore")
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
+
+
+def _disable_deprecated_neptune(log_neptune: bool) -> bool:
+    if bool(log_neptune):
+        print(DEPRECATED_NEPTUNE_MESSAGE)
+    return False
 
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
@@ -97,6 +111,7 @@ class TrainAEClassifierHoldout(TrainAE):
                  log_tb: bool = False,
                  log_neptune: bool = False,
                  log_mlflow: bool = False,
+                 log_dvclive: bool = False,
                  groupkfold: bool = True,
                  pools: bool = False,
                  **kwargs):
@@ -119,14 +134,18 @@ class TrainAEClassifierHoldout(TrainAE):
             except Exception:
                 args = config
                 self.config = TrainingConfig()
+        log_neptune = _disable_deprecated_neptune(log_neptune)
         super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
-                         log_neptune, log_mlflow, groupkfold, pools)
+                         log_neptune, log_mlflow, log_dvclive, groupkfold, pools)
 
     # TODO SHOULD BE IN PARENT CLASS
     def launch_mlflow(self, params):
         mlflow.set_experiment(
             self.args.exp_id,
         )
+        active_run = mlflow.active_run()
+        if active_run is not None:
+            mlflow.end_run()
         try:
             mlflow.start_run()
         except Exception as e:
@@ -182,46 +201,9 @@ class TrainAEClassifierHoldout(TrainAE):
 
     # TODO SHOULD BE IN PARENT CLASS
     def launch_neptune(self, params):
-        # Create a Neptune run object
-        run = neptune.init_run(
-            project=NEPTUNE_PROJECT_NAME,
-            api_token=NEPTUNE_API_TOKEN,
-        )  # your credentials
-        run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
-        run["metadata"].track_files(
-            f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
-        )
-        # Track metadata and hyperparameters by assigning them to the run
-        run["inputs_type"] = self.args.csv_file.split(".csv")[0]
-        run["best_unique"] = self.args.best_features_file.split(".tsv")[0]
-        run["use_valid"] = self.args.use_valid
-        run["use_test"] = self.args.use_test
-        run["tied_weights"] = self.args.tied_weights
-        run["random_recs"] = self.args.random_recs
-        run["train_after_warmup"] = self.args.train_after_warmup
-        run["dloss"] = self.args.dloss
-        run["predict_tests"] = self.args.predict_tests
-        run["variational"] = self.args.variational
-        run["zinb"] = self.args.zinb
-        run["threshold"] = self.args.threshold
-        run["rec_loss_type"] = self.args.rec_loss
-        run["strategy"] = self.args.strategy
-        run["bad_batches"] = self.args.bad_batches
-        run["remove_zeros"] = self.args.remove_zeros
-        run["parameters"] = params
-        run["csv_file"] = self.args.csv_file
-        run["model_name"] = 'ae_classifier_holdout'
-        run["n_meta"] = self.args.n_meta
-        run["n_emb"] = self.args.embeddings_meta
-        run["groupkfold"] = self.args.groupkfold
-        run["embeddings_meta"] = self.args.embeddings_meta
-        run["foldername"] = self.foldername
-        run["use_mapping"] = self.args.use_mapping
-        run["dataset_name"] = self.args.dataset
-        run["n_agg"] = self.args.n_agg
-        run["kan"] = self.args.kan
-
-        return run
+        print(DEPRECATED_NEPTUNE_MESSAGE)
+        self.log_neptune = False
+        return None
 
     def get_ordered_layers(self, params):
         """Extract layer parameters from params dictionary, order them, and store in a new dictionary.
@@ -367,8 +349,11 @@ class TrainAEClassifierHoldout(TrainAE):
                     ).to(self.args.device)
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
-                    n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
-                    init_n_neurons = ae.count_n_neurons()
+                    n_neurons = {}
+                    init_n_neurons = {}
+                    if params['prune_threshold'] > 0:
+                        n_neurons = ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
+                        init_n_neurons = ae.count_n_neurons()
                     # if self.args.embeddings_meta > 0:
                     #     n_meta = self.n_meta
                     shap_ae = self.shap_ae(
@@ -431,7 +416,7 @@ class TrainAEClassifierHoldout(TrainAE):
                         if not warmup:
                             break
                         # End-of-epoch update (skip during warmup if set)
-                        if args.update_grid and epoch >= args.update_grid_warmup:
+                        if self.args.update_grid and epoch >= getattr(self.args, 'update_grid_warmup', 0):
                             # Safely call grid updates on the AE model if available (KAN only)
                             try:
                                 updated = ae.update_grids()
@@ -507,6 +492,20 @@ class TrainAEClassifierHoldout(TrainAE):
                         add_to_neptune(values, run)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
+                    if all(len(values[g]['closs']) > 0 and len(values[g]['acc']) > 0 and len(values[g]['mcc']) > 0
+                           for g in ['train', 'valid', 'test']):
+                        print(
+                            f"Epoch {epoch}: "
+                            f"train_closs={values['train']['closs'][-1]:.4f}, "
+                            f"valid_closs={values['valid']['closs'][-1]:.4f}, "
+                            f"test_closs={values['test']['closs'][-1]:.4f}, "
+                            f"train_acc={values['train']['acc'][-1]:.4f}, "
+                            f"valid_acc={values['valid']['acc'][-1]:.4f}, "
+                            f"test_acc={values['test']['acc'][-1]:.4f}, "
+                            f"valid_mcc={values['valid']['mcc'][-1]:.4f}, "
+                            f"test_mcc={values['test']['mcc'][-1]:.4f}, "
+                            f"early_stop_counter={early_stop_counter}/{self.args.early_stop}"
+                        )
                     if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
                             values['valid']['mcc']) > self.args.n_agg:
                         print(f"Best Classification Mcc Epoch {epoch}, "
@@ -664,6 +663,12 @@ class TrainAEClassifierHoldout(TrainAE):
             self.args.prune_threshold *= 10
 
 
+def main():
+    import runpy
+
+    runpy.run_module("bernn.dl.train.train_ae_classifier_holdout", run_name="__main__")
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -719,8 +724,9 @@ if __name__ == "__main__":
     parser.add_argument('--prune_neurites_threshold', type=float, default=0.0, help='')
     parser.add_argument('--prune_network', type=float, default=0, help='')
     parser.add_argument('--log_inputs', type=int, default=0, help='')
-    parser.add_argument('--log_neptune', type=int, default=1, help='')
-    parser.add_argument('--log_mlflow', type=int, default=0, help='')
+    parser.add_argument('--log_neptune', type=int, default=0, help='Deprecated and ignored. Use --log_mlflow=1.')
+    parser.add_argument('--log_mlflow', type=int, default=1, help='Enable MLflow logging (recommended).')
+    parser.add_argument('--log_dvclive', type=int, default=0, help='')
     parser.add_argument('--log_tb', type=int, default=0, help='')
     parser.add_argument('--keep_models', type=int, default=0, help='')
     parser.add_argument('--update_grid_warmup', type=int, default=0, help='If > 0, then update grid after this many epochs of warmup')
@@ -774,6 +780,7 @@ if __name__ == "__main__":
         log_tb=args.log_tb,
         log_neptune=args.log_neptune,
         log_mlflow=args.log_mlflow,
+        log_dvclive=args.log_dvclive,
         pools=False  # TODO redundancy with args.pool
     )
 
@@ -802,7 +809,6 @@ if __name__ == "__main__":
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
         {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
         {"name": "warmup", "type": "range", "bounds": [1, 1000]},
@@ -827,8 +833,6 @@ if __name__ == "__main__":
         # zeta = 0 because useless outside a zinb autoencoder
         parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
     if args.kan and args.use_l1:
-        # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
         parameters += [{"name": "reg_entropy", "type": "range", "bounds": [1e-5, 1e-2], "log_scale": True}]
     if args.use_l1:
         parameters += [{"name": "l1", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True}]
@@ -837,16 +841,17 @@ if __name__ == "__main__":
 
     # Wrapper for Ax
     def ax_eval(parameterization):
-        # try:
-        # Ax may give numpy types; ensure plain Python
-        param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
-                        for k, v in parameterization.items()}
-        loss = train.train(param_clean)
-        # Guarantee numeric
-        loss = float(loss)
-        # except Exception as e:
-        #     print(f"[AX WARN] Trial failed: {e}")
-        #     loss = 1e9
+        try:
+            # Ax may give numpy types; ensure plain Python
+            param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
+                           for k, v in parameterization.items()}
+            loss = train.train(param_clean)
+            # Guarantee numeric
+            loss = float(loss)
+        except Exception as e:
+            print(f"[AX WARN] Trial failed: {e}")
+            traceback.print_exc()
+            loss = 1e9
         # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
         # but explicit dict form is more robust; returning scalar is also fine. Choose one:
         return loss  # scalar OK because objective_name='closs'

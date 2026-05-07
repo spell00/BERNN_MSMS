@@ -29,18 +29,22 @@ from ax.service.managed_loop import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
-from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_bacteria
+from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data
 from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow
+    log_plots, log_neptune, log_shap, log_mlflow
+from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
-import neptune.new as neptune
+try:
+    import neptune.new as neptune
+except ImportError:
+    neptune = None
 import mlflow
 import warnings
 from datetime import datetime
@@ -135,6 +139,7 @@ class TrainAE:
             best_closs: The best classification loss on the valid set
 
         """
+        args = self.args
         start_time = datetime.now()
         # Fixing the hyperparameters that are not optimized
         if args.dloss not in ['revTriplet', 'revDANN', 'DANN',
@@ -177,7 +182,7 @@ class TrainAE:
 
         self.args.scaler = scale
         self.args.warmup = params['warmup']
-        self.args.ncols = params['ncols']
+        self.args.ncols = params.get('ncols', -1)
         self.args.n_features = -1
         # self.args.disc_b_warmup = params['disc_b_warmup']
 
@@ -319,14 +324,11 @@ class TrainAE:
             self.data, self.unique_labels, self.unique_batches = get_amide(self.path, args, seed=seed)
             self.pools = True
 
-        elif self.args.dataset == 'bacteria':
-            self.data, self.unique_labels, self.unique_batches = get_bacteria(self.path, args, seed=seed)
-            self.pools = False
-
         elif self.args.dataset == 'mice':
             self.data, self.unique_labels, self.unique_batches = get_mice(self.path, args, seed=seed)
         else:
-            exit('Wrong dataset name')
+            self.data, self.unique_labels, self.unique_batches = get_data(self.path, args, seed=seed)
+            self.pools = self.args.pool
         # self.get_amide(self.path, seed=(1 + h) * 10)
         # print(combinations)
         self.columns = self.data['inputs']['all'].columns
@@ -1300,6 +1302,10 @@ class TrainAE:
             traces[group]['mcc'] = MCC(preds, classes)
 
         return traces
+
+
+# Alias for import by name
+TrainAEThenClassifier = TrainAE
 
 
 if __name__ == "__main__":

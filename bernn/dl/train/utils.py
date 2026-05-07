@@ -88,7 +88,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -99,7 +99,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -115,7 +115,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -126,7 +126,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -142,7 +142,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -153,7 +153,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -167,7 +167,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -181,7 +181,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -195,7 +195,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -209,7 +209,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -223,7 +223,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -237,7 +237,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -251,7 +251,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -265,7 +265,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -279,7 +279,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
-                        data[data_type][group] = scaler.transform(data[data_type][group].to_numpy())
+                        data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
                     data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -294,7 +294,7 @@ def scale_data(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
@@ -333,7 +333,7 @@ def scale_data_images(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)
@@ -354,7 +354,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -365,7 +365,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -381,7 +381,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -392,7 +392,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -408,7 +408,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
-                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask].to_numpy())
+                        data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
             # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
@@ -419,7 +419,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group].to_numpy())
+                    data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
                 data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
@@ -434,7 +434,7 @@ def scale_data_per_batch(scale, data, device='cpu'):
     #         columns = data['inputs'][group].columns
     #         indices = data['inputs'][group].index
     #         if data['inputs'][group].shape[0] > 0:
-    #             data['inputs'][group] = scaler.transform(data['inputs'][group].to_numpy())
+    #             data['inputs'][group] = scaler.transform(data['inputs'][group])
     #         else:
     #             data['inputs'][group] = data['inputs'][group]
     #         data['inputs'][group] = pd.DataFrame(data['inputs'][group], columns=columns, index=indices)

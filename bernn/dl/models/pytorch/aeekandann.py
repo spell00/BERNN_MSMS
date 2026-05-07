@@ -132,7 +132,7 @@ class Classifier(KANGridMixin, nn.Module):
         for h in hidden_sizes:
             layers += [
                 KANLinear(prev, h),
-                # nn.BatchNorm1d(h),
+                # nn.LayerNorm(h),
                 nn.Dropout(dropout),
                 # activation(),
             ]
@@ -180,7 +180,7 @@ class Classifier2(KANGridMixin, nn.Module):
         self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
             KANLinear(in_shape, hidden),
-            # nn.BatchNorm1d(hidden),
+            # nn.LayerNorm(hidden),
             nn.Dropout(dropout),
             # nn.ReLU(),
         )
@@ -219,13 +219,13 @@ class Encoder2(KANGridMixin, nn.Module):
         super().__init__()
         self.linear1 = nn.Sequential(
             KANLinear(in_shape, layer1),
-            nn.BatchNorm1d(layer1),
+            nn.LayerNorm(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
             KANLinear(layer1, layer2),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
         )
         self._random_init()
 
@@ -255,7 +255,7 @@ class Encoder3(KANGridMixin, nn.Module):
         for size in sizes[:-1]:
             self.blocks.append(nn.Sequential(
                 KANLinear(prev, size),
-                # nn.BatchNorm1d(size),
+                # nn.LayerNorm(size),
                 nn.Dropout(dropout),
                 #nn.LeakyReLU(),
             ))
@@ -288,7 +288,7 @@ class Decoder2(KANGridMixin, nn.Module):
         self.n_batches = n_batches
         self.linear1 = nn.Sequential(
             KANLinear(layer1 + n_batches, layer2),
-            nn.BatchNorm1d(layer2),
+            nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
@@ -326,7 +326,7 @@ class Decoder3(KANGridMixin, nn.Module):
         for size in rev_sizes[1:]:
             self.blocks.append(nn.Sequential(
                 KANLinear(prev + (n_batches if n_batches > 0 else 0), size),
-                nn.BatchNorm1d(size),
+                nn.LayerNorm(size),
                 nn.Dropout(dropout),
                 nn.ReLU(),
             ))
@@ -905,4 +905,7 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
                 total += module.out_features
         return {"total": total, "layers": layer_counts}
 
-# Preserve legacy alias if earlier code expects KANAutoEncoder3 name
+# Backward-compatible aliases for historical naming variants.
+# Some environments import KANAutoencoder3 (lowercase "e"), others KANAutoEncoder3.
+KANAutoencoder3 = KANAutoEncoder3
+SHAPKANAutoencoder3 = SHAPKANAutoEncoder3

@@ -344,6 +344,7 @@ class TrainAE:
         else:
             exit('Wrong dataset name')
         # self.get_amide(self.path, seed=(1 + h) * 10)
+        print('Data loaded')
         self.make_samples_weights()
         # event_acc is used to verify if the hparams have already been tested. If they were,
         # the best classification loss is retrieved and we go to the next trial
@@ -435,6 +436,7 @@ class TrainAE:
                     optimizer_b, values, loggers, loaders, run, self.args.use_mapping)
 
             for epoch in range(0, self.args.n_epochs):
+                print(f'Epoch {epoch}')
                 if early_stop_counter >= self.args.early_stop:
                     if self.verbose > 0:
                         print('EARLY STOPPING.', epoch)
