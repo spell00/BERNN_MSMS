@@ -21,7 +21,7 @@ is_python313_or_later = python_version >= (3, 13)
 if is_python313_or_later:
     # For Python 3.13+ - use newer versions and more flexible constraints
     minimal_requirements = [
-        "scikit-learn>=1.3.0",  # Python 3.13 compatible
+        "scikit-learn>=1.6.0",  # Force newer scikit-learn on Python 3.13+
         "pandas>=2.2.0",  # Python 3.13 compatible
         "scikit-optimize>=0.9.0",
         "matplotlib>=3.7.0",  # Python 3.13 compatible
@@ -52,7 +52,7 @@ if is_python313_or_later:
 elif is_python312_or_later:
     # For Python 3.12+ - use newer versions that support Python 3.12
     minimal_requirements = [
-        "scikit-learn>=1.3.0",  # Python 3.12 compatible
+        "scikit-learn>=1.6.0",  # Force newer scikit-learn on Python 3.12+
         "pandas>=2.2.0",  # Python 3.12 compatible
         "scikit-optimize>=0.9.0",
         "matplotlib>=3.7.0",  # Python 3.12 compatible
@@ -83,7 +83,7 @@ elif is_python312_or_later:
 else:
     # For Python 3.11 - use compatible versions
     minimal_requirements = [
-        "scikit-learn>=1.2.0,<1.5.0",  # Keep compatible with skops/mlflow stack
+        "scikit-learn>=1.6.0",  # Force newer scikit-learn on Python 3.11+
         "pandas>=1.5.3,<3.0.0",  # Align with stable requirements profile
         "scikit-optimize>=0.9.0",
         "matplotlib>=3.6.3",
@@ -289,7 +289,7 @@ python313_ml_minimal_requirements = [
     "torchvision>=0.16.0", 
     "torch-geometric",
     # Skip TensorFlow initially until stable release
-    "scikit-learn>=1.3.0",
+    "scikit-learn>=1.6.0",
     "typing-extensions>=4.9.0",
     "numpy>=1.24,<2.3",
 ]
@@ -300,7 +300,7 @@ python313_ml_stable_requirements = [
     "torchvision>=0.16.0", 
     "torch-geometric",
     "tensorflow>=2.15.0",  # Use latest stable instead of RC
-    "scikit-learn>=1.3.0",
+    "scikit-learn>=1.6.0",
     "typing-extensions>=4.9.0",
     "numpy>=1.24,<2.3",
     # Let TensorFlow manage its own dependencies
@@ -313,7 +313,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.2.18',
+    version='0.3.4',
     packages=find_packages(),
     url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -360,7 +360,7 @@ setup(
             "torch>=2.1.0",
             "torchvision>=0.16.0", 
             "torch-geometric",
-            "scikit-learn>=1.3.0",
+            "scikit-learn>=1.6.0",
             "pandas>=2.2.0",
             "matplotlib>=3.7.0",
             "seaborn>=0.12.2",

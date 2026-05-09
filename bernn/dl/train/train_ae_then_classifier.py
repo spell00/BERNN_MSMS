@@ -34,17 +34,13 @@ from bernn.dl.models.pytorch.aedann import ReverseLayerF
 from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
 from bernn.dl.models.pytorch.aedann import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    log_plots, log_neptune, log_shap, log_mlflow
+    log_plots, log_shap, log_mlflow
 from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data, to_csv
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
+    log_traces, get_best_values, add_to_logger, add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
-try:
-    import neptune.new as neptune
-except ImportError:
-    neptune = None
 import mlflow
 import warnings
 from datetime import datetime
@@ -139,6 +135,8 @@ class TrainAE:
             best_closs: The best classification loss on the valid set
 
         """
+        # Ensure compatibility with parameter sets that include 'prune_threshold'
+        params.setdefault('prune_threshold', 0)
         args = self.args
         start_time = datetime.now()
         # Fixing the hyperparameters that are not optimized
@@ -209,53 +207,10 @@ class TrainAE:
                                                          berm='no', # to remove
                                                          args=self.args)
         if self.log_neptune:
-            # Create a Neptune run object
-            run = neptune.init_run(
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-            )  # your credentials
-            model = neptune.init_model_version(
-                model=NEPTUNE_MODEL_NAME,
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-                # your credentials
-            )
-            run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
-            run["metadata"].track_files(
-                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
-            )
-            # Track metadata and hyperparameters by assigning them to the run
-            model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
-            model["best_unique"] = run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            model["use_valid"] = run["use_valid"] = args.use_valid
-            model["use_test"] = run["use_test"] = args.use_test
-            model["tied_weights"] = run["tied_weights"] = args.tied_weights
-            model["random_recs"] = run["random_recs"] = args.random_recs
-            model["train_after_warmup"] = run["train_after_warmup"] = args.train_after_warmup
-            model["triplet_loss"] = run["triplet_loss"] = args.triplet_loss
-            model["dloss"] = run["dloss"] = args.dloss
-            model["predict_tests"] = run["predict_tests"] = args.predict_tests
-            model["variational"] = run["variational"] = args.variational
-            model["zinb"] = run["zinb"] = args.zinb
-            model["threshold"] = run["threshold"] = args.threshold
-            model["rec_loss_type"] = run["rec_loss_type"] = args.rec_loss
-            model["strategy"] = run["strategy"] = args.strategy
-            model["bad_batches"] = run["bad_batches"] = args.bad_batches
-            model["remove_zeros"] = run["remove_zeros"] = args.remove_zeros
-            model["parameters"] = run["parameters"] = params
-            model["csv_file"] = run["csv_file"] = args.csv_file
-            model["model_name"] = run["model_name"] = 'ae_then_classifier'
-            model["n_meta"] = run["n_meta"] = args.n_meta
-            model["n_emb"] = run["n_emb"] = args.embeddings_meta
-            model["groupkfold"] = run["groupkfold"] = args.groupkfold
-            model["embeddings_meta"] = run["embeddings_meta"] = args.embeddings_meta
-            model["foldername"] = run["foldername"] = self.foldername
-            model["use_mapping"] = run["use_mapping"] = args.use_mapping
-            model["dataset_name"] = run["dataset_name"] = args.dataset
-            model["n_agg"] = run["n_agg"] = args.n_agg
-        else:
-            model = None
-            run = None
+            print("[DEPRECATED] Neptune integration is disabled and no longer supported. Please use MLflow logging instead (--log_mlflow=1).")
+            self.log_neptune = False
+        model = None
+        run = None
 
         if self.log_mlflow:
             mlflow.set_experiment(
@@ -567,8 +522,6 @@ class TrainAE:
                 # best_values = get_best_values(traces, ae_only=True)
                 if self.log_tb:
                     loggers['tb_logging'].logging(values, metrics)
-                if self.log_neptune:
-                    log_neptune(run, values)
                 if self.log_mlflow:
                     add_to_mlflow(values, epoch)
                 continue
@@ -613,8 +566,6 @@ class TrainAE:
                     add_to_logger(values, loggers['logger'], epoch)
                 except:
                     print("Problem with add_to_logger!")
-            if self.log_neptune:
-                add_to_neptune(values, run, epoch)
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
             if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
@@ -850,8 +801,6 @@ class TrainAE:
 
         if self.log_tb:
             loggers['tb_logging'].logging(best_values, metrics)
-        if self.log_neptune:
-            log_neptune(run, best_values)
         if self.log_mlflow:
             log_mlflow(best_values, h)
 

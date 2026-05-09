@@ -171,8 +171,12 @@ class MSDataset3(Dataset):
         if self.random_recs:
             to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
             not_label = None
-            while not_label == label or not_label is None:
+            _tries = 0
+            while (not_label == label or not_label is None) and _tries < 100:
                 not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+                _tries += 1
+            if not_label == label or not_label is None:
+                not_label = label  # fallback: same label
             ind = np.random.randint(0, self.n_labels[not_label])
             not_to_rec = self.labels_data[not_label][ind].copy()
             meta_not_to_rec = self.labels_meta_data[not_label][ind].copy()
@@ -184,13 +188,22 @@ class MSDataset3(Dataset):
         # Always provide a positive/negative sample for reconstruction context
         pos_to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
         neg_label_for_rec = label
-        while neg_label_for_rec == label:
-            neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+        # Guard against infinite loop when only one unique label exists in this split
+        if len(self.unique_labels) > 1:
+            _tries = 0
+            while neg_label_for_rec == label and _tries < 100:
+                neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
+                _tries += 1
+        # If still same label (single-class split), fall back to same label
         neg_to_rec = self.labels_data[neg_label_for_rec][np.random.randint(0, self.n_labels[neg_label_for_rec])].copy()
         if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
-            while not_batch_label == batch or not_batch_label is None:
+            _tries = 0
+            while (not_batch_label == batch or not_batch_label is None) and _tries < 100:
                 not_batch_label = self.unique_batches[np.random.randint(0, len(self.unique_batches))].copy()
+                _tries += 1
+            if not_batch_label == batch or not_batch_label is None:
+                not_batch_label = batch  # fallback: same batch
             pos_ind = np.random.randint(0, self.n_batches[batch])
             neg_ind = np.random.randint(0, self.n_batches[not_batch_label])
             pos_batch_sample = self.batches_data[batch][pos_ind].copy()

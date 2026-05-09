@@ -2,7 +2,7 @@
 # Versions chosen to have prebuilt wheels for Python 3.11.
 
 numpy>=1.24.0,<2.0
-scikit-learn>=1.2.0,<1.5
+scikit-learn>=1.6.0
 pandas>=1.5.3,<3.0
 scikit-optimize==0.9.0
 matplotlib>=3.6.3

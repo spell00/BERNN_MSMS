@@ -44,11 +44,7 @@ from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
-try:
-    import neptune
-except ImportError:
-    neptune = None
+    log_traces, get_best_values, add_to_logger, add_to_mlflow
 import mlflow
 import warnings
 from datetime import datetime
@@ -243,26 +239,51 @@ class TrainAEThenClassifierHoldout(TrainAE):
         self.log_neptune = log_neptune
 
         super().__init__(
-            args,
-            path,
-            fix_thres,
-            load_tb,
-            log_metrics,
-            keep_models,
-            log_inputs,
-            log_plots,
-            log_tb,
-            log_neptune,
-            log_mlflow,
-            False,
-            groupkfold,
-            pools,
+            args=args,
+            fix_thres=fix_thres,
+            load_tb=load_tb,
+            log_metrics=log_metrics,
+            keep_models=keep_models,
+            log_inputs=log_inputs,
+            log_plots=log_plots,
+            log_tb=log_tb,
+            log_neptune=log_neptune,
+            log_mlflow=log_mlflow,
+            log_dvclive=False,
+            groupkfold=groupkfold,
+            pools=pools,
         )
         self.log_neptune = log_neptune
 
     def get_ordered_layers(self, params):
         layer_params = {k: v for k, v in params.items() if k.startswith('layer')}
         return dict(sorted(layer_params.items(), key=lambda x: int(x[0].replace('layer', ''))))
+
+    def _train(self):
+        """
+        Overrides TrainAE._train to use the specific hyperparameter train loop.
+        """
+        params = {
+            'lr': getattr(self.args, 'lr', 1e-3),
+            'layer1': getattr(self.args, 'layer1', 512),
+            'layer2': getattr(self.args, 'layer2', 128),
+            'layer3': getattr(self.args, 'layer3', 32),
+            'dropout': getattr(self.args, 'dropout', 0.1),
+            'wd': getattr(self.args, 'wd', 1e-5),
+            'margin': getattr(self.args, 'margin', 1.0),
+            'smoothing': getattr(self.args, 'smoothing', 0.1),
+            'scaler': getattr(self.args, 'scaler', 'standard'),
+            'gamma': getattr(self.args, 'gamma', 0.1),
+            'beta': getattr(self.args, 'beta', 0.1),
+            'zeta': getattr(self.args, 'zeta', 0.1),
+            'nu': getattr(self.args, 'nu', 1.0),
+            'thres': getattr(self.args, 'thres', 0.0),
+            'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
+            'warmup': getattr(self.args, 'warmup', 100),
+            'l1': getattr(self.args, 'l1', 0.0),
+            'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
+        }
+        self.train(params)
 
     def train(self, params):
         """
@@ -293,6 +314,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             params['thres'] = 0
         if not self.args.prune_network:
             params['prune_threshold'] = 0
+        params.setdefault('prune_threshold', 0)
 
         if not self.args.kan:
             params['reg_entropy'] = 0
@@ -423,7 +445,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
             best_dom_acc = np.inf
             best_acc = 0
             best_mcc = -np.inf
-            self.get_data(h)
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                    np.unique(self.data['batches']['valid']),
@@ -449,10 +470,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
             # Gets all the pytorch dataloaders to train the models
             if self.pools:
                 loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                      None, bs=64)
+                                      None, bs=getattr(self.args, 'bs', 32))
             else:
                 loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
-                                              None, None, bs=8)
+                                              None, None, bs=getattr(self.args, 'bs', 32))
 
             ae = self.ae(
                 data['inputs']['all'].shape[1],
@@ -704,8 +725,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         # best_values = get_best_values(traces, ae_only=True)
                         if self.log_tb:
                             loggers['tb_logging'].logging(values, metrics)
-                        if self.log_neptune:
-                            add_to_neptune(values, run)
                         if self.log_mlflow:
                             add_to_mlflow(values, epoch)
                         continue
@@ -765,8 +784,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         add_to_logger(values, loggers['logger'], epoch)
                     except:
                         print("Problem with add_to_logger!")
-                if self.log_neptune:
-                    add_to_neptune(values, run)
                 if self.log_mlflow:
                     add_to_mlflow(values, epoch)
                 if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
@@ -820,8 +837,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     if self.log_neptune:
                         log_num_neurons(run, n_neurons, init_n_neurons)
                 # End-of-epoch update (skip during warmup if set)
-                if args.update_grid and epoch >= args.update_grid_warmup:
-                    updated = model.update_grids()
+                if self.args.update_grid and epoch >= self.args.update_grid_warmup:
+                    updated = ae.update_grids()
                     print(f"[epoch {epoch}] Updated {updated} KAN grids")
 
             best_mccs += [best_mcc]
@@ -855,6 +872,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             # daemon.start()
             self.log_rep(best_lists, best_vals, best_values, traces, metrics, run, loggers, ae,
                          shap_ae, h, epoch)
+            self.ae_instance = ae
             del ae, shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when
@@ -992,6 +1010,7 @@ if __name__ == "__main__":
         strategy=args.strategy,
         log1p=args.log1p,
         pool=args.pool,
+        prune_network=args.prune_network,
         update_grid=args.update_grid,
         use_l1=args.use_l1,
         clip_val=args.clip_val,

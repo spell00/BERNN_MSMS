@@ -23,13 +23,9 @@ from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, add_to_mlflow
+    log_traces, get_best_values, add_to_logger, add_to_mlflow
 import mlflow
 import warnings
-try:
-    import neptune
-except ImportError:
-    neptune = None
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
 from typing import Union
@@ -135,8 +131,8 @@ class TrainAEClassifierHoldout(TrainAE):
                 args = config
                 self.config = TrainingConfig()
         log_neptune = _disable_deprecated_neptune(log_neptune)
-        super().__init__(args, path, fix_thres, load_tb, log_metrics, keep_models, log_inputs, log_plots, log_tb,
-                         log_neptune, log_mlflow, log_dvclive, groupkfold, pools)
+        super().__init__(args=args, fix_thres=fix_thres, load_tb=load_tb, log_metrics=log_metrics, keep_models=keep_models, log_inputs=log_inputs, log_plots=log_plots, log_tb=log_tb,
+                         log_neptune=log_neptune, log_mlflow=log_mlflow, log_dvclive=log_dvclive, groupkfold=groupkfold, pools=pools)
 
     # TODO SHOULD BE IN PARENT CLASS
     def launch_mlflow(self, params):
@@ -204,6 +200,32 @@ class TrainAEClassifierHoldout(TrainAE):
         print(DEPRECATED_NEPTUNE_MESSAGE)
         self.log_neptune = False
         return None
+
+    def _train(self):
+        """
+        Overrides TrainAE._train to use the specific hyperparameter train loop.
+        """
+        params = {
+            'lr': getattr(self.args, 'lr', 1e-3),
+            'layer1': getattr(self.args, 'layer1', 512),
+            'layer2': getattr(self.args, 'layer2', 128),
+            'layer3': getattr(self.args, 'layer3', 32),
+            'dropout': getattr(self.args, 'dropout', 0.1),
+            'wd': getattr(self.args, 'wd', 1e-5),
+            'margin': getattr(self.args, 'margin', 1.0),
+            'smoothing': getattr(self.args, 'smoothing', 0.1),
+            'scaler': getattr(self.args, 'scaler', 'standard'),
+            'gamma': getattr(self.args, 'gamma', 0.1),
+            'beta': getattr(self.args, 'beta', 0.1),
+            'zeta': getattr(self.args, 'zeta', 0.1),
+            'nu': getattr(self.args, 'nu', 1.0),
+            'thres': getattr(self.args, 'thres', 0.0),
+            'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
+            'warmup': getattr(self.args, 'warmup', 100),
+            'l1': getattr(self.args, 'l1', 0.0),
+            'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
+        }
+        self.train(params)
 
     def get_ordered_layers(self, params):
         """Extract layer parameters from params dictionary, order them, and store in a new dictionary.
@@ -281,7 +303,6 @@ class TrainAEClassifierHoldout(TrainAE):
             # best_mcc = -1
             # warmup_counter = 0
             # warmup_b_counter = 0
-            self.get_data(h)
             self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
@@ -488,8 +509,6 @@ class TrainAEClassifierHoldout(TrainAE):
                             add_to_logger(values, loggers['logger'], epoch)
                         except Exception as e:
                             print(f"Problem with add_to_logger: {e}")
-                    if self.log_neptune:
-                        add_to_neptune(values, run)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     if all(len(values[g]['closs']) > 0 and len(values[g]['acc']) > 0 and len(values[g]['mcc']) > 0
@@ -642,6 +661,7 @@ class TrainAEClassifierHoldout(TrainAE):
         # It should not be necessary. To remove once certain the "Too many files open" error is no longer a problem
         plt.close('all')
 
+        self.ae_instance = ae
         return self.best_mcc
 
     def increase_pruning_threshold(self):

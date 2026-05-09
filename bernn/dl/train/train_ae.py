@@ -25,7 +25,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from ..models.pytorch.aedann import ReverseLayerF
 from ..models.pytorch.ekan.src.efficient_kan.kan import KANLinear
 from ..models.pytorch.utils.loggings import log_metrics, \
-    log_plots, log_neptune, log_shap, log_mlflow, log_dvclive
+    log_plots, log_shap, log_mlflow, log_dvclive
 from bernn.utils.utils import to_csv
 from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
@@ -44,20 +44,17 @@ torch.manual_seed(1)
 np.random.seed(1)
 
 
-def keep_top_features(data, path, args):
+def keep_top_features(X, features):
     """
-    Keeps the top features according to the precalculated scores
+    Keeps the top features according to the provided list
     Args:
-        data: The data to be used to keep the top features
+        X: The data DataFrame to be used to keep the top features
+        features: A list or array of features to keep
 
     Returns:
-        data: The data with only the top features
+        X: The data with only the top features
     """
-    top_features = pd.read_csv(f'{path}/{args.best_features_file}', sep=',')
-    for group in ['all', 'train', 'valid', 'test']:
-        data['inputs'][group] = data['inputs'][group].loc[:, top_features.iloc[:, 0].values[:args.n_features]]
-
-    return data
+    return X.loc[:, features]
 
 
 def binarize_labels(data, controls):
@@ -78,8 +75,8 @@ def binarize_labels(data, controls):
 
 class TrainAE:
 
-    def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, log_dvclive=False, groupkfold=True, pools=True):
+    def __init__(self, args=None, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
+                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, log_dvclive=False, groupkfold=True, pools=True, **kwargs):
         """
 
         Args:
@@ -109,8 +106,15 @@ class TrainAE:
         self.log_tb = log_tb
         self.log_neptune = log_neptune
         self.log_mlflow = log_mlflow
+        
+        if args is None:
+            class Args: pass
+            args = Args()
+            
+        for k, v in kwargs.items():
+            setattr(args, k, v)
+            
         self.args = args
-        self.path = path
         self.log_metrics = log_metrics
         self.log_plots = log_plots
         self.log_inputs = log_inputs
@@ -183,7 +187,7 @@ class TrainAE:
         self.reg_entropy = params.get('reg_entropy', 0)
         self.args.scaler = params['scaler']
         self.args.warmup = params['warmup']
-        self.args.disc_b_warmup = params['disc_b_warmup']
+        self.args.disc_b_warmup = params.get('disc_b_warmup', 0)
         if 'triplet_margin' in params:
             self.triplet_margin = float(params['triplet_margin'])
         else:
@@ -201,70 +205,294 @@ class TrainAE:
 
         return params
 
-    def get_data(self, seed):
+    def fit(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
         """
-        Splits the data into train, valid and test sets
+        Fit the model using X as training data and y as target values.
+        If X_test is provided, it is used for transductive learning (unsupervised parts).
         """
-        if self.args.dataset == 'alzheimer':
-            self.data, self.unique_labels, self.unique_batches = get_alzheimer(self.path, self.args, seed=seed)
-            self.pools = True
-        elif self.args.dataset in ['amide', 'adenocarcinoma']:
-            self.data, self.unique_labels, self.unique_batches = get_amide(self.path, self.args, seed=seed)
-            self.pools = True
-
-        elif self.args.dataset == 'mice':
-            # This seed split the data to have n_samples in train: 96, valid:52, test: 23
-            self.data, self.unique_labels, self.unique_batches = get_mice(self.path, self.args, seed=seed)
-        elif self.args.dataset == 'dummy':
-            self.data, self.unique_labels, self.unique_batches = get_dummy(self.args, seed=seed)
+        if y is None:
+            y = np.zeros(len(X))
+        if groups is None:
+            groups = np.zeros(len(X))
+            
+        self.data = {
+            'inputs': {}, 'meta': {}, 'names': {}, 'labels': {}, 
+            'cats': {}, 'batches': {}, 'orders': {}, 'sets': {}
+        }
+        
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        if not isinstance(y, np.ndarray):
+            y = np.array(y)
+        if not isinstance(groups, np.ndarray):
+            groups = np.array(groups)
+            
+        assert len(X) == len(y) == len(groups), "X, y, groups must have same length"
+        
+        self.unique_labels = np.unique(y)
+        self.unique_batches = np.unique(groups)
+        
+        if self.groupkfold and len(self.unique_batches) > 1:
+            from sklearn.model_selection import StratifiedGroupKFold
+            skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=1)
+            train_inds, valid_inds = next(skf.split(X, y, groups))
         else:
-            self.data, self.unique_labels, self.unique_batches = get_data(self.path, self.args, seed=seed)
-            self.pools = self.args.pool
-        if self.args.best_features_file != '':
-            self.data = keep_top_features(self.data, self.path, self.args)
+            from sklearn.model_selection import StratifiedKFold
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
+            train_inds, valid_inds = next(skf.split(X, y))
+            
+        self.data['inputs']['train'] = X.iloc[train_inds]
+        self.data['inputs']['valid'] = X.iloc[valid_inds]
+        self.data['labels']['train'] = y[train_inds]
+        self.data['labels']['valid'] = y[valid_inds]
+        self.data['batches']['train'] = groups[train_inds]
+        self.data['batches']['valid'] = groups[valid_inds]
+        
+        batch_map = {b: i for i, b in enumerate(self.unique_batches)}
+        self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
+        self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
+        
+        if X_test is not None:
+            if not isinstance(X_test, pd.DataFrame):
+                X_test = pd.DataFrame(X_test)
+            if y_test is None:
+                y_test = np.zeros(len(X_test))
+            if groups_test is None:
+                groups_test = np.zeros(len(X_test))
+            if not isinstance(y_test, np.ndarray):
+                y_test = np.array(y_test)
+            if not isinstance(groups_test, np.ndarray):
+                groups_test = np.array(groups_test)
+                
+            self.data['inputs']['test'] = X_test
+            self.data['labels']['test'] = y_test
+            self.data['batches']['test'] = np.array([batch_map.get(b, 0) for b in groups_test])
+        else:
+            self.data['inputs']['test'] = pd.DataFrame(columns=X.columns)
+            self.data['labels']['test'] = np.array([])
+            self.data['batches']['test'] = np.array([])
+            
+        for group in ['train', 'valid', 'test']:
+            n_samples = len(self.data['inputs'][group])
+            self.data['names'][group] = pd.Series([f"{group}_{i}" for i in range(n_samples)])
+            self.data['meta'][group] = pd.DataFrame(np.zeros((n_samples, 2)), columns=['Age', 'Gender'], index=self.data['inputs'][group].index)
+            self.data['orders'][group] = np.arange(n_samples)
+            self.data['sets'][group] = np.array([group] * n_samples)
+            label_map = {l: i for i, l in enumerate(self.unique_labels)}
+            self.data['cats'][group] = np.array([label_map.get(l, len(label_map)) for l in self.data['labels'][group]])
+            
+        for key in ['inputs', 'meta']:
+            if len(self.data['inputs']['test']) > 0:
+                self.data[key]['all'] = pd.concat([self.data[key]['train'], self.data[key]['valid'], self.data[key]['test']])
+            else:
+                self.data[key]['all'] = pd.concat([self.data[key]['train'], self.data[key]['valid']])
+                
+        for key in ['names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+            if len(self.data['labels']['test']) > 0:
+                self.data[key]['all'] = np.concatenate([self.data[key]['train'], self.data[key]['valid'], self.data[key]['test']])
+            else:
+                self.data[key]['all'] = np.concatenate([self.data[key]['train'], self.data[key]['valid']])
+                
         if self.args.controls != '':
             self.data = binarize_labels(self.data, self.args.controls)
             self.unique_labels = np.unique(self.data['labels']['all'])
 
+        if self.pools:
+            for key in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+                self.data[key]['train_pool'] = self.data[key]['train']
+                self.data[key]['valid_pool'] = self.data[key]['valid']
+                self.data[key]['test_pool'] = self.data[key]['test']
+                self.data[key]['all_pool'] = self.data[key]['all']
+
         print('Data loaded')
+        self.make_samples_weights()
+        self._train()
+        return self
 
-        # Move n_move_test samples from test to train, and n_move_valid from valid to train, randomly
-        n_move_test = getattr(self.args, 'n_move_test', 0)
-        n_move_valid = getattr(self.args, 'n_move_valid', 0)
-        move_keys = ['inputs', 'meta', 'labels', 'names', 'batches', 'cats']
-        # Move from test to train
-        if n_move_test > 0 and len(self.data['inputs']['test']) > 0:
-            idxs = np.random.choice(np.arange(len(self.data['inputs']['test'])), size=min(n_move_test, len(self.data['inputs']['test'])), replace=False)
-            for key in move_keys:
-                if key in self.data and 'test' in self.data[key] and 'train' in self.data[key]:
-                    if hasattr(self.data[key]['test'], 'iloc'):
-                        samples = self.data[key]['valid'].iloc[idxs]
-                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
-                        # Remove by position, not by index value
-                        mask = np.ones(len(self.data[key]['test']), dtype=bool)
-                        mask[idxs] = False
-                        self.data[key]['test'] = self.data[key]['test'].iloc[mask]
-                    else:
-                        samples = self.data[key]['test'][idxs]
-                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
-                        self.data[key]['test'] = np.delete(self.data[key]['test'], idxs, axis=0)
+    def _train(self):
+        """
+        Master training loop that executes after data is loaded.
+        """
+        from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
+        from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_traces
+        import inspect
+        import torch.nn as nn
+        
+        self.n_cats = len(self.unique_labels)
+        self.n_batches = len(set(self.data['batches']['all']))
+        
+        if getattr(self, 'pools', False):
+            loaders = get_loaders(self.data, getattr(self.args, 'random_recs', 0), self.samples_weights, getattr(self.args, 'dloss', 'revTriplet'), None, None, bs=getattr(self.args, 'bs', 32))
+        else:
+            loaders = get_loaders_no_pool(self.data, getattr(self.args, 'random_recs', 0), self.samples_weights, getattr(self.args, 'dloss', 'revTriplet'), None, None, bs=getattr(self.args, 'bs', 32))
 
-        # Move from valid to train
-        if n_move_valid > 0 and len(self.data['inputs']['valid']) > 0:
-            idxs = np.random.choice(np.arange(len(self.data['inputs']['valid'])), size=min(n_move_valid, len(self.data['inputs']['valid'])), replace=False)
-            for key in move_keys:
-                if key in self.data and 'valid' in self.data[key] and 'train' in self.data[key]:
-                    if hasattr(self.data[key]['valid'], 'iloc'):
-                        samples = self.data[key]['valid'].iloc[idxs]
-                        self.data[key]['train'] = pd.concat([self.data[key]['train'], samples])
-                        # Remove by position, not by index value
-                        mask = np.ones(len(self.data[key]['valid']), dtype=bool)
-                        mask[idxs] = False
-                        self.data[key]['valid'] = self.data[key]['valid'].iloc[mask]
-                    else:
-                        samples = self.data[key]['valid'][idxs]
-                        self.data[key]['train'] = np.concatenate([self.data[key]['train'], samples])
-                        self.data[key]['valid'] = np.delete(self.data[key]['valid'], idxs, axis=0)
+        device = getattr(self.args, 'device', 'cpu')
+        
+        if isinstance(self.ae, nn.Module):
+            print("Pre-loaded autoencoder instance detected. Skipping warmup phase.")
+            warmup_epochs = 0
+            self.ae_instance = self.ae
+        else:
+            warmup_epochs = getattr(self.args, 'warmup', 100)
+            print(f"Instantiating new autoencoder. Warmup epochs: {warmup_epochs}")
+            model_kwargs = {
+                'n_features': self.data['inputs']['all'].shape[1],
+                'n_batches': self.n_batches,
+                'nb_classes': self.n_cats,
+                'mapper': getattr(self.args, 'use_mapping', 1),
+                'layer1': getattr(self.args, 'layer1', 512),
+                'layer2': getattr(self.args, 'layer2', 128),
+                'n_layers': getattr(self.args, 'n_layers', 2),
+                'n_meta': getattr(self.args, 'n_meta', 0),
+                'n_emb': getattr(self.args, 'embeddings_meta', 0),
+                'dropout': getattr(self.args, 'dropout', 0.1),
+                'variational': getattr(self.args, 'variational', 0),
+                'conditional': getattr(self.args, 'conditional', False),
+                'zinb': getattr(self.args, 'zinb', 0),
+                'add_noise': getattr(self.args, 'add_noise', 0),
+                'tied_weights': getattr(self.args, 'tied_weights', 0),
+                'device': device
+            }
+            try:
+                self.ae_instance = self.ae(**model_kwargs).to(device)
+            except TypeError:
+                self.ae_instance = self.ae(self.data['inputs']['all'].shape[1], self.n_cats, self.n_batches, 0, self.args, None).to(device)
+                
+        if hasattr(self.ae_instance, 'mapper'):
+            self.ae_instance.mapper.to(device)
+        if hasattr(self.ae_instance, 'dec'):
+            self.ae_instance.dec.to(device)
+            
+        lr = getattr(self.args, 'lr', 1e-3)
+        wd = getattr(self.args, 'wd', 1e-5)
+        optimizer_type = getattr(self.args, 'optimizer_type', 'adam')
+        
+        optimizer_ae = get_optimizer(self.ae_instance, lr, wd, optimizer_type)
+        if hasattr(self.ae_instance, 'classifier'):
+            self.optimizer_c = get_optimizer(self.ae_instance.classifier, getattr(self.args, 'nu', 1.0) * lr, wd, optimizer_type)
+        else:
+            self.optimizer_c = None
+
+        sceloss, celoss, mseloss, triplet_loss = self.get_losses(
+            getattr(self.args, 'scaler', 'l1'), 
+            getattr(self.args, 'smoothing', 0), 
+            getattr(self.args, 'margin', 1.0), 
+            getattr(self.args, 'dloss', 'revTriplet')
+        )
+        
+        n_epochs = getattr(self.args, 'n_epochs', 100)
+        
+        values = {}
+        loggers = {}
+        
+        print(f"Starting training loop for {n_epochs} epochs...")
+        for epoch in range(n_epochs):
+            warmup = epoch < warmup_epochs
+            
+            lists, traces = get_empty_traces()
+            self.ae_instance.train()
+            
+            if warmup:
+                self.warmup_loop(optimizer_ae, None, self.ae_instance, celoss, loaders['all'], triplet_loss, mseloss, warmup, epoch, values, loggers, {}, traces, None)
+            else:
+                self.loop_train('train', optimizer_ae, self.ae_instance, None, 
+                                {'celoss': celoss, 'sceloss': sceloss, 'mseloss': mseloss, 'triplet_loss': triplet_loss}, 
+                                loaders['train'], lists, traces, nu=getattr(self.args, 'nu', 1), mapping=getattr(self.args, 'use_mapping', True))
+                    
+        self.ae = self.ae_instance
+        print("Training completed.")
+        return self
+
+    def transform(self, X):
+        """
+        Transform X into the latent space of the autoencoder.
+        """
+        if self.ae is None:
+            raise ValueError("AutoEncoder is not initialized. Please run training first.")
+        
+        self.ae.eval()
+        
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        
+        # We need a dataloader to transform X
+        from torch.utils.data import DataLoader, TensorDataset
+        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+        
+        encoded_list = []
+        with torch.no_grad():
+            for batch in loader:
+                data = batch[0].to(self.args.device)
+                
+                # Mock domain as all zeros
+                domain = torch.zeros(data.shape[0], dtype=torch.long, device=self.args.device)
+                to_rec = data.clone()
+                
+                enc, _, _, _ = self.ae(data, to_rec, domain, sampling=False)
+                encoded_list.append(enc.detach().cpu().numpy())
+                
+        return np.concatenate(encoded_list, axis=0)
+
+    def fit_transform(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
+        """
+        Fit the model using X as training data and return the transformed X.
+        """
+        self.fit(X, y, groups, X_test, y_test, groups_test, **kwargs)
+        return self.transform(X)
+
+    def predict(self, X):
+        """
+        Predict labels for X using the trained autoencoder instance.
+        """
+        ae = getattr(self, 'ae_instance', None)
+        if ae is None:
+            raise ValueError("No trained model found. Run fit() or fit_predict() first.")
+
+        ae.eval()
+
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+
+        from torch.utils.data import DataLoader, TensorDataset
+        device = getattr(self.args, 'device', 'cpu')
+        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+
+        preds_list = []
+        with torch.no_grad():
+            for batch in loader:
+                data = batch[0].to(device)
+                domain = torch.zeros(data.shape[0], dtype=torch.long, device=device)
+                to_rec = data.clone()
+
+                output = ae(data, to_rec, domain, sampling=False)
+                # AutoEncoder returns (enc, rec_dict, zinb_loss, kld)
+                # The classifier head is on the encoder output
+                enc = output[0]
+                if hasattr(ae, 'classifier') and ae.classifier is not None:
+                    classif = ae.classifier(enc)
+                    preds = torch.argmax(classif, dim=1)
+                else:
+                    preds = torch.zeros(data.shape[0], dtype=torch.long)
+
+                preds_list.append(preds.detach().cpu().numpy())
+
+        preds_numeric = np.concatenate(preds_list, axis=0)
+
+        if self.unique_labels is not None and len(self.unique_labels) > 0:
+            return np.array([self.unique_labels[idx] if idx < len(self.unique_labels) else str(idx)
+                             for idx in preds_numeric])
+        return preds_numeric
+
+    def fit_predict(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
+        """
+        Fit the model and predict on X_test (if provided) or X.
+        """
+        self.fit(X, y, groups, X_test, y_test, groups_test, **kwargs)
+        if X_test is not None:
+            return self.predict(X_test)
+        return self.predict(X)
 
     def autocast_context(self):
         """Create autocast context for mixed precision training with bfloat16."""
@@ -386,7 +614,14 @@ class TrainAE:
             label in self.data['labels']['train'] and label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH']}
         self.unique_unique_labels = list(self.class_weights.keys())
         for group in ['train', 'valid', 'test']:
-            inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels])
+            # Ensure inds_to_keep is always integer dtype
+            inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels], dtype=int)
+            print(f"[make_samples_weights] Group '{group}': {len(inds_to_keep)} samples to keep out of {len(self.data['labels'][group])}")
+            if len(inds_to_keep) == 0:
+                raise ValueError(f"[make_samples_weights] After filtering, no samples remain for group '{group}'. Check your CSV and label filtering criteria.")
+            # Defensive: ensure indices are valid
+            if inds_to_keep.max(initial=-1) >= len(self.data['labels'][group]) or inds_to_keep.min(initial=0) < 0:
+                raise IndexError(f"[make_samples_weights] Computed indices for group '{group}' are out of bounds.")
             self.data['inputs'][group] = self.data['inputs'][group].iloc[inds_to_keep]
             try:
                 self.data['names'][group] = self.data['names'][group].iloc[inds_to_keep]
@@ -545,8 +780,6 @@ class TrainAE:
 
         if self.log_tb:
             loggers['tb_logging'].logging(best_values, metrics)
-        if self.log_neptune:
-            log_neptune(run, best_values)
         if self.log_mlflow:
             log_mlflow(best_values, h)
         if self.log_dvclive:
@@ -558,10 +791,6 @@ class TrainAE:
     def logging(self, run, cm_logger):
         if self.log_dvclive:
             cm_logger.plot(run, 0, self.unique_unique_labels, 'dvclive')
-        if self.log_neptune:
-            cm_logger.plot(run, 0, self.unique_unique_labels, 'neptune')
-            # cm_logger.get_rf_results(run, self.args)
-            run.stop()
         if self.log_mlflow:
             cm_logger.plot(None, 0, self.unique_unique_labels, 'mlflow')
             # cm_logger.get_rf_results(run, self.args)
@@ -878,7 +1107,7 @@ class TrainAE:
                 except Exception as e:
                     print(f"Error in total_loss: {e}")
                 optimizer.step()
-                if self.args.scheduler is not None and self.args.scheduler != 'ReduceLROnPlateau':
+                if getattr(self.args, 'scheduler', None) is not None and getattr(self.args, 'scheduler', None) != 'ReduceLROnPlateau':
                     scheduler.step()
 
         # Fit persistent KNN at the end of training loop when using triplet
@@ -1276,11 +1505,9 @@ class TrainAE:
         if epoch < self.args.warmup and warmup:
             values = log_traces(traces, values)
             self.warmup_counter += 1
-            # TODO change logging with tensorboard and neptune. The previous
+            # TODO change logging with tensorboard. The previous
             if self.log_tb:
                 loggers['tb_logging'].logging(values, metrics)
-            if self.log_neptune:
-                log_neptune(run, values)
             if self.log_mlflow:
                 add_to_mlflow(values, epoch)
             if self.log_dvclive:
@@ -1419,7 +1646,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error creating experiment: {e}")
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
-    train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
+    train = TrainAE(args, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
                     log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
                     log_mlflow=True, groupkfold=args.groupkfold, pools=True)
 

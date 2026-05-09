@@ -1,8 +1,4 @@
 #!/usr/bin/python3
-NEPTUNE_API_TOKEN = "YOUR-API-KEY"
-NEPTUNE_PROJECT_NAME = "YOUR-PROJECT-NAME"
-NEPTUNE_MODEL_NAME = "YOUR-MODEL-NAME"
-
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
 
@@ -32,11 +28,11 @@ from .data_getters import get_data, get_bacteria_images_ms2
 from torchvision.models import resnet18, ResNet18_Weights
 from .aedacnn import SHAPAutoEncoder2 as SHAPAutoEncoder
 from bernn.dl.models.pytorch.utils.loggings import TensorboardLoggingAE, log_metrics, log_input_ordination, \
-    LogConfusionMatrix, log_plots, log_neptune, log_shap, log_mlflow, make_data
+    LogConfusionMatrix, log_plots, log_shap, log_mlflow, make_data
 # from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from .dataset import get_images_loaders, get_images_loaders_no_pool
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_neptune, \
+    log_traces, get_best_values, add_to_logger, \
     add_to_mlflow
 import mlflow
 import warnings
@@ -109,7 +105,7 @@ def binarize_labels(data, controls):
 class TrainAE:
 
     def __init__(self, args, path, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, groupkfold=True):
+                 log_plots=False, log_tb=False, log_mlflow=True, groupkfold=True):
         """
 
         Args:
@@ -137,7 +133,6 @@ class TrainAE:
         self.best_closs = np.inf
         self.logged_inputs = False
         self.log_tb = log_tb
-        self.log_neptune = log_neptune
         self.log_mlflow = log_mlflow
         self.args = args
         self.path = path
@@ -267,48 +262,8 @@ class TrainAE:
             model = None
             run = None
 
-        if self.log_neptune:
-            # Create a Neptune run object
-            run = neptune.init_run(
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-            )  # your credentials
-            model = neptune.init_model_version(
-                model=NEPTUNE_MODEL_NAME,
-                project=NEPTUNE_PROJECT_NAME,
-                api_token=NEPTUNE_API_TOKEN,
-                # your credentials
-            )
-            run["dataset"].track_files(f"{self.path}/{self.args.csv_file}")
-            run["metadata"].track_files(
-                f"{self.path}/subjects_experiment_ATN_verified_diagnosis.csv"
-            )
-            # Track metadata and hyperparameters by assigning them to the run
-            model["inputs_type"] = run["inputs_type"] = args.csv_file.split(".csv")[0]
-            model["best_unique"] = run["best_unique"] = args.best_features_file.split(".tsv")[0]
-            model["tied_weights"] = run["tied_weights"] = args.tied_weights
-            model["random_recs"] = run["random_recs"] = args.random_recs
-            model["dloss"] = run["dloss"] = args.dloss
-            model["predict_tests"] = run["predict_tests"] = args.predict_tests
-            model["threshold"] = run["threshold"] = args.threshold
-            model["rec_loss_type"] = run["rec_loss_type"] = args.rec_loss
-            model["strategy"] = run["strategy"] = args.strategy
-            model["bad_batches"] = run["bad_batches"] = args.bad_batches
-            model["remove_zeros"] = run["remove_zeros"] = args.remove_zeros
-            model["parameters"] = run["parameters"] = params
-            model["csv_file"] = run["csv_file"] = args.csv_file
-            model["model_name"] = run["model_name"] = 'ae_classifier_holdout'
-            model["n_meta"] = run["n_meta"] = args.n_meta
-            model["n_emb"] = run["n_emb"] = args.embeddings_meta
-            model["groupkfold"] = run["groupkfold"] = args.groupkfold
-            model["embeddings_meta"] = run["embeddings_meta"] = args.embeddings_meta
-            model["foldername"] = run["foldername"] = self.foldername
-            model["use_mapping"] = run["use_mapping"] = args.use_mapping
-            model["dataset_name"] = run["dataset_name"] = args.dataset
-            model["n_agg"] = run["n_agg"] = args.n_agg
-        else:
-            model = None
-            run = None
+        model = None
+        run = None
 
         if self.log_mlflow:
             mlflow.set_experiment(
@@ -431,8 +386,6 @@ class TrainAE:
                 if self.log_inputs and not self.logged_inputs:
                     data['inputs']['all'].to_csv(
                         f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
-                    if self.log_neptune:
-                        run[f"inputs.csv"].track_files(f'{self.complete_log_path}/{self.args.berm}_inputs.csv')
                     log_input_ordination(loggers['logger'], data, self.scaler, epoch)
                     if self.pools:
                         metrics = log_pool_metrics(data['inputs'], data['batches'], data['labels'], loggers, epoch,
@@ -476,8 +429,6 @@ class TrainAE:
                             add_to_logger(values, loggers['logger'], epoch)
                         except:
                             print("Problem with add_to_logger!")
-                    if self.log_neptune:
-                        add_to_neptune(values, run, epoch)
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > self.best_mcc and len(
@@ -541,9 +492,6 @@ class TrainAE:
                         #     continue
                         closs, best_lists, traces = self.loop(group, None, ae, sceloss,
                                                               loaders[group], best_lists, traces, nu=0, mapping=False)
-                if self.log_neptune:
-                    model["model"].upload(f'{self.complete_log_path}/model_{h}_state.pth')
-                    model["validation/closs"].log(self.best_closs)
                 best_closses += [self.best_closs]
                 # logs things in the background. This could be problematic if the logging takes more time than each iteration of repetitive holdout
                 # daemon = Thread(target=self.log_rep, daemon=True, name='Monitor',
@@ -619,15 +567,6 @@ class TrainAE:
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_neptune:
-                try:
-                    metrics = log_metrics(run, best_lists, best_vals, ae,
-                                          np.unique(np.concatenate(best_lists['train']['labels'])),
-                                          np.unique(self.data['batches']['all']), epoch=epoch, mlops="neptune",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                          device=self.args.device)
-                except BrokenPipeError:
-                    print("\n\n\nProblem with logging stuff!\n\n\n")
             if self.log_mlflow:
                 try:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
@@ -640,13 +579,6 @@ class TrainAE:
 
         if self.log_metrics and self.pools:
             try:
-                if self.log_neptune:
-                    enc_data = make_data(best_lists, 'encoded_values')
-                    metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'enc', 'neptune')
-                    rec_data = make_data(best_lists, 'rec_values')
-                    metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'rec', 'neptune')
                 if self.log_mlflow:
                     enc_data = make_data(best_lists, 'encoded_values')
                     metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
@@ -679,12 +611,6 @@ class TrainAE:
                         log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.n_meta, 'mlflow',
                                 self.complete_log_path,
                                 self.args.device)
-                if self.log_neptune:
-                    if log_shap is not None:
-                        log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
-                                self.complete_log_path,
-                                self.args.device)
-                    log_plots(run, best_lists, 'neptune', epoch)
                 if self.log_mlflow:
                     if log_shap is not None:
                         log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
@@ -707,75 +633,9 @@ class TrainAE:
         #                args, loggers['logger_cm'], ovr=0, binary=False, mlops='mlflow')
         # res = gp_minimize(train.train, linsvc_space, n_calls=20, random_state=1)
 
-        if self.log_neptune:
-            run["recs"].track_files(f'{self.complete_log_path}/recs.csv')
-            run["encs"].track_files(f'{self.complete_log_path}/encs.csv')
-            # if self.log_mlflow:
-            #     mlflow.log_artifact(f'{self.complete_log_path}/recs.csv')
-            #     mlflow.log_artifact(f'{self.complete_log_path}/encs.csv')
-            # try:
-            #     enc_data = make_data(best_lists, 'encoded_values')
-            #     if self.log_tb and self.pools:
-            #         metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'], self.unique_labels, ['logger_cm'], epoch,
-            #                                    metrics,
-            #                                    'enc', 'tensorboard')
-            #     if self.log_neptune and self.pools:
-            #         metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'], run, epoch, metrics, 'enc',
-            #                                    'neptune')
-            #         metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'], model, epoch, metrics,
-            #                                    'enc',
-            #                                    'neptune')
-            #     if self.log_mlflow and self.pools:
-            #         metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'], run, epoch, metrics, 'enc',
-            #                                    'mlflow')
-            #         metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'], model, epoch, metrics,
-            #                                    'enc',
-            #                                    'mlflow')
-            #
-            #     if self.pools:
-            #         rec_data = make_data(best_lists, 'rec_values')
-            #         if self.log_tb:
-            #             metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'], loggers['logger_cm'], epoch,
-            #                                        metrics,
-            #                                        'rec', 'tensorboard')
-            #         if self.log_neptune:
-            #             metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'], run, epoch, metrics, 'rec',
-            #                                        'neptune')
-            #             metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'], model, epoch, metrics,
-            #                                        'rec',
-            #                                        'neptune')
-            #         if self.log_mlflow:
-            #             metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'], run, epoch, metrics, 'rec',
-            #                                        'mlflow')
-            #             metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'], model, epoch, metrics,
-            #                                        'rec',
-            #                                        'mlflow')
-
-            ### TODO once log_tb and log_neptune are repaired, remove the block below
-
-            # best_values['enc b_euclidean/tot_eucl'] = metrics['pool_metrics_enc']['all'][
-            #     '[b_euclidean/tot_eucl]']
-            # best_values['rec b_euclidean/tot_eucl'] = metrics['pool_metrics_rec']['all'][
-            #     '[b_euclidean/tot_eucl]']
-            # best_values['enc qc_aPCC'] = metrics['pool_metrics_enc']['all']['qc_aPCC']
-            # best_values['rec qc_aPCC'] = metrics['pool_metrics_rec']['all']['qc_aPCC']
-            # best_values['enc qc_dist/tot_eucl'] = metrics['pool_metrics_enc']['all']['[qc_dist/tot_eucl]']
-            # best_values['rec qc_dist/tot_eucl'] = metrics['pool_metrics_rec']['all']['[qc_dist/tot_eucl]']
-            # best_values['enc batch_entropy'] = metrics['pool_metrics_enc']['test']['qc_aPCC']
-            # best_values['rec batch_entropy'] = metrics['pool_metrics_rec']['test']['qc_aPCC']
-
-            ### TODO once log_tb and log_neptune are repaired, remove the block above
-
-            best_values['pool_metrics'] = {}
-            if self.log_metrics:
-                best_values['batches'] = metrics['batches']
-                best_values['pool_metrics']['enc'] = metrics['pool_metrics_enc']
-                best_values['pool_metrics']['rec'] = metrics['pool_metrics_rec']
-        # TODO change logging with tensorboard and neptune. The previous
+        # TODO change logging with tensorboard. The previous
         if self.log_tb:
             loggers['tb_logging'].logging(best_values, metrics)
-        if self.log_neptune:
-            log_neptune(run, best_values)
         if self.log_mlflow:
             log_mlflow(best_values, h)
 
@@ -784,10 +644,6 @@ class TrainAE:
 
     def logging(self, run, cm_logger):
 
-        if self.log_neptune:
-            cm_logger.plot(run, 0, self.unique_labels, 'neptune')
-            # cm_logger.get_rf_results(run, self.args)
-            run.stop()
         if self.log_mlflow:
             cm_logger.plot(None, 0, self.unique_labels, 'mlflow')
             # cm_logger.get_rf_results(run, self.args)
@@ -807,10 +663,6 @@ class TrainAE:
                                          np.array([self.unique_labels[x] for x in preds[group]]).reshape(-1, 1),
                                          names[group].reshape(-1, 1)), 1)).to_csv(
                 f'{self.complete_log_path}/{group}_predictions.csv')
-            if self.log_neptune:
-                run[f"{group}_predictions"].track_files(f'{self.complete_log_path}/{group}_predictions.csv')
-                run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
-                                                            multi_class='ovr')
             if self.log_mlflow:
                 try:
                     mlflow.log_metric(f'{group}_AUC',
@@ -1074,7 +926,7 @@ if __name__ == "__main__":
     # args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
 
     train = TrainAE(args, args.path, fix_thres=-1, load_tb=False, log_metrics=args.log_metrics, keep_models=False,
-                    log_inputs=False, log_plots=args.log_plots, log_tb=False, log_neptune=False,
+                    log_inputs=False, log_plots=args.log_plots, log_tb=False,
                     log_mlflow=True, groupkfold=args.groupkfold)
 
     # train.train()
