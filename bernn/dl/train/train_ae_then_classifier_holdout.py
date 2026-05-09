@@ -93,14 +93,22 @@ def binarize_labels(data, controls):
     Binarizes the labels to be used in the classification loss
     Args:
         labels: The labels to be binarized
-        controls: The control labels
+        controls: The control labels (string, list, or semicolon-separated string)
 
     Returns:
         labels: The binarized labels
     """
+    if isinstance(controls, str) and ';' in controls:
+        controls = controls.split(';')
+    elif isinstance(controls, str) and not controls:
+        controls = []
+    elif isinstance(controls, str):
+        controls = [controls]
+
     for group in ['all', 'train', 'valid', 'test']:
-        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
-        data['cats'][group] = data['labels'][group]
+        if group in data['labels']:
+            data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+            data['cats'][group] = data['labels'][group]
     return data
 
 
@@ -150,14 +158,12 @@ class TrainAEThenClassifierHoldout(TrainAE):
         trainer = TrainAEThenClassifierHoldout(config, path='./data')
 
     Legacy usage (still supported):
-        trainer = TrainAEThenClassifierHoldout(args, path='./data')
+        trainer = TrainAEThenClassifierHoldout(args)
     """
 
     def __init__(self,
                  config: Union[TrainingConfig, object, None] = None,
-                 path: str = './data',
                  fix_thres: float = -1,
-                 load_tb: bool = False,
                  log_metrics: bool = False,
                  keep_models: bool = True,
                  log_inputs: bool = False,
@@ -165,19 +171,19 @@ class TrainAEThenClassifierHoldout(TrainAE):
                  log_tb: bool = False,
                  log_neptune: bool = False,
                  log_mlflow: bool = False,
+                 log_dvclive: bool = False,
                  groupkfold: bool = True,
                  pools: bool = False,
+                 load_tb: bool = False,
                  **kwargs):
         """
         Initialize the TrainAEThenClassifierHoldout trainer.
 
         Args:
             config: TrainingConfig object with training parameters, or legacy args object, or None
-            path: Path to the data (in .csv format)
             fix_thres: If 1 > fix_thres >= 0 then the threshold is fixed to that value.
                        any other value means the threshold won't be fixed and will be
                        learned as an hyperparameter
-            load_tb: If True, loads previous runs already saved
             log_metrics: Whether or not to keep the batch effect metrics
             keep_models: Whether or not to save the models trained
                          (can take a lot of space if training a lot of models)
@@ -189,9 +195,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
             log_tb: Whether or not to use tensorboard.
             log_neptune: Whether or not to use neptune.
             log_mlflow: Whether or not to use mlflow.
-            groupkfold: Whether to use group k-fold cross validation.
-            pools: Whether to use data pooling.
-            **kwargs: Additional arguments for creating TrainingConfig if config is None
+            log_dvclive: Whether or not to use dvclive.
+            groupkfold: Whether or not to use GroupKFold cross-validation.
+            pools: Whether or not to use pooled samples.
+            load_tb: Whether or not to load previous tensorboard runs.
+            **kwargs: Additional keyword arguments to pass to the TrainingConfig constructor.
 
         Examples:
             # Modern approach with configuration class
@@ -202,18 +210,18 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 n_epochs=500,
                 device='cuda:0'
             )
-            trainer = TrainAEThenClassifierHoldout(config, './data')
+            trainer = TrainAEThenClassifierHoldout(config)
 
             # Quick setup with kwargs
             trainer = TrainAEThenClassifierHoldout(
-                None, './data',
+                None,
                 csv_file='my_data.csv',
                 dloss='inverseTriplet',
                 n_epochs=1000
             )
 
             # Legacy approach (still supported)
-            trainer = TrainAEThenClassifierHoldout(args, './data')
+            trainer = TrainAEThenClassifierHoldout(args)
         """
 
         # Handle different input types
@@ -259,42 +267,37 @@ class TrainAEThenClassifierHoldout(TrainAE):
         layer_params = {k: v for k, v in params.items() if k.startswith('layer')}
         return dict(sorted(layer_params.items(), key=lambda x: int(x[0].replace('layer', ''))))
 
-    def _train(self):
-        """
-        Overrides TrainAE._train to use the specific hyperparameter train loop.
-        """
-        params = {
-            'lr': getattr(self.args, 'lr', 1e-3),
-            'layer1': getattr(self.args, 'layer1', 512),
-            'layer2': getattr(self.args, 'layer2', 128),
-            'layer3': getattr(self.args, 'layer3', 32),
-            'dropout': getattr(self.args, 'dropout', 0.1),
-            'wd': getattr(self.args, 'wd', 1e-5),
-            'margin': getattr(self.args, 'margin', 1.0),
-            'smoothing': getattr(self.args, 'smoothing', 0.1),
-            'scaler': getattr(self.args, 'scaler', 'standard'),
-            'gamma': getattr(self.args, 'gamma', 0.1),
-            'beta': getattr(self.args, 'beta', 0.1),
-            'zeta': getattr(self.args, 'zeta', 0.1),
-            'nu': getattr(self.args, 'nu', 1.0),
-            'thres': getattr(self.args, 'thres', 0.0),
-            'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
-            'warmup': getattr(self.args, 'warmup', 100),
-            'l1': getattr(self.args, 'l1', 0.0),
-            'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
-        }
-        self.train(params)
 
-    def train(self, params):
+
+    def _train(self, params=None):
         """
-
-        Args:
-            params: Contains the hyperparameters to be optimized
-
+        Executes the specific training loop for this class.
+        If params is None, uses values from self.args.
         Returns:
-            best_closs: The best classification loss on the valid set
-
+            best valid classification loss (float) for Ax (minimize)
         """
+        if params is None:
+            params = {
+                'lr': getattr(self.args, 'lr', 1e-3),
+                'layer1': getattr(self.args, 'layer1', 512),
+                'layer2': getattr(self.args, 'layer2', 128),
+                'layer3': getattr(self.args, 'layer3', 32),
+                'dropout': getattr(self.args, 'dropout', 0.1),
+                'wd': getattr(self.args, 'wd', 1e-5),
+                'margin': getattr(self.args, 'margin', 1.0),
+                'smoothing': getattr(self.args, 'smoothing', 0.1),
+                'scaler': getattr(self.args, 'scaler', 'standard'),
+                'gamma': getattr(self.args, 'gamma', 0.1),
+                'beta': getattr(self.args, 'beta', 0.1),
+                'zeta': getattr(self.args, 'zeta', 0.1),
+                'nu': getattr(self.args, 'nu', 1.0),
+                'thres': getattr(self.args, 'thres', 0.0),
+                'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
+                'warmup': getattr(self.args, 'warmup', 100),
+                'l1': getattr(self.args, 'l1', 0.0),
+                'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
+            }
+
         start_time = datetime.now()
         # Fixing the hyperparameters that are not optimized
         if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
@@ -445,6 +448,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
             best_dom_acc = np.inf
             best_acc = 0
             best_mcc = -np.inf
+            if self.data is None or 'batches' not in self.data or self.data['batches'] is None:
+                raise ValueError("Training data (specifically 'batches' info) is not initialized. Ensure fit() is called correctly.")
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                    np.unique(self.data['batches']['valid']),
@@ -495,6 +500,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 device=self.args.device,
                 update_grid=self.args.update_grid,
             ).to(self.args.device)
+            self.ae_instance = ae
             if self.args.kan:
                 self.count_neurons(ae)
             ae.mapper.to(self.args.device)
@@ -745,6 +751,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 # If training of the autoencoder is retricted to the warmup, (train_after_warmup=0),
                 # all layers except the classification layers are frozen
             if self.args.train_after_warmup == 0:
+
                 ae = self.freeze_ae(ae)
                 ae.eval()
                 ae.classifier.train()
@@ -950,15 +957,15 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
-    parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
-    parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
+    parser.add_argument('--csv_file', type=str, default='unique_genes.csv', help='')
+    parser.add_argument('--bad_batches', type=str, default='', help='0;23;22;21;20;19;18;17;16;15')
     parser.add_argument('--remove_zeros', type=int, default=0)
     parser.add_argument('--n_meta', type=int, default=0)
     parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
-    parser.add_argument('--path', type=str, default='./data/')
+    parser.add_argument('--path', type=str, default='./data/', help='Directory containing the CSV file (CLI only)')
     parser.add_argument('--exp_id', type=str, default='default_ae_then_classifier')
     parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
     parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
@@ -1024,7 +1031,6 @@ if __name__ == "__main__":
     # Clean, type-safe instantiation
     trainer_modern = TrainAEThenClassifierHoldout(
         config=config,
-        path='./data',
         log_metrics=args.log_metrics,
         keep_models=args.keep_models,
         log_inputs=args.log_inputs,
@@ -1035,49 +1041,43 @@ if __name__ == "__main__":
         pools=False  # TODO redundancy with args.pool
     )
 
-
-    # 2. Quick setup with kwargs (also modern)
-    # print("=== Quick Setup with kwargs ===")
-    # trainer_quick = TrainAEThenClassifierHoldout(
-    #     config=None,  # Will create TrainingConfig from kwargs
-    #     path='./data',
-    #     csv_file='adenocarcinoma_data.csv',
-    #     exp_id='quick_setup_experiment',
-    #     dloss='DANN',
-    #     variational=True,
-    #     n_epochs=500,
-    #     keep_models=False,
-    #     log_mlflow=True
-    # )
-
-    # 3. Legacy approach (still supported for backwards compatibility)
-    # print("=== Legacy Args Approach (backwards compatibility) ===")
-    # class LegacyArgs:
-    #     def __init__(self):
-    #         self.csv_file = 'adenocarcinoma_data.csv'
-    #         self.exp_id = 'legacy_ae_then_classifier'
-    #         self.groupkfold = 1
-    #         self.log_metrics = 1
-    #         self.log_plots = 1
-
-    # legacy_args = LegacyArgs()
-    # trainer_legacy = TrainAEThenClassifierHoldout(
-    #     config=legacy_args,
-    #     path='./data',
-    #     log_metrics=True,
-    #     keep_models=False,
-    #     log_inputs=False,
-    #     log_plots=True,
-    #     log_tb=False,
-    #     log_neptune=True,
-    #     log_mlflow=True,
-    #     pools=True
-    # )
-
     # Use the modern trainer for the actual experiment
     train = trainer_modern
 
-    # train.train()
+    # 3. CLI Data Loading: Load data from disk and pass to fit()
+    csv_path = os.path.join(args.path, args.csv_file)
+    print(f"Loading data from {csv_path}...")
+    df = pd.read_csv(csv_path, index_col=0)
+    
+    # Improved heuristic to find labels and groups
+    y = None
+    if 'labels' in df.columns:
+        y = df['labels'].values
+    elif 'group' in df.columns:
+        y = df['group'].values
+        
+    groups = None
+    if 'batches' in df.columns:
+        groups = df['batches'].values
+    elif 'batch' in df.columns:
+        groups = df['batch'].values
+        
+    X = df.drop(['labels', 'batches', 'group', 'batch'], axis=1, errors='ignore')
+
+    from sklearn.model_selection import train_test_split
+    if groups is not None:
+        X_train, X_test, y_train, y_test, g_train, g_test = train_test_split(
+            X, y, groups, test_size=0.2, random_state=41, stratify=y
+        )
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=41, stratify=y
+        )
+        g_train, g_test = None, None
+    
+    print("Data loaded and split for optimization.")
+    # No need to call fit() here, ax_eval will call it for each trial.
+
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
@@ -1121,14 +1121,18 @@ if __name__ == "__main__":
     if train.config.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
+    def ax_eval(parameterization):
+        return train.fit_transform(X_train, y_train, X_test, y_test, groups_train=g_train, groups_test=g_test, params=parameterization)
+
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,
-        evaluation_function=train.train,
+        evaluation_function=ax_eval,
         objective_name='mcc',
         minimize=False,
         total_trials=train.config.n_trials,
         random_seed=41,
     )
+
 
     # Example of how to access results
     print("=== Optimization Results ===")

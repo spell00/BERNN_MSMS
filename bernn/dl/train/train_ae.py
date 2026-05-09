@@ -62,14 +62,22 @@ def binarize_labels(data, controls):
     Binarizes the labels to be used in the classification loss
     Args:
         labels: The labels to be binarized
-        controls: The control labels
+        controls: The control labels (string, list, or semicolon-separated string)
 
     Returns:
         labels: The binarized labels
     """
+    if isinstance(controls, str) and ';' in controls:
+        controls = controls.split(';')
+    elif isinstance(controls, str) and not controls:
+        controls = []
+    elif isinstance(controls, str):
+        controls = [controls]
+
     for group in ['all', 'train', 'valid', 'test']:
-        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
-        data['cats'][group] = data['labels'][group]
+        if group in data['labels']:
+            data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+            data['cats'][group] = data['labels'][group]
     return data
 
 
@@ -82,7 +90,6 @@ class TrainAE:
         Args:
             args: contains multiple arguments passed in the command line
             log_path (str): Path where the tensorboard logs are saved
-            path (str): Path to the data (in .csv format)
             fix_thres (float): If 1 > fix_thres >= 0 then the threshold is fixed to that value.
                        any other value means the threshold won't be fixed and will be
                        learned as an hyperparameter
@@ -97,7 +104,6 @@ class TrainAE:
                               representations.
             log_tb (bool): Wether or not to use tensorboard.
             log_mlflow (bool): Wether or not to use mlflow.
-
         """
         self.best_acc = 0
         self.best_mcc = -1
@@ -205,28 +211,27 @@ class TrainAE:
 
         return params
 
-    def fit(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
+    def _prepare_data(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None):
         """
-        Fit the model using X as training data and y as target values.
-        If X_test is provided, it is used for transductive learning (unsupervised parts).
+        Internal method to prepare the in-memory data dictionary (self.data) from inputs.
         """
+        # Ensure inputs are in the right format
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
         if y is None:
             y = np.zeros(len(X))
+        if not isinstance(y, np.ndarray):
+            y = np.array(y)
         if groups is None:
             groups = np.zeros(len(X))
+        if not isinstance(groups, np.ndarray):
+            groups = np.array(groups)
             
         self.data = {
             'inputs': {}, 'meta': {}, 'names': {}, 'labels': {}, 
             'cats': {}, 'batches': {}, 'orders': {}, 'sets': {}
         }
         
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-        if not isinstance(y, np.ndarray):
-            y = np.array(y)
-        if not isinstance(groups, np.ndarray):
-            groups = np.array(groups)
-            
         assert len(X) == len(y) == len(groups), "X, y, groups must have same length"
         
         self.unique_labels = np.unique(y)
@@ -306,10 +311,25 @@ class TrainAE:
 
         print('Data loaded')
         self.make_samples_weights()
-        self._train()
-        return self
 
-    def _train(self):
+    def fit(self, X_train, y_train, groups_train=None, params=None, **kwargs):
+        """
+        Standard supervised/unsupervised training on training data only.
+        """
+        self._prepare_data(X_train, y_train, groups_train)
+        return self._train(params)
+
+    def fit_transform(self, X_train, y_train, X_test, y_test, groups_train=None, groups_test=None, params=None, **kwargs):
+        """
+        Transductive learning: training using both X_train and X_test (unlabeled).
+        Returns the loss for hyperparameter optimization (Ax).
+        """
+        self._prepare_data(X_train, y_train, groups_train, X_test, y_test, groups_test)
+        loss = self._train(params)
+        return loss
+
+
+    def _train(self, params=None):
         """
         Master training loop that executes after data is loaded.
         """
@@ -434,12 +454,7 @@ class TrainAE:
                 
         return np.concatenate(encoded_list, axis=0)
 
-    def fit_transform(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
-        """
-        Fit the model using X as training data and return the transformed X.
-        """
-        self.fit(X, y, groups, X_test, y_test, groups_test, **kwargs)
-        return self.transform(X)
+
 
     def predict(self, X):
         """
@@ -485,14 +500,7 @@ class TrainAE:
                              for idx in preds_numeric])
         return preds_numeric
 
-    def fit_predict(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None, **kwargs):
-        """
-        Fit the model and predict on X_test (if provided) or X.
-        """
-        self.fit(X, y, groups, X_test, y_test, groups_test, **kwargs)
-        if X_test is not None:
-            return self.predict(X_test)
-        return self.predict(X)
+
 
     def autocast_context(self):
         """Create autocast context for mixed precision training with bfloat16."""
@@ -538,7 +546,6 @@ class TrainAE:
             'groupkfold': 1,
             'dataset': 'custom',
             'bs': 32,
-            'path': './data/',
             'exp_id': 'default_ae_then_classifier',
             'strategy': 'CU_DEM',  # only for alzheimer dataset
             'n_agg': 1,  # Number of trailing values to get stable valid values

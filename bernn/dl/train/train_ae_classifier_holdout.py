@@ -30,6 +30,7 @@ from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
 from typing import Union
 from bernn.config.training_config import TrainingConfig
+import pandas as pd
 
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
@@ -97,7 +98,6 @@ def log_num_neurons(run, n_neurons, init_n_neurons):
 class TrainAEClassifierHoldout(TrainAE):
     def __init__(self,
                  config: Union[TrainingConfig, object, None] = None,
-                 path: str = './data',
                  fix_thres: float = -1,
                  load_tb: bool = False,
                  log_metrics: bool = False,
@@ -114,8 +114,18 @@ class TrainAEClassifierHoldout(TrainAE):
         """
         Args:
             config: TrainingConfig object, legacy args, or None
-            path: Path to the data
-            ... (other args as before)
+            fix_thres: Fixed zero-threshold for features
+            load_tb: Load previous tensorboard runs
+            log_metrics: Keep batch effect metrics
+            keep_models: Save trained models
+            log_inputs: Log input metrics/plots
+            log_plots: Plot PCA/UMAP/etc.
+            log_tb: Use tensorboard
+            log_neptune: Use neptune (deprecated)
+            log_mlflow: Use mlflow
+            log_dvclive: Use dvclive
+            groupkfold: Use GroupKFold split
+            pools: Use pooled data structures
         """
         if config is None:
             self.config = TrainingConfig(**kwargs)
@@ -201,31 +211,8 @@ class TrainAEClassifierHoldout(TrainAE):
         self.log_neptune = False
         return None
 
-    def _train(self):
-        """
-        Overrides TrainAE._train to use the specific hyperparameter train loop.
-        """
-        params = {
-            'lr': getattr(self.args, 'lr', 1e-3),
-            'layer1': getattr(self.args, 'layer1', 512),
-            'layer2': getattr(self.args, 'layer2', 128),
-            'layer3': getattr(self.args, 'layer3', 32),
-            'dropout': getattr(self.args, 'dropout', 0.1),
-            'wd': getattr(self.args, 'wd', 1e-5),
-            'margin': getattr(self.args, 'margin', 1.0),
-            'smoothing': getattr(self.args, 'smoothing', 0.1),
-            'scaler': getattr(self.args, 'scaler', 'standard'),
-            'gamma': getattr(self.args, 'gamma', 0.1),
-            'beta': getattr(self.args, 'beta', 0.1),
-            'zeta': getattr(self.args, 'zeta', 0.1),
-            'nu': getattr(self.args, 'nu', 1.0),
-            'thres': getattr(self.args, 'thres', 0.0),
-            'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
-            'warmup': getattr(self.args, 'warmup', 100),
-            'l1': getattr(self.args, 'l1', 0.0),
-            'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
-        }
-        self.train(params)
+
+
 
     def get_ordered_layers(self, params):
         """Extract layer parameters from params dictionary, order them, and store in a new dictionary.
@@ -242,13 +229,39 @@ class TrainAEClassifierHoldout(TrainAE):
                                      key=lambda x: int(x[0].replace('layer', ''))))
         return ordered_layers
 
-    def train(self, params):
+
+    def _train(self, params=None):
         """
+        Executes the specific training loop for this class.
+        If params is None, uses values from self.args.
+
         Args:
             params: hyperparameters
         Returns:
             best valid classification loss (float) for Ax (minimize)
         """
+        if params is None:
+            params = {
+                'lr': getattr(self.args, 'lr', 1e-3),
+                'layer1': getattr(self.args, 'layer1', 512),
+                'layer2': getattr(self.args, 'layer2', 128),
+                'layer3': getattr(self.args, 'layer3', 32),
+                'dropout': getattr(self.args, 'dropout', 0.1),
+                'wd': getattr(self.args, 'wd', 1e-5),
+                'margin': getattr(self.args, 'margin', 1.0),
+                'smoothing': getattr(self.args, 'smoothing', 0.1),
+                'scaler': getattr(self.args, 'scaler', 'standard'),
+                'gamma': getattr(self.args, 'gamma', 0.1),
+                'beta': getattr(self.args, 'beta', 0.1),
+                'zeta': getattr(self.args, 'zeta', 0.1),
+                'nu': getattr(self.args, 'nu', 1.0),
+                'thres': getattr(self.args, 'thres', 0.0),
+                'prune_threshold': getattr(self.args, 'prune_threshold', 0.0),
+                'warmup': getattr(self.args, 'warmup', 100),
+                'l1': getattr(self.args, 'l1', 0.0),
+                'reg_entropy': getattr(self.args, 'reg_entropy', 0.0),
+            }
+
         start_time = datetime.now()
         params = self.make_params(params)
         optimizer_type = 'adam'
@@ -303,6 +316,8 @@ class TrainAEClassifierHoldout(TrainAE):
             # best_mcc = -1
             # warmup_counter = 0
             # warmup_b_counter = 0
+            if self.data is None or 'cats' not in self.data or self.data['cats'] is None:
+                raise ValueError("Training data (specifically 'cats' labels) is not initialized. Ensure fit() is called correctly with valid labels.")
             self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
@@ -368,6 +383,7 @@ class TrainAEClassifierHoldout(TrainAE):
                         prune_threshold=params['prune_threshold'],
                         update_grid=self.args.update_grid,
                     ).to(self.args.device)
+                    self.ae_instance = ae
                     ae.mapper.to(self.args.device)
                     ae.dec.to(self.args.device)
                     n_neurons = {}
@@ -724,7 +740,7 @@ if __name__ == "__main__":
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
-    parser.add_argument('--path', type=str, default='./data/PXD015912/')
+    parser.add_argument('--path', type=str, default='./data/PXD015912/', help='Directory containing the CSV file (CLI only)')
     parser.add_argument('--exp_id', type=str, default='reviewer_exp')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
     parser.add_argument('--n_agg', type=int, default=1, help='Number of trailing values to get stable valid values')
@@ -792,7 +808,6 @@ if __name__ == "__main__":
     # Clean, type-safe instantiation
     trainer_modern = TrainAEClassifierHoldout(
         config=config,
-        path='./data',
         log_metrics=args.log_metrics,
         keep_models=args.keep_models,
         log_inputs=args.log_inputs,
@@ -816,7 +831,7 @@ if __name__ == "__main__":
 
     # args.batch_columns = [int(x) for x in args.batch_columns.split(',')]
 
-    train = TrainAEClassifierHoldout(args, args.path, fix_thres=-1, load_tb=False,
+    train = TrainAEClassifierHoldout(args, fix_thres=-1, load_tb=False,
                                      log_metrics=args.log_metrics,
                                      keep_models=args.keep_models, log_inputs=args.log_inputs,
                                      log_plots=args.log_plots, log_tb=args.log_tb,
@@ -824,20 +839,52 @@ if __name__ == "__main__":
                                      log_mlflow=args.log_mlflow, groupkfold=args.groupkfold,
                                      pools=args.pool)
 
+    # 3. CLI Data Loading: Load data from disk and pass to fit()
+    csv_path = os.path.join(args.path, args.csv_file)
+    print(f"Loading data from {csv_path}...")
+    df = pd.read_csv(csv_path, index_col=0)
+    
+    # Improved heuristic to find labels and groups
+    y = None
+    if 'labels' in df.columns:
+        y = df['labels'].values
+    elif 'group' in df.columns:
+        y = df['group'].values
+        
+    groups = None
+    if 'batches' in df.columns:
+        groups = df['batches'].values
+    elif 'batch' in df.columns:
+        groups = df['batch'].values
+        
+    X = df.drop(['labels', 'batches', 'group', 'batch'], axis=1, errors='ignore')
+
+    from sklearn.model_selection import train_test_split
+    if groups is not None:
+        X_train, X_test, y_train, y_test, g_train, g_test = train_test_split(
+            X, y, groups, test_size=0.2, random_state=41, stratify=y
+        )
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=41, stratify=y
+        )
+        g_train, g_test = None, None
+    
+    print("Data loaded and split for optimization.")
+    # No need to call fit() here, ax_eval will call it for each trial.
+
+
     # List of hyperparameters getting optimized
     parameters = [
         {"name": "nu", "type": "range", "bounds": [1e-4, 1e2], "log_scale": False},
         {"name": "lr", "type": "range", "bounds": [1e-4, 1e-2], "log_scale": True},
-        {"name": "wd", "type": "range", "bounds": [1e-5, 1e-3], "log_scale": True},
+        {"name": "wd", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, 1000]},
-        {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
-
-        {"name": "knn_n_neighbors", "type": "choice", "values": [1, 3, 5, 7, 9, 11]},
+        {"name": "warmup", "type": "range", "bounds": [10, 200]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
-        {"name": "scaler", "type": "choice",
-         "values": ['minmax', 'standard_per_batch', 'standard', 'robust', 'robust_per_batch']},  # scaler whould be no for zinb
+        {"name": "scaler", "type": "choice", "values": ['standard', 'robust', 'standard_per_batch', 'robust_per_batch']},
+        {"name": "thres", "type": "range", "bounds": [0.0, 0.1]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},        
     ]
@@ -865,7 +912,7 @@ if __name__ == "__main__":
             # Ax may give numpy types; ensure plain Python
             param_clean = {k: (int(v) if k.startswith('layer') else float(v) if isinstance(v, (np.floating,)) else v)
                            for k, v in parameterization.items()}
-            loss = train.train(param_clean)
+            loss = train.fit_transform(X_train, y_train, X_test, y_test, groups_train=g_train, groups_test=g_test, params=param_clean)
             # Guarantee numeric
             loss = float(loss)
         except Exception as e:

@@ -26,14 +26,22 @@ def binarize_labels(data, controls):
     Binarizes the labels to be used in the classification loss
     Args:
         labels: The labels to be binarized
-        controls: The control labels
+        controls: The control labels (string, list, or semicolon-separated string)
 
     Returns:
         labels: The binarized labels
     """
+    if isinstance(controls, str) and ';' in controls:
+        controls = controls.split(';')
+    elif isinstance(controls, str) and not controls:
+        controls = []
+    elif isinstance(controls, str):
+        controls = [controls]
+
     for group in ['all', 'train', 'valid', 'test']:
-        data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
-        data['cats'][group] = data['labels'][group]
+        if group in data['labels']:
+            data['labels'][group] = np.array([1 if x not in controls else 0 for x in data['labels'][group]])
+            data['cats'][group] = data['labels'][group]
     return data
 
 def log_num_neurons(run, n_neurons, init_n_neurons):
