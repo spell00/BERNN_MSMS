@@ -20,7 +20,7 @@ import os
 
 from sklearn import metrics
 from tensorboardX import SummaryWriter
-from ax.service.managed_loop import optimize
+from bernn.utils.ax_compat import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
@@ -64,8 +64,6 @@ from bernn.utils.utils import get_unique_labels
 # from threading import Thread
 
 # app = FastAPI()
-
-warnings.filterwarnings("ignore")
 
 random.seed(1)
 torch.manual_seed(1)
@@ -305,8 +303,8 @@ class TrainAE:
         h = 0
         best_closses = []
         best_mccs = []
-        while h < self.args.n_repeats:
-            print(f'Rep: {h}')
+        while self.rep < self.args.n_repeats:
+            print(f'Rep: {self.rep}')
             epoch = 0
             self.best_loss = np.inf
             self.best_closs = np.inf
@@ -440,8 +438,8 @@ class TrainAE:
                               f" valid loss: {values['valid']['closs'][-1]},"
                               f" test loss: {values['test']['closs'][-1]}")
                         self.best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
-                        torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{h}_state.pth')
-                        torch.save(ae, f'{self.complete_log_path}/model_{h}.pth')
+                        torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}_state.pth')
+                        torch.save(ae, f'{self.complete_log_path}/model_{self.rep}.pth')
                         best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
                         best_vals = values.copy()
                         best_vals['rec_loss'] = self.best_loss
@@ -480,9 +478,9 @@ class TrainAE:
 
                 best_lists, traces = get_empty_traces()
                 # Loading best model that was saved during training
-                ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
+                ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{self.rep}_state.pth'))
                 # Need another model because the other cant be use to get shap values
-                # shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{h}_state.pth'))
+                # shap_ae.load_state_dict(torch.load(f'{self.complete_log_path}/model_{self.rep}_state.pth'))
                 # ae.load_state_dict(sd)
                 ae.eval()
                 # .eval()
@@ -500,7 +498,7 @@ class TrainAE:
                 #                       epoch])
                 # daemon.start()
                 self.log_rep(best_lists, best_vals, best_values, traces, model, metrics, run, loggers, ae,
-                             shap_ae, h, epoch)
+                             shap_ae, self.rep, epoch)
                 del ae, shap_ae
 
         # Logging every model is taking too much resources and it makes it quite complicated to get information when

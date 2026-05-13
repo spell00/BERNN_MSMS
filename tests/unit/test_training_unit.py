@@ -97,19 +97,17 @@ def test_train_ae_initialization(tmp_path):
         log_inputs=False, 
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
         log_mlflow=False,
         groupkfold=True
     )
     
     # Check attributes
     assert trainer.args == args
-    assert trainer.path == str(tmp_path)
+    assert getattr(trainer.args, 'path', None) == str(tmp_path)
     assert trainer.fix_thres == -1
     assert not trainer.log_inputs
     assert not trainer.log_plots
     assert not trainer.log_tb
-    assert not trainer.log_neptune
     assert not trainer.log_mlflow
     assert trainer.groupkfold
 

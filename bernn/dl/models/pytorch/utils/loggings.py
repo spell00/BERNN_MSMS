@@ -28,10 +28,12 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
-# try:
-#     from umap import UMAP
-# except:
-from umap.umap_ import UMAP
+def _get_umap_cls():
+    try:
+        from umap.umap_ import UMAP
+        return UMAP
+    except Exception:
+        return None
 
 # from sklearn.manifold import TSNE
 # from bernn.utils.metrics import calculate_aic, calculate_bic
@@ -53,7 +55,6 @@ class TensorboardLoggingAE:
         self.dloss = dloss
         self.pseudo = pseudo
         self.variational = variational
-        self.zinb = zinb
         # self.dann_sets = dann_sets
         # self.dann_plates = dann_batches
         self.hparams_filepath = hparams_filepath
@@ -257,8 +258,6 @@ def interactions_mean_matrix(shap_interactions, run, group):
 def make_summary_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.summary_plot(values, df, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/summary_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/summary_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/summary_{category}/{group}_values.png')
@@ -270,8 +269,6 @@ def make_summary_plot(df, values, group, run, log_path, category='explainer', ml
 def make_force_plot(df, values, features, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.force_plot(df, values, features=features, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/force_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/force_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/force_{category}/{group}_values.png')
@@ -283,8 +280,6 @@ def make_force_plot(df, values, features, group, run, log_path, category='explai
 def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.summary_plot(values, feature_names=df.columns, features=df, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/beeswarm_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
@@ -296,9 +291,6 @@ def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', m
 def make_decision_plot(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
@@ -309,9 +301,6 @@ def make_decision_plot(df, values, misclassified, feature_names, group, run, log
 def make_decision_deep(df, values, misclassified, feature_names, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.decision_plot(df, values, feature_names=list(feature_names), show=False, link='logit', highlight=misclassified)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
-        run[f'shap/decision_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/decision_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/decision_{category}/{group}_values.png')
@@ -322,8 +311,6 @@ def make_decision_deep(df, values, misclassified, feature_names, group, run, log
 def make_multioutput_decision_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.multioutput_decision_plot(values, df, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/multioutput_decision_{category}/{group}_values'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/multioutput_decision_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/multioutput_decision_{category}/{group}_values.png')
@@ -334,9 +321,6 @@ def make_multioutput_decision_plot(df, values, group, run, log_path, category='e
 def make_group_difference_plot(values, mask, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.group_difference_plot(values, mask, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/gdiff_{category}/{group}'].upload(f)
-        run[f'shap/gdiff_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/gdiff_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/gdiff_{category}/{group}_values.png')
@@ -347,9 +331,6 @@ def make_group_difference_plot(values, mask, group, run, log_path, category='exp
 def make_beeswarm_plot(values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.plots.beeswarm(values, max_display=20, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/beeswarm_{category}/{group}'].upload(f)
-        run[f'shap/beeswarm_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/beeswarm_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/beeswarm_{category}/{group}_values.png')
@@ -360,9 +341,6 @@ def make_beeswarm_plot(values, group, run, log_path, category='explainer', mlops
 def make_heatmap(values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.plots.heatmap(values, instance_order=values.values.sum(1).argsort(), max_display=20, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/heatmap_{category}/{group}'].upload(f)
-        run[f'shap/heatmap_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
@@ -374,9 +352,6 @@ def make_heatmap_deep(values, group, run, log_path, category='explainer', mlops=
 
     shap.plots.heatmap(pd.DataFrame(values), instance_order=values.sum(1).argsort(), max_display=20, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/heatmap_{category}/{group}'].upload(f)
-        run[f'shap/heatmap_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/heatmap_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/heatmap_{category}/{group}_values.png')
@@ -389,8 +364,6 @@ def make_barplot(df, y, values, group, run, log_path, category='explainer', mlop
     # shap.plots.bar(values, max_display=20, show=False, clustering=clustering)
     shap.plots.bar(values, max_display=20, show=False, clustering=clustering, clustering_cutoff=0.5)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/bar_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/bar_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/bar_{category}/{group}_values.png')
@@ -401,9 +374,6 @@ def make_barplot(df, y, values, group, run, log_path, category='explainer', mlop
 def make_bar_plot(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.bar_plot(values, max_display=40, feature_names=df.columns, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        # run[f'shap/barold_{category}/{group}'].upload(f)
-        run[f'shap/barold_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/barold_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/barold_{category}/{group}_values.png')
@@ -414,8 +384,6 @@ def make_bar_plot(df, values, group, run, log_path, category='explainer', mlops=
 def make_dependence_plot(df, values, var, group, run, log_path, category='explainer', mlops='mlflow'):
     shap.dependence_plot(var, values[1], df, show=False)
     f = plt.gcf()
-    if mlops == 'neptune':
-        run[f'shap/dependence_{category}/{group}'].upload(f)
     if mlops == 'mlflow':
         os.makedirs(f'{log_path}/shap/dependence_{category}', exist_ok=True)
         plt.savefig(f'{log_path}/shap/dependence_{category}/{group}_values.png')
@@ -574,74 +542,6 @@ def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_dee
                 print(f"[LISI/SHAP ERROR] Problem with log_kernel_explainer: {e}")
 
 
-def log_neptune(run, traces):
-    if 'rec_loss' in traces:
-        if isinstance(traces['rec_loss'], (list, np.ndarray)):
-            if len(traces['rec_loss']) > 0:
-                if not np.isnan(traces['rec_loss'][-1]):
-                    try:
-                        run["rec_loss"].log(traces['rec_loss'][-1])
-                    except Exception as e:
-                        print("log_neptune", e)
-                        print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
-        else:
-            if not np.isnan(traces['rec_loss']):
-                try:
-                    run["rec_loss"].log(traces['rec_loss'][-1])
-                except Exception as e:
-                    print("log_neptune", e)
-                    print(f"\n\n\nPROBLEM HERE:::: {traces['rec_loss']}\n\n\n")
-
-        if isinstance(traces['dom_loss'], (list, np.ndarray)):
-            if len(traces['dom_loss']) > 0:
-                if not np.isnan(traces['dom_loss'][-1]):
-                    run["dom_loss"].log(traces['dom_loss'])
-        else:
-            if not np.isnan(traces['dom_loss']):
-                run["dom_loss"].log(traces['dom_loss'])
-
-        if isinstance(traces['dom_acc'], (list, np.ndarray)):
-            if len(traces['dom_acc']) > 0:
-                if not np.isnan(traces['dom_acc'][-1]):
-                    try:
-                        run["dom_acc"].log(traces['dom_acc'][-1])
-                    except Exception as e:
-                        print("log_neptune", e)
-                        run["dom_acc"].log(traces['dom_acc'][0])
-        else:
-            if not np.isnan(traces['dom_acc']):
-                try:
-                    run["dom_acc"].log(traces['dom_acc'][-1])
-                except Exception as e:
-                    print("log_neptune", e)
-                    run["dom_acc"].log(traces['dom_acc'])
-
-    # tf.summary.scalar('qc_aPCC', metrics['pool_metrics']['encoded']['all']['qc_aPCC'], step=1)
-    # tf.summary.scalar('qc_aPCC_input', metrics['pool_metrics']['inputs']['all']['qc_aPCC'], step=1)
-    # tf.summary.scalar('qc_aPCC_rec', metrics['pool_metrics']['recs']['all']['qc_aPCC'], step=1)
-    # tf.summary.scalar('qc_dist', metrics['pool_metrics']['encoded']['all']['qc_dist'], step=1)
-    # tf.summary.scalar('qc_dist_input', metrics['pool_metrics']['inputs']['all']['qc_dist'], step=1)
-    # tf.summary.scalar('qc_dist_rec', metrics['pool_metrics']['recs']['all']['qc_dist'], step=1)
-
-    if 'train_loss' in traces:
-        for g in ['train', 'valid', 'test']:
-            run[f'{g}/loss'].log(traces[f'{g}_loss'])
-            run[f'{g}/acc'].log(traces[f'{g}_acc'])
-            run[f'{g}/top3'].log(traces[f'{g}_top3'])
-            run[f'{g}/mcc'].log(traces[f'{g}_mcc'])
-    for rep in ['enc', 'rec']:
-        for g in ['all', 'train', 'valid', 'test']:
-            if 'enc b_euclidean/tot_eucl' in traces:
-                run['enc b_euclidean/tot_eucl'].log(traces['enc b_euclidean/tot_eucl']),
-                run['enc qc_dist/tot_eucl'].log(traces['enc qc_dist/tot_eucl']),
-                run['enc qc_aPCC'].log(traces['enc qc_aPCC']),
-                run['enc batch_entropy'].log(traces['enc batch_entropy']),
-                run['rec b_euclidean/tot_eucl'].log(traces['rec b_euclidean/tot_eucl']),
-                run['rec qc_dist/tot_eucl'].log(traces['rec qc_dist/tot_eucl']),
-                run['rec qc_aPCC'].log(traces['rec qc_aPCC']),
-                run['rec batch_entropy'].log(traces['rec batch_entropy']),
-
-
 def log_dvclive(live, traces):
     import numpy as np
     # rec_loss
@@ -776,7 +676,7 @@ def get_metrics(lists, values, model):
     for group in ['all', 'train', 'valid', 'test']:
         if len(lists[group]['inputs']) > 0:
             try:
-                classes = np.array(np.concatenate(lists[group]['classes']), np.int)
+                classes = np.array(np.concatenate(lists[group]['classes']), int)
             except Exception as e:
                 print(f"[LISI ERROR] Problem with concatenating classes for group {group}: {e}")
 
@@ -1061,8 +961,6 @@ def log_ORD(ordin, logger, data, uniques, mlops, epoch, transductive=False):
 
         if mlops == "tensorboard":
             logger.add_figure(f'{ordin["name"]}_{name}', fig, epoch)
-        elif mlops == "neptune":
-            logger[f'{ordin["name"]}/{name}'].upload(fig)
         elif mlops == "mlflow":
             mlflow.log_figure(fig, f'{ordin["name"]}/{name}.png')
         else:
@@ -1168,8 +1066,6 @@ def log_LDA(ordin, logger, data, uniques, mlops, epoch):
 
         if mlops == "tensorboard":
             logger.add_figure(f'{ordin["name"]}_{name}', fig, epoch)
-        elif mlops == "neptune":
-            logger[f'{ordin["name"]}/{name}'].upload(fig)
         elif mlops == "mlflow":
             mlflow.log_figure(fig, f'{ordin["name"]}/{name}.png')
         plt.close(fig)
@@ -1258,8 +1154,6 @@ def log_CCA(ordin, logger, data, uniques, mlops, epoch):
 
         if mlops == "tensorboard":
             logger.add_figure(f'{ordin["name"]}_{name}', fig, epoch)
-        elif mlops == "neptune":
-            logger[f'{ordin["name"]}/{name}'].upload(fig)
         elif mlops == "mlflow":
             mlflow.log_figure(fig, f'{ordin["name"]}/{name}.png')
         plt.close(fig)
@@ -1290,13 +1184,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                                 except:
                                     logger.add_scalar(f'{metric}/{group}/{repres}/{info}',
                                                       values[group][metric][repres][info][0], epoch)
-                            elif mlops == "neptune":
-                                try:
-                                    logger[f'{metric}/{group}/{repres}/{info}'].log(
-                                        values[group][metric][repres][info][0])
-                                except:
-                                    logger[f'{metric}/{group}/{repres}/{info}'].log(
-                                        values[group][metric][repres][info][0][0])
                             elif mlops == "mlflow":
                                 try:
                                     mlflow.log_metric(
@@ -1314,12 +1201,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                                                       values[group][metric][repres][info][0], epoch)
                                 except:
                                     pass
-                            elif mlops == "neptune":
-                                try:
-                                    logger[f'{metric}/{group}/{repres}/{info}'].log(
-                                        values[group][metric][repres][info][0])
-                                except:
-                                    pass
                             elif mlops == "mlflow":
                                 try:
                                     mlflow.log_metric(f'{metric}/{group}/{repres}/{info}',
@@ -1332,12 +1213,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                                 try:
                                     logger.add_scalar(f'{metric}/{group}/{repres}/{info}',
                                                       values[group][metric][repres][info][0], epoch)
-                                except:
-                                    pass
-                            elif mlops == "neptune":
-                                try:
-                                    logger[f'{metric}/{group}/{repres}/{info}'].log(
-                                        values[group][metric][repres][info][0])
                                 except:
                                     pass
                             elif mlops == "mlflow":
@@ -1377,10 +1252,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                         logger.add_scalar(f'F1_{metric}/{group}/{repres}/domains',
                                           values[group][f"F1_{metric}"][repres]['domains'],
                                           epoch)
-                    elif mlops == "neptune":
-                        logger[f'F1_{metric}/{group}/{repres}/domains'].log(
-                            values[group][f"F1_{metric}"][repres]['domains'],
-                        )
                     elif mlops == "mlflow":
                         mlflow.log_metric(f'F1_{metric}/{group}/{repres}/domains',
                             values[group][f"F1_{metric}"][repres]['domains'], epoch
@@ -1400,9 +1271,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                             logger.add_scalar(f'{metric}/{group}/{repres}/{info}',
                                               values[group][metric][repres][info][0],
                                               epoch)
-                        elif mlops == "neptune":
-                            logger[f'{metric}/{group}/{repres}/{info}'].log(
-                                values[group][metric][repres][info][0])
                         elif mlops == "mlflow":
                             mlflow.log_metric(f'{metric}/{group}/{repres}/{info}',
                                 values[group][metric][repres][info][0], epoch)
@@ -1416,9 +1284,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                             logger.add_scalar(f'F1_{metric}/{group}/{repres}/domains',
                                               values[group][f"F1_{metric}"][repres]['domains'],
                                               epoch)
-                        elif mlops == "neptune":
-                            logger[f'F1_{metric}/{group}/{repres}/domains'].log(
-                                values[group][f"F1_{metric}"][repres]['domains'])
                         elif mlops == "mlflow":
                             mlflow.log_metric(f'F1_{metric}/{group}/{repres}/domains',
                                 values[group][f"F1_{metric}"][repres]['domains'], epoch)
@@ -1485,8 +1350,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
             # logger.add_figure(f"LISI_train", figure, epoch)
             if mlops == "tensorboard":
                 logger.add_figure(f"LISI_train", figure, epoch)
-            elif mlops == "neptune":
-                logger[f'LISI_train'].log(figure)
             elif mlops == "mlflow":
                 mlflow.log_figure(figure, f'LISI_train.png')
             plt.close(figure)
@@ -1499,8 +1362,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
             ax = sns.boxplot(x="representation", y="lisi", data=lisi_df_valid)
             if mlops == "tensorboard":
                 logger.add_figure(f"LISI_valid", figure, epoch)
-            elif mlops == "neptune":
-                logger[f'LISI_valid'].log(figure)
             elif mlops == "mlflow":
                 mlflow.log_figure(figure, f'LISI_valid.png')
             plt.close(figure)
@@ -1513,8 +1374,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
             sns.set_theme(style="white")
             if mlops == "tensorboard":
                 logger.add_figure(f"LISI_test", figure, epoch)
-            elif mlops == "neptune":
-                logger[f'LISI_test'].log(figure)
             elif mlops == "mlflow":
                 mlflow.log_figure(figure, f'LISI_test.png')
             plt.close(figure)
@@ -1656,12 +1515,14 @@ def log_plots(logger, lists, mlops, epoch):
             except:
                 pass
             log_ORD({'model': PCA(n_components=2), 'name': f'PCA_{name}'}, logger,
-                    make_data(lists, values), uniques, mlops, epoch),
+                    make_data(lists, values), uniques, mlops, epoch)
             log_ORD({'model': PCA(n_components=2), 'name': f'PCA_{name}'}, logger,
-                    make_data(lists, values), uniques, mlops, epoch, transductive=True),
-            log_ORD({'model': UMAP(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_{name}'},
+                    make_data(lists, values), uniques, mlops, epoch, transductive=True)
+            umap_cls = _get_umap_cls()
+            if umap_cls is not None:
+                log_ORD({'model': umap_cls(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_{name}'},
                     logger, make_data(lists, values), uniques, mlops, epoch)
-            log_ORD({'model': UMAP(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_{name}'},
+                log_ORD({'model': umap_cls(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_{name}'},
                     logger, make_data(lists, values), uniques, mlops, epoch, transductive=True)
     except:
         print("\n\n\nProblem with logging PCA, TSNE or UMAP\n\n\n")
@@ -1674,7 +1535,7 @@ def log_input_ordination(logger, data, scaler, mlops, epoch=0):
         data['atn'] = {}
         for group in ['train', 'valid', 'test']:
             tmp = scaler.inverse_transform(data['inputs'][group])
-            data['gender'][group] = tmp[:, -1].astype(np.int)
+            data['gender'][group] = tmp[:, -1].astype(int)
             data['age'][group] = tmp[:, -2]
             data['atn'][group] = tmp[:, -5:-2]
             data['atn'][group] = np.array([str(x) for x in data['atn'][group]])
@@ -1712,14 +1573,16 @@ def log_input_ordination(logger, data, scaler, mlops, epoch=0):
         except:
             pass
         log_ORD({'model': PCA(n_components=2), 'name': f'PCA_inputs'}, logger,
-                data, uniques, mlops, epoch),
+            data, uniques, mlops, epoch)
         log_ORD({'model': PCA(n_components=2), 'name': f'PCA_inputs'}, logger,
-                data, uniques, mlops, epoch),
+            data, uniques, mlops, epoch)
         log_ORD({'model': PCA(n_components=2), 'name': f'PCA_inputs'}, logger,
-                data, uniques, mlops, epoch, transductive=True),
-        log_ORD({'model': UMAP(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_inputs'},
+            data, uniques, mlops, epoch, transductive=True)
+        umap_cls = _get_umap_cls()
+        if umap_cls is not None:
+            log_ORD({'model': umap_cls(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_inputs'},
                 logger, data, mlops, uniques, epoch)
-        log_ORD({'model': UMAP(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_inputs'},
+            log_ORD({'model': umap_cls(n_neighbors=5, min_dist=0.3, metric='correlation'), 'name': f'UMAP_inputs'},
                 logger, data, mlops, uniques, epoch, transductive=True)
 
     except:

@@ -373,7 +373,6 @@ class SHAPKANAutoEncoder2(nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
@@ -515,7 +514,6 @@ class KANAutoEncoder2(nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         self.n_meta = n_meta
@@ -693,7 +691,6 @@ class KANAutoEncoder3(nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         self.n_emb = n_emb

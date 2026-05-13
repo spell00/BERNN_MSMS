@@ -14,7 +14,7 @@ joblib>=1.2.0
 notebook>=6.5.6
 ipywidgets>=7.7.5
 jupyterlab>=3.6.6
-ax-platform>=0.2.10
+ax-platform>=1.2,<2
 pycombat
 torch>=2.0.1
 torchvision>=0.15.2

@@ -191,8 +191,6 @@ def log_pool_metrics(data, batches, labels, unique_labels, logger, epoch, metric
             if not np.isnan(metric[group][m]) and m not in ['b_euclidean', 'euclidean']:
                 if mlops == 'tensorboard':
                     logger.add_scalar(f'pool_metrics_{form}/{m}/{group}', metric[group][m], epoch)
-                elif mlops == 'neptune':
-                    logger[f'pool_metrics_{form}/{m}/{group}'].log(metric[group][m])
                 elif mlops == 'mlflow':
                     m2 = m.replace('[', ' ')
                     m2 = m2.replace(']', ' ')

@@ -111,6 +111,37 @@ def grad_reverse(x: torch.Tensor) -> torch.Tensor:
     return ReverseLayerF.apply(x, 1.0)
 
 
+def _to_tensor_on_device(inputs: Any, device: str) -> torch.Tensor:
+    if isinstance(inputs, torch.Tensor):
+        return inputs.to(device).float()
+    if isinstance(inputs, pd.DataFrame):
+        return torch.tensor(inputs.values, dtype=torch.float32, device=device)
+    return torch.tensor(np.asarray(inputs), dtype=torch.float32, device=device)
+
+
+def _first_linear_in_features(module: nn.Module) -> Optional[int]:
+    for submodule in module.modules():
+        if isinstance(submodule, (nn.Linear, KANLinear)):
+            if hasattr(submodule, "in_features"):
+                return int(submodule.in_features)
+    return None
+
+
+def _build_classifier_input(enc: torch.Tensor, original_inputs: torch.Tensor, classifier: nn.Module) -> torch.Tensor:
+    expected_dim = _first_linear_in_features(classifier)
+    if expected_dim is None or enc.shape[1] == expected_dim:
+        return enc
+    if enc.shape[1] > expected_dim:
+        return enc[:, :expected_dim]
+    missing = expected_dim - enc.shape[1]
+    if original_inputs.shape[1] < missing:
+        raise ValueError(
+            f"Classifier expects {expected_dim} features but encoder returns {enc.shape[1]} and "
+            f"only {original_inputs.shape[1]} input features are available for augmentation."
+        )
+    return torch.cat((enc, original_inputs[:, -missing:]), dim=1)
+
+
 # -------------------- Classifiers (KAN) -------------------- #
 class Classifier(KANGridMixin, nn.Module):
     def __init__(
@@ -372,7 +403,6 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         layer2: int,
         dropout: float,
         n_layers: int,
-        zinb: bool = False,
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
@@ -387,7 +417,6 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
@@ -405,9 +434,6 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
 
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
 
     def forward(
         self,
@@ -439,10 +465,32 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
 
     # Probability / prediction helpers
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, x: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "SHAPKANAutoEncoder2":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
 
 class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
@@ -458,7 +506,6 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         layers: dict,
         dropout: float,
         n_layers: int,
-        zinb: bool = False,
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
@@ -473,7 +520,6 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
@@ -494,11 +540,6 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
         self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers)
 
-        if zinb and len(layers) > 1:
-            penultimate = list(layers.values())[-2]
-            self._dec_mean = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), nn.Sigmoid())
 
     def forward(
         self,
@@ -534,36 +575,35 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         return out
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, x: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "SHAPKANAutoEncoder3":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
 
 # -------------------- Variational / Loss helpers -------------------- #
-def log_zinb_positive(
-    x: torch.Tensor,
-    mu: torch.Tensor,
-    theta: torch.Tensor,
-    pi: torch.Tensor,
-    eps: float = 1e-8
-) -> torch.Tensor:
-    case_zero = F.softplus(-pi + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps)) - F.softplus(-pi)
-    case_non_zero = (
-        -pi
-        - F.softplus(-pi)
-        + theta * torch.log(theta + eps)
-        - theta * torch.log(theta + mu + eps)
-        + x * torch.log(mu + eps)
-        - x * torch.log(theta + mu + eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1)
-    )
-    mask = torch.less(x, eps).float()
-    res = mask * case_zero + (1.0 - mask) * case_non_zero
-    res = torch.nan_to_num(res, 0)
-    return torch.sum(res, dim=-1)
 
 
 class KANAutoEncoder3(KANGridMixin, nn.Module):
@@ -571,8 +611,7 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
 
     Mirrors AutoEncoder3 (in aedann.py) but swaps nn.Linear for KANLinear and
     uses the already defined KAN Encoder3 / Decoder3. Provides reconstruction,
-    optional variational sampling (GaussianSample), optional ZINB outputs, and
-    batch-effect mapping. Forward returns [enc, rec, zinb_loss, kl].
+    optional variational sampling (GaussianSample), and batch-effect mapping. Forward returns [enc, rec, kl].
     """
     def __init__(
         self,
@@ -587,7 +626,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         dropout: float,
         n_layers: int,
         prune_threshold: float,
-        zinb: bool = False,
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
@@ -601,7 +639,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         self.n_emb = n_emb
@@ -627,16 +664,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
         self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
-        if self.zinb and len(layers) > 1:
-            penultimate = list(layers.values())[-2]
-            self._dec_mean = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(KANLinear(penultimate, in_shape + n_meta), nn.Sigmoid())
-        elif self.zinb:
-            # Fallback if only one layer defined
-            self._dec_mean = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(KANLinear(last_dim, in_shape + n_meta), nn.Sigmoid())
 
     def forward(
         self,
@@ -683,45 +710,40 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
                 rec_mean = self.dec(enc_be, None)
             rec = {"mean": rec_mean}
 
-        # ZINB optional
-        if self.zinb:
-            penult_act = enc_be  # simplification; could capture penultimate hidden if needed
-            _mean = self._dec_mean(penult_act)
-            _disp = self._dec_disp(penult_act)
-            _pi = self._dec_pi(penult_act)
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            rec = {"mean": _mean, "rec": to_rec}
-        else:
-            zinb_loss = torch.zeros(1, device=enc.device)
-
         if self.is_sigmoid:
             rec['mean'] = torch.sigmoid(rec['mean'])
 
-        return [enc, rec, zinb_loss, kl]
+        return [enc, rec, kl]
 
     # Utilities reused from aedann AutoEncoder3
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
 
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
-        eps = 1e-10
-        mean = mean * scale_factor
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-        return torch.mean(result)
+    def transform(self, inputs: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "KANAutoEncoder3":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
+
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
         print("Pruning not available for this model")
@@ -741,8 +763,7 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
     """KAN-based analogue of AutoEncoder2.
 
     Uses Encoder2/Decoder2 with KANLinear layers, optional variational sampling,
-    optional ZINB reconstruction, and batch-effect mapping. Forward returns
-    [enc, rec, zinb_loss, kl] where rec is a dict containing at least key 'mean'.
+    and batch-effect mapping. Forward returns [enc, rec, kl] where rec is a dict containing at least key 'mean'.
     """
     def __init__(
         self,
@@ -758,7 +779,6 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         dropout: float,
         n_layers: int,
         prune_threshold: float,
-        zinb: bool = False,
         conditional: bool = True,
         add_noise: bool = False,
         tied_weights: int = 0,
@@ -771,7 +791,6 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         self.n_emb = n_emb
@@ -796,11 +815,6 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
-        # ZINB projection heads (operate on first decoder hidden output)
-        if self.zinb:
-            self._dec_mean = nn.Sequential(KANLinear(layer1, in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(KANLinear(layer1, in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(KANLinear(layer1, in_shape + n_meta), nn.Sigmoid())
 
     def forward(
         self,
@@ -851,46 +865,39 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
             dec_out = self.dec(enc_be, bs)
             rec = {"mean": dec_out}
 
-        # ZINB optional (operate on first hidden from decoder)
-        if self.zinb:
-            hidden_first = rec['mean'][0]  # first element from decoder list
-            _mean = self._dec_mean(hidden_first)
-            _disp = self._dec_disp(hidden_first)
-            _pi = self._dec_pi(hidden_first)
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            rec = {"mean": _mean, "rec": to_rec}
-        else:
-            zinb_loss = torch.zeros(1, device=enc.device)
-
         if self.is_sigmoid:
             if isinstance(rec['mean'], torch.Tensor):
                 rec['mean'] = torch.sigmoid(rec['mean'])
-            # else leave list structure for compatibility if not zinb
 
-        return [enc, rec, zinb_loss, kl]
+        return [enc, rec, kl]
 
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
 
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor, pi: torch.Tensor, scale_factor: float = 1.0, ridge_lambda: float = 0.0) -> torch.Tensor:
-        eps = 1e-10
-        mean = mean * scale_factor
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-        return torch.mean(result)
+    def transform(self, inputs: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "KANAutoEncoder2":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool, weight_threshold: float = 0) -> int:
         print("Pruning not available for this model")

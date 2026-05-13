@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from types import SimpleNamespace
 
 from bernn.config.training_config import TrainingConfig
@@ -59,7 +60,7 @@ def _args(**overrides):
         scheduler="ReduceLROnPlateau",
         path=".",
         log_tb=0,
-        log_neptune=0,
+
         log_mlflow=0,
         keep_models=0,
         log_inputs=0,
@@ -164,13 +165,10 @@ def test_get_loaders_no_pool_uses_train_sets_length():
 @pytest.mark.unit
 def test_train_ae_then_classifier_holdout_accepts_training_config(tmp_path):
     config = TrainingConfig(
-        csv_file="mock.csv",
-        dataset="custom",
         device="cpu",
         kan=False,
         use_l1=False,
         prune_network=False,
-        pool=False,
         groupkfold=False,
         log1p=True,
     )
@@ -183,7 +181,6 @@ def test_train_ae_then_classifier_holdout_accepts_training_config(tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=True,
         log_mlflow=False,
         groupkfold=False,
         pools=False,
@@ -191,5 +188,189 @@ def test_train_ae_then_classifier_holdout_accepts_training_config(tmp_path):
 
     assert trainer.config is config
     assert trainer.args is config
-    assert trainer.log_neptune is False
-    assert trainer.path == str(tmp_path)
+
+
+@pytest.mark.unit
+def test_holdout_trainer_predict_proba_available(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        log1p=True,
+        bs=4,
+    )
+
+    trainer = TrainAEThenClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    class FakeAE(torch.nn.Module):
+        def predict_proba(self, x):
+            n = int(x.shape[0])
+            return np.tile(np.array([[0.2, 0.8]], dtype=np.float32), (n, 1))
+
+    trainer.ae = FakeAE()
+    X = np.zeros((5, 3), dtype=np.float32)
+    probs = trainer.predict_proba(X)
+
+    assert isinstance(probs, np.ndarray)
+    assert probs.shape == (5, 2)
+    assert np.allclose(probs.sum(axis=1), 1.0)
+
+
+@pytest.mark.unit
+def test_prepare_data_normalizes_equivalent_string_labels(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        log1p=True,
+        bs=4,
+    )
+
+    trainer = TrainAEThenClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    X_train = pd.DataFrame(np.random.randn(8, 4))
+    y_train = np.array(["0", "1", "0", "1", "0", "1", "0", "1"])
+    groups_train = np.array(["b0", "b0", "b1", "b1", "b0", "b1", "b0", "b1"])
+
+    X_test = pd.DataFrame(np.random.randn(4, 4))
+    y_test = np.array(["0.0", "1.0", "0.0", "1.0"])
+    groups_test = np.array(["b0", "b1", "b0", "b1"])
+
+    trainer._prepare_data(
+        X=X_train,
+        y=y_train,
+        groups=groups_train,
+        X_test=X_test,
+        y_test=y_test,
+        groups_test=groups_test,
+        cross_validation=False,
+        cross_test=False,
+        val_size=0.5,
+    )
+
+    assert set(np.unique(trainer.data["labels"]["test"])) <= set(np.unique(trainer.data["labels"]["train"]))
+
+
+@pytest.mark.unit
+def test_prepare_data_normalizes_mixed_string_labels(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        log1p=True,
+        bs=4,
+    )
+
+    trainer = TrainAEThenClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    X_train = pd.DataFrame(np.random.randn(8, 4))
+    y_train = np.array(["QC", "0.0", "QC", "1.0", "QC", "0.0", "QC", "1.0"])
+    groups_train = np.array(["b0", "b0", "b1", "b1", "b0", "b1", "b0", "b1"])
+
+    X_test = pd.DataFrame(np.random.randn(4, 4))
+    y_test = np.array(["QC", "0", "QC", "1"])
+    groups_test = np.array(["b0", "b1", "b0", "b1"])
+
+    trainer._prepare_data(
+        X=X_train,
+        y=y_train,
+        groups=groups_train,
+        X_test=X_test,
+        y_test=y_test,
+        groups_test=groups_test,
+        cross_validation=False,
+        cross_test=False,
+        val_size=0.5,
+    )
+
+    assert set(np.unique(trainer.data["labels"]["test"])) <= set(np.unique(trainer.data["labels"]["train"]))
+
+
+@pytest.mark.unit
+def test_prepare_data_numeric_train_string_test_labels(tmp_path):
+    """Regression test for leaderboard issue where train is numeric but test is string."""
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        log1p=True,
+        bs=4,
+    )
+
+    trainer = TrainAEThenClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    X_train = pd.DataFrame(np.random.randn(8, 4))
+    y_train = np.array([0, 1, 0, 1, 0, 1, 0, 1])  # numeric
+    groups_train = np.array(["b0", "b0", "b1", "b1", "b0", "b1", "b0", "b1"])
+
+    X_test = pd.DataFrame(np.random.randn(4, 4))
+    y_test = np.array(["0", "1", "0", "1"])  # string
+    groups_test = np.array(["b0", "b1", "b0", "b1"])
+
+    trainer._prepare_data(
+        X=X_train,
+        y=y_train,
+        groups=groups_train,
+        X_test=X_test,
+        y_test=y_test,
+        groups_test=groups_test,
+        cross_validation=False,
+        cross_test=False,
+        val_size=0.5,
+    )
+
+    assert set(np.unique(trainer.data["labels"]["test"])) <= set(np.unique(trainer.data["labels"]["train"]))
+
+

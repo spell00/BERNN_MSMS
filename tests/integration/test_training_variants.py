@@ -5,7 +5,7 @@ These tests validate that the three trainer implementations (AEClassifierHoldout
 AEThenClassifier, AEThenClassifierHoldout) can be instantiated and that key fixes
 are in place:
 1. reg_entropy parameter has a safe default
-2. neptune import is wrapped for optional availability
+2. optional logging imports are handled gracefully
 3. KAN neuron counting works without undefined class references
 """
 
@@ -34,14 +34,14 @@ class TestTrainerImports:
             pytest.fail(f"Failed to import TrainAEClassifierHoldout: {e}")
 
     def test_ae_then_classifier_imports(self):
-        """TrainAEThenClassifier should import, even with optional neptune."""
+        """TrainAEThenClassifier should import, even with optional mlflow."""
         try:
             from bernn.dl.train.train_ae_then_classifier import TrainAEThenClassifier
             assert TrainAEThenClassifier is not None
-            # Verify neptune was imported gracefully
+            # Verify mlflow was imported gracefully
             from bernn.dl.train import train_ae_then_classifier
-            # neptune should be either the module or None
-            assert train_ae_then_classifier.neptune is not None or train_ae_then_classifier.neptune is None
+            # mlflow should be either the module or None
+            assert train_ae_then_classifier.mlflow is not None or train_ae_then_classifier.mlflow is None
         except ImportError as e:
             pytest.fail(f"Failed to import TrainAEThenClassifier: {e}")
 

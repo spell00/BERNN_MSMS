@@ -137,29 +137,6 @@ def zinbWaveR(data, batches, orders=None, classes=NULL, par_prior=True, ref_batc
     df = pd.DataFrame(data.values)
     data_r = robjects.r.matrix(robjects.FloatVector(df.values.reshape(-1)), nrow=df.shape[0])
     batches_r = robjects.IntVector(batches.reshape(-1))
-    zinbwave = importr('zinbwave')
-    granges = importr('GenomicRanges')
-    sumexp = importr('SummarizedExperiment')
-    iranges = importr('IRanges')
-    s4vectors = importr('S4Vectors')
-
-    nrows = 200
-    ncols = 6
-    counts = robjects.r.matrix(stats.runif(nrows * ncols, 1, 1e4), nrows)
-    rowRanges = granges.GRanges(base.rep(base.c("chr1", "chr2"), base.c(50, 150)),
-                                iranges.IRanges(base.floor(stats.runif(200, 1e5, 1e6)), width=100),
-                                strand=base.sample(base.c("+", "-"), 200, True),
-                                )
-    colData = s4vectors.DataFrame(Treatment=base.rep(base.c("ChIP", "Input"), 3), row_names=base.LETTERS[0:6])
-
-    exp = sumexp.SummarizedExperiment(assays=base.list(counts=counts),
-                                      rowRanges=rowRanges, colData=colData)
-
-    data_assay_r = sumexp.SummarizedExperiment(data_r)
-    newdata = zinbwave.zinbwave(data_assay_r, K=2, epsilon=1000)
-    with localconverter(robjects.default_converter + pandas2ri.converter):
-        newdata = np.array(robjects.conversion.rpy2py(newdata))
-    return newdata
 
 
 def ligerR(data, batches, orders=None, classes=NULL, par_prior=True, ref_batch=NULL):

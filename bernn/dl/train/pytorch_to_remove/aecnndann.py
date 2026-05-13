@@ -453,7 +453,6 @@ class SHAPAutoEncoder2(nn.Module):
         self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -585,7 +584,6 @@ class AutoEncoderCNN(nn.Module):
         self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -839,7 +837,6 @@ class SHAPAutoEncoder3(nn.Module):
         self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -1002,7 +999,6 @@ class AutoEncoder3(nn.Module):
         self.use_gnn = use_gnn
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)

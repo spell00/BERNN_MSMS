@@ -34,13 +34,15 @@ from bernn.utils.utils import plot_confusion_matrix, scale_data, get_unique_labe
 
 np.random.seed(41)
 
-warnings.filterwarnings('ignore')
-
 
 def get_confusion_matrix(reals, preds, unique_labels):
     acc = np.mean([1 if pred == label else 0 for pred, label in zip(preds, reals)])
-    cm = metrics.confusion_matrix(reals, preds)
-    figure = plot_confusion_matrix(cm, unique_labels, acc)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+        cm = metrics.confusion_matrix(reals, preds, labels=unique_labels)  # Explicitly pass labels
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+        figure = plot_confusion_matrix(cm, unique_labels, acc)
 
     return figure
 

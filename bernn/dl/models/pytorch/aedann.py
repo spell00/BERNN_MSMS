@@ -67,6 +67,37 @@ def grad_reverse(x: torch.Tensor) -> torch.Tensor:
     return ReverseLayerF()(x)
 
 
+def _to_tensor_on_device(inputs: Any, device: str) -> torch.Tensor:
+    if isinstance(inputs, torch.Tensor):
+        return inputs.to(device).float()
+    if isinstance(inputs, pd.DataFrame):
+        return torch.tensor(inputs.values, dtype=torch.float32, device=device)
+    return torch.tensor(np.asarray(inputs), dtype=torch.float32, device=device)
+
+
+def _first_linear_in_features(module: nn.Module) -> Optional[int]:
+    for submodule in module.modules():
+        if isinstance(submodule, nn.Linear):
+            return int(submodule.in_features)
+    return None
+
+
+def _build_classifier_input(enc: torch.Tensor, original_inputs: torch.Tensor, classifier: nn.Module) -> torch.Tensor:
+    expected_dim = _first_linear_in_features(classifier)
+    if expected_dim is None or enc.shape[1] == expected_dim:
+        return enc
+    if enc.shape[1] > expected_dim:
+        return enc[:, :expected_dim]
+
+    missing = expected_dim - enc.shape[1]
+    if original_inputs.shape[1] < missing:
+        raise ValueError(
+            f"Classifier expects {expected_dim} features but encoder returns {enc.shape[1]} and "
+            f"only {original_inputs.shape[1]} input features are available for augmentation."
+        )
+    return torch.cat((enc, original_inputs[:, -missing:]), dim=1)
+
+
 class Classifier(nn.Module):
     def __init__(self, in_shape: int = 64, out_shape: int = 9, n_layers: int = 2,
                  hidden_sizes: list = None, use_softmax: bool = True,
@@ -489,7 +520,7 @@ class Decoder3(nn.Module):
 class SHAPAutoEncoder2(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int,
                  n_meta: int, mapper: bool, variational: bool, layer1: int, layer2: int,
-                 dropout: float, n_layers: int, zinb: bool = False, conditional: bool = True,
+                 dropout: float, n_layers: int, conditional: bool = True,
                  add_noise: bool = False, tied_weights: int = 0,
                  device: str = 'cpu') -> None:
         super(SHAPAutoEncoder2, self).__init__()
@@ -499,7 +530,6 @@ class SHAPAutoEncoder2(nn.Module):
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -516,9 +546,6 @@ class SHAPAutoEncoder2(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
-        self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.xavier_uniform_)
 
     def forward(self, x: torch.Tensor, batches: Optional[torch.Tensor] = None,
@@ -555,10 +582,32 @@ class SHAPAutoEncoder2(nn.Module):
                 nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, x: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "SHAPAutoEncoder2":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -600,12 +649,6 @@ class SHAPAutoEncoder2(nn.Module):
         return kl
 
     # # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor,
-                  pi: torch.Tensor, scale_factor: float = 1.0,
-                  ridge_lambda: float = 0.0) -> torch.Tensor:
-        eps = 1e-10
-        # scale_factor = scale_factor[:, None]
-        mean = mean * scale_factor
 
         t1 = torch.lgamma(disp+eps) + torch.lgamma(x+1.0) - torch.lgamma(x+disp+eps)
         t2 = (disp+x) * torch.log(1.0 + (mean/(disp+eps))) + (x * (torch.log(disp+eps) - torch.log(mean+eps)))
@@ -642,7 +685,6 @@ class SHAPAutoEncoder3(nn.Module):
                       and the value should be a dict with 'size' and optional 'dropout' keys.
         dropout (float): Default dropout probability if not specified in layer config
         n_layers (int): Number of layers in the classifier
-        zinb (bool): Whether to use ZINB loss
         conditional (bool): Whether to use conditional decoding
         add_noise (bool): Whether to add noise during training
         tied_weights (int): Whether to tie encoder/decoder weights
@@ -651,7 +693,7 @@ class SHAPAutoEncoder3(nn.Module):
 
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_emb: int, n_meta: int,
                  mapper: bool, variational: bool, layers: dict, dropout: float, n_layers: int,
-                 zinb: bool = False, conditional: bool = True, add_noise: bool = False,
+                 conditional: bool = True, add_noise: bool = False,
                  tied_weights: int = 0, device: str = 'cpu', is_sigmoid: bool = False) -> None:
         super(SHAPAutoEncoder3, self).__init__()
         self.n_emb = n_emb
@@ -662,7 +704,6 @@ class SHAPAutoEncoder3(nn.Module):
         
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
@@ -689,12 +730,6 @@ class SHAPAutoEncoder3(nn.Module):
         # Create discriminator and classifier
         self.dann_discriminator = Classifier2(layers[list(layers.keys())[-1]], 64, n_batches)
         self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers, dropout=dropout)
-
-        # Create ZINB-specific layers if needed
-        if zinb:
-            self._dec_mean = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), nn.Sigmoid())
 
         self.random_init(nn.init.xavier_uniform_)
 
@@ -770,7 +805,12 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Probability predictions
         """
-        return self.classifier(x).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
         """Get class predictions.
@@ -781,7 +821,29 @@ class SHAPAutoEncoder3(nn.Module):
         Returns:
             np.ndarray: Class predictions
         """
-        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, x: torch.Tensor) -> np.ndarray:
+        """Return latent encoder representation."""
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "SHAPAutoEncoder3":
+        """Sklearn-style compatibility method.
+
+        Training is handled by BERNN trainer classes; this stores basic input metadata and returns self.
+        """
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -833,46 +895,11 @@ class SHAPAutoEncoder3(nn.Module):
         kl = -(pz - qz)
         return kl
 
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor,
-                  pi: torch.Tensor, scale_factor: float = 1.0,
-                  ridge_lambda: float = 0.0) -> torch.Tensor:
-        """Calculate ZINB loss.
-
-        Args:
-            x (torch.Tensor): Input tensor
-            mean (torch.Tensor): Mean parameter
-            disp (torch.Tensor): Dispersion parameter
-            pi (torch.Tensor): Dropout parameter
-            scale_factor (float): Scale factor
-            ridge_lambda (float): Ridge regularization parameter
-
-        Returns:
-            torch.Tensor: ZINB loss
-        """
-        eps = 1e-10
-        mean = mean * scale_factor
-
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-
-        result = torch.mean(result)
-        return result
-
 
 class AutoEncoder2(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_meta: int,
                  n_emb: int, mapper: bool, variational: bool, layer1: int, layer2: int,
-                 dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
+                 dropout: float, n_layers: int, prune_threshold: float,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
                  update_grid: bool = False, device: str = 'cpu') -> None:
         """
@@ -881,10 +908,10 @@ class AutoEncoder2(nn.Module):
         super(AutoEncoder2, self).__init__()
         self.add_noise = add_noise
         self.device = device
+        self.n_emb = n_emb
         
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -901,9 +928,6 @@ class AutoEncoder2(nn.Module):
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
         self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), MeanAct())
-        self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x: torch.Tensor, to_rec: torch.Tensor,
@@ -943,27 +967,15 @@ class AutoEncoder2(nn.Module):
                 bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
 
             rec = {"mean": self.dec(enc_be, bs)}
-        elif not self.zinb:
+        else:
             rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
             rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
             rec = {"mean": rec}  # TODO rec does not need to be a dict no more
-        elif self.zinb:
-            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]}
-
-        if self.zinb:
-            _mean = self._dec_mean(rec['mean'][0])
-            _disp = self._dec_disp(rec['mean'][0])
-            _pi = self._dec_pi(rec['mean'][0])
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            # if not sampling:
-            rec = {'mean': _mean, 'rec': to_rec}
-        else:
-            zinb_loss = torch.Tensor([0])
 
         # reverse = ReverseLayerF.apply(enc, alpha)
         # b_preds = self.classifier(reverse)
         # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
-        return [enc, rec, zinb_loss, kl]
+        return [enc, rec, kl]
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool,
                               weight_threshold: float = 0) -> dict:
@@ -985,10 +997,32 @@ class AutoEncoder2(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, x: torch.Tensor) -> np.ndarray:
-        return self.classifier(x).argmax(1).detach().float().cpu().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, x: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(x, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "AutoEncoder2":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -1030,12 +1064,6 @@ class AutoEncoder2(nn.Module):
         return kl
 
     # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor,
-                  pi: torch.Tensor, scale_factor: float = 1.0,
-                  ridge_lambda: float = 0.0) -> torch.Tensor:
-        eps = 1e-10
-        # scale_factor = scale_factor[:, None]
-        mean = mean * scale_factor
 
         t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
         t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
@@ -1056,7 +1084,7 @@ class AutoEncoder2(nn.Module):
 class AutoEncoder3(nn.Module):
     def __init__(self, in_shape: int, n_batches: int, nb_classes: int, n_meta: int,
                  n_emb: int, mapper: bool, variational: bool, layers: dict,
-                 dropout: float, n_layers: int, prune_threshold: float, zinb: bool = False,
+                 dropout: float, n_layers: int, prune_threshold: float,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
                  update_grid: bool = False, device: str = 'cpu', is_sigmoid: bool = False) -> None:
         """
@@ -1066,10 +1094,10 @@ class AutoEncoder3(nn.Module):
         self.add_noise = add_noise
         self.is_sigmoid = is_sigmoid
         self.device = device
+        self.n_emb = n_emb
         
         self.use_mapper = mapper
         self.n_batches = n_batches
-        self.zinb = zinb
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
@@ -1092,10 +1120,6 @@ class AutoEncoder3(nn.Module):
             layers[list(layers.keys())[-1]],
             64, n_batches)
         self.classifier = Classifier(layers[list(layers.keys())[-1]] + n_emb, nb_classes, n_layers=n_layers, dropout=dropout)
-        if self.zinb:
-            self._dec_mean = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), MeanAct())
-            self._dec_disp = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), DispAct())
-            self._dec_pi = nn.Sequential(nn.Linear(layers[list(layers.keys())[-2]], in_shape + n_meta), nn.Sigmoid())
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x: torch.Tensor, to_rec: torch.Tensor,
@@ -1135,29 +1159,14 @@ class AutoEncoder3(nn.Module):
                 bs = to_categorical(batches.long(), self.n_batches + 1).to(self.device).float()
 
             rec = {"mean": self.dec(enc_be, bs)}
-        elif not self.zinb:
+        else:
             rec = [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]
             rec += [F.relu(F.linear(rec[0], self.enc.linear1[0].weight.t()))]
             rec = {"mean": rec}  # TODO rec does not need to be a dict no more
-        elif self.zinb:
-            rec = {"mean": [F.relu(F.linear(enc, self.enc.linear2[0].weight.t()))]}
 
-        if self.zinb:
-            _mean = self._dec_mean(rec['mean'][0])
-            _disp = self._dec_disp(rec['mean'][0])
-            _pi = self._dec_pi(rec['mean'][0])
-            zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-            # if not sampling:
-            rec = {'mean': _mean, 'rec': to_rec}
-        else:
-            zinb_loss = torch.Tensor([0])
-
-        # reverse = ReverseLayerF.apply(enc, alpha)
-        # b_preds = self.classifier(reverse)
-        # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
         if self.is_sigmoid:
             rec['mean'] = torch.sigmoid(rec['mean'])
-        return [enc, rec, zinb_loss, kl]
+        return [enc, rec, kl]
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool,
                               weight_threshold: float = 0) -> dict:
@@ -1179,12 +1188,32 @@ class AutoEncoder3(nn.Module):
             #     nn.init.constant_(m.bias, 0.125)
 
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return F.softmax(logits, dim=1).detach().cpu().numpy()
 
     def predict(self, inputs: torch.Tensor) -> np.ndarray:
-        x = self.enc(inputs)
-        return self.classifier(x).argmax(1).detach().float().cpu().float().numpy()
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            enc = self.enc(x_tensor)
+            logits = self.classifier(_build_classifier_input(enc, x_tensor, self.classifier))
+            return logits.argmax(1).detach().cpu().numpy()
+
+    def transform(self, inputs: torch.Tensor) -> np.ndarray:
+        self.eval()
+        with torch.no_grad():
+            x_tensor = _to_tensor_on_device(inputs, self.device)
+            return self.enc(x_tensor).detach().cpu().numpy()
+
+    def fit(self, X: torch.Tensor, y: Optional[torch.Tensor] = None) -> "AutoEncoder3":
+        _ = y
+        X_tensor = _to_tensor_on_device(X, self.device)
+        self.n_features_in_ = int(X_tensor.shape[1])
+        return self
 
     def _kld(self, z: torch.Tensor, q_param: Tuple[torch.Tensor, torch.Tensor],
              h_last: Optional[torch.Tensor] = None,
@@ -1226,51 +1255,3 @@ class AutoEncoder3(nn.Module):
         return kl
 
     # based on https://github.com/DHUDBlab/scDSC/blob/master/layers.py
-    def zinb_loss(self, x: torch.Tensor, mean: torch.Tensor, disp: torch.Tensor,
-                  pi: torch.Tensor, scale_factor: float = 1.0,
-                  ridge_lambda: float = 0.0) -> torch.Tensor:
-        eps = 1e-10
-        # scale_factor = scale_factor[:, None]
-        mean = mean * scale_factor
-
-        t1 = torch.lgamma(disp + eps) + torch.lgamma(x + 1.0) - torch.lgamma(x + disp + eps)
-        t2 = (disp + x) * torch.log(1.0 + (mean / (disp + eps))) + (x * (torch.log(disp + eps) - torch.log(mean + eps)))
-        nb_final = t1 + t2
-
-        nb_case = nb_final - torch.log(1.0 - pi + eps)
-        zero_nb = torch.pow(disp / (disp + mean + eps), disp)
-        zero_case = -torch.log(pi + ((1.0 - pi) * zero_nb) + eps)
-        result = torch.where(torch.le(x, 1e-8), zero_case, nb_case)
-
-        if ridge_lambda > 0:
-            ridge = ridge_lambda * torch.square(pi)
-            result += ridge
-        result = torch.mean(result)
-        return result
-
-
-def log_zinb_positive(x: torch.Tensor, mu: torch.Tensor, theta: torch.Tensor,
-                      pi: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    """
-    log likelihood (scalar) of a minibatch according to a zinb model.
-    Notes:
-    We parametrize the bernouilli using the logits, hence the softplus functions appearing
-
-    Variables:
-    mu: mean of the negative binomial (has to be positive support) (shape: minibatch x genes)
-    theta: inverse dispersion parameter (has to be positive support) (shape: minibatch x genes)
-    pi: logit of the dropout parameter (real support) (shape: minibatch x genes)
-    eps: numerical stability constant
-    """
-    case_zero = F.softplus(- pi + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps)) \
-        - F.softplus(-pi)
-    case_non_zero = - pi - F.softplus(- pi) \
-        + theta * torch.log(theta + eps) - theta * torch.log(theta + mu + eps) \
-        + x * torch.log(mu + eps) - x * torch.log(theta + mu + eps) \
-        + torch.lgamma(x + theta) - torch.lgamma(theta) - torch.lgamma(x + 1)
-
-    # mask = tf.cast(torch.less(x, eps), torch.float32)
-    mask = torch.less(x, eps).float()
-    res = torch.multiply(mask, case_zero) + torch.multiply(1 - mask, case_non_zero)
-    res = torch.nan_to_num(res, 0)
-    return torch.sum(res, axis=-1)

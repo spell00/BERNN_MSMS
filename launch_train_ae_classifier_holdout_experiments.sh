@@ -2,24 +2,28 @@
 
 set -euo pipefail
 
-python_bin=${PYTHON_BIN:-python}
+
+python_bin=${PYTHON_BIN:-python3}
 sleep_seconds=${SLEEP_SECONDS:-60}
 dry_run=${DRY_RUN:-0}
-log_neptune=${LOG_NEPTUNE:-0}
 log_mlflow=${LOG_MLFLOW:-1}
 log_tb=${LOG_TB:-0}
 log_dvclive=${LOG_DVCLIVE:-0}
-device_mode=${DEVICE_MODE:-cpu}
+device_mode=${DEVICE_MODE:-cuda}
 gpu_count=${GPU_COUNT:-1}
 cpu_threads=${CPU_THREADS:-1}
+# Add cross-validation and cross-test flags, defaulting to 0, overridable by env
+cross_validation=${CROSS_VALIDATION:-1}
+cross_test=${CROSS_TEST:-1}
 
-if [ "$log_neptune" != "0" ]; then
-    echo "[DEPRECATED] Neptune integration is disabled. For now, please use MLflow (LOG_MLFLOW=1)."
-    log_neptune=0
+# If not using cross-validation or cross-test, force n_repeats=1
+if [ "$cross_validation" -eq 0 ] && [ "$cross_test" -eq 0 ]; then
+    n_repeats=1
 fi
 
+
 n_trials=30  # The number of hyperparameter configurations to try
-n_repeats=5  # The number of times to repeat the experiment for each hyperparameter configuration
+n_repeats=3  # The number of times to repeat the experiment for each hyperparameter configuration
 n_epochs=1000  # The number of epochs to train for.
 early_stop=100  # The number of epochs to wait before stopping training if the validation loss does not improve.
 groupkfold=1
@@ -54,7 +58,7 @@ fi
 
 echo "Launching with DEVICE_MODE=$device_mode MAX_JOBS=$max_jobs CPU_THREADS=$cpu_threads"
 
-for train_after_warmup in 1 0
+for train_after_warmup in 0 1
 do
     for warmup_after_warmup in 1 0
     do
@@ -64,7 +68,7 @@ do
             do
                 for kan in 0
                 do
-                    for dloss in DANN revTriplet normae no inverseTriplet
+                    for dloss in inverseTriplet DANN revTriplet normae no
                     do
                         current_jobs=$((current_jobs + 1))
                         if [ "$device_mode" = "cpu" ]; then
@@ -73,6 +77,7 @@ do
                             cuda=$((i%gpu_count)) # Divide by the number of gpus available
                             device=cuda:$cuda
                         fi
+
                         cmd=(
                             env
                             PYTHONPATH=$PWD
@@ -83,15 +88,16 @@ do
                             VECLIB_MAXIMUM_THREADS=$cpu_threads
                             TF_NUM_INTRAOP_THREADS=$cpu_threads
                             TF_NUM_INTEROP_THREADS=1
-                            "$python_bin" -m bernn.dl.train.train_ae_classifier_holdout --early_stop=$early_stop --n_epochs=$n_epochs
-                            --zinb=0 --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
+                            "$python_bin" -m bernn.dl.train.train_ae_classifier_holdout --early_stop=$early_stop --n_epochs=$n_epochs \
+                            --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
                             --rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
                             --groupkfold=$groupkfold --embeddings_meta=$n_emb --device=$device --dataset=$dataset --n_trials=$n_trials \
                             --n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
                             --best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 \
                             --prune_threshold=$prune_threshold --warmup_after_warmup=$warmup_after_warmup \
-                            --prune_network=$prune_network --log_neptune=$log_neptune --log_mlflow=$log_mlflow \
-                            --log_tb=$log_tb --log_dvclive=$log_dvclive
+                            --prune_network=$prune_network --log_mlflow=$log_mlflow \
+                            --log_tb=$log_tb --log_dvclive=$log_dvclive \
+                            --cross_validation=$cross_validation --cross_test=$cross_test
                         )
 
                         if [ "$dry_run" = "1" ]; then
@@ -121,17 +127,3 @@ if [ "$dry_run" != "1" ]; then
     wait
 fi
 
-# exp_id=testbenchmark_08_15_2024
-# train_after_warmup=1
-# warmup_after_warmup=1
-# prune_threshold=0.0001
-# variational=0
-# kan=1
-# dloss='inverseTriplet'
-# cuda=0
-# .conda/bin/python bernn/dl/train/train_ae_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs \
-#     --zinb=0 --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
-#     --rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
-#     --groupkfold=$groupkfold --embeddings_meta=$n_emb --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
-#     --n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
-#     --best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 --prune_threshold=$prune_threshold --warmup_after_warmup=$warmup_after_warmup &

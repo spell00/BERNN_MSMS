@@ -1,23 +1,16 @@
 import matplotlib
+from tqdm import trange
 from bernn.utils.pool_metrics import log_pool_metrics
 import pandas as pd
 import numpy as np
 import random
 import torch
 from torch import nn
+from torch import nn
 from sklearn import metrics
 import contextlib
 
-# Handle ax-platform import with graceful fallback
-try:
-    from ax.service.managed_loop import optimize
-    AX_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: ax-platform not available or incompatible: {e}")
-    print("Hyperparameter optimization features will be disabled.")
-    AX_AVAILABLE = False
-    def optimize(*args, **kwargs):
-        raise ImportError("ax-platform is not available. Please install with: pip install ax-platform==0.3.7")
+from bernn.utils.ax_compat import optimize, AX_AVAILABLE
 
 from sklearn.metrics import matthews_corrcoef as MCC
 from sklearn.neighbors import KNeighborsClassifier
@@ -26,6 +19,7 @@ from ..models.pytorch.aedann import ReverseLayerF
 from ..models.pytorch.ekan.src.efficient_kan.kan import KANLinear
 from ..models.pytorch.utils.loggings import log_metrics, \
     log_plots, log_shap, log_mlflow, log_dvclive
+import mlflow
 from bernn.utils.utils import to_csv
 from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
@@ -33,11 +27,11 @@ from ..models.pytorch.utils.loggings import make_data
 import warnings
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_dummy
 import uuid
+import os
+from sklearn.preprocessing import LabelEncoder
 
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
-
-warnings.filterwarnings("ignore")
 
 random.seed(1)
 torch.manual_seed(1)
@@ -83,8 +77,36 @@ def binarize_labels(data, controls):
 
 class TrainAE:
 
+    @staticmethod
+    def _normalize_labels_for_encoding(values):
+        """Canonicalize labels before LabelEncoder fit/transform.
+
+        This avoids equivalent numeric strings being treated as different labels,
+        e.g. ``"0"`` vs ``"0.0"``.
+        """
+        series = pd.Series(np.asarray(values).reshape(-1)).astype(str).str.strip()
+        numeric = pd.to_numeric(series, errors='coerce')
+        normalized = series.to_numpy(dtype=object)
+
+        # Normalize every numeric-like value independently so mixed label sets
+        # (e.g. ["QC", "0.0"]) still align with ["QC", "0"].
+        valid_numeric = numeric.notna().to_numpy()
+        if np.any(valid_numeric):
+            numeric_vals = numeric.to_numpy(dtype=np.float64)
+            valid_vals = numeric_vals[valid_numeric]
+            rounded = np.rint(valid_vals).astype(np.int64)
+            is_integer = np.isclose(valid_vals, rounded.astype(np.float64))
+            normalized_numeric = np.where(
+                is_integer,
+                rounded.astype(str),
+                np.array([format(v, '.15g') for v in valid_vals], dtype=object),
+            )
+            normalized[valid_numeric] = normalized_numeric
+
+        return normalized.astype(str)
+
     def __init__(self, args=None, fix_thres=-1, load_tb=False, log_metrics=False, keep_models=True, log_inputs=True,
-                 log_plots=False, log_tb=False, log_neptune=False, log_mlflow=True, log_dvclive=False, groupkfold=True, pools=True, **kwargs):
+                 log_plots=False, log_tb=False, log_mlflow=True, log_dvclive=False, groupkfold=True, pools=True, **kwargs):
         """
 
         Args:
@@ -110,7 +132,6 @@ class TrainAE:
         self.best_closs = np.inf
         self.logged_inputs = False
         self.log_tb = log_tb
-        self.log_neptune = log_neptune
         self.log_mlflow = log_mlflow
         
         if args is None:
@@ -136,6 +157,10 @@ class TrainAE:
         self.unique_labels = None
         self.unique_batches = None
         self.pools = pools
+        self.ae = None
+        self.best_checkpoint_path = None  # Path to best model checkpoint
+        self.best_model_state = None      # Optional: in-memory best state for fast loading
+        self._label_encoder = None        # Optional encoder for non-numeric labels
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
         self.load_autoencoder()
@@ -147,6 +172,9 @@ class TrainAE:
         except Exception:
             n_neighbors = 5
         self.knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
+        self.rep = 0
+        self.combinations = []
+
 
     # Back-compat wrappers (old names)
     def loop(self, group, optimizer, ae, celoss, loader, 
@@ -156,7 +184,35 @@ class TrainAE:
     def loop2(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
         return self.loop_train(group, optimizer, ae, scheduler, losses, loader, lists, traces, nu, mapping)
 
+    def train(self, params=None):
+        """Deprecated alias for _train."""
+        return self._train(params)
+
     def make_params(self, params):
+        # Normalize depth first so any Ax-provided n_layers is honored.
+        try:
+            n_layers = int(params.get('n_layers', getattr(self.args, 'n_layers', 1)))
+        except Exception:
+            n_layers = 1
+        n_layers = max(1, n_layers)
+        self.args.n_layers = n_layers
+        params['n_layers'] = n_layers
+
+        # Ensure layer1..layerN are always available, using halving defaults
+        # (floor at 16) for missing deeper layers.
+        layer_params = self.get_default_layer_params()
+        for key, value in layer_params.items():
+            params.setdefault(key, value)
+            setattr(self.args, key, int(params[key]))
+        # Drop any stale layer keys beyond current n_layers.
+        for key in [k for k in list(params.keys()) if k.startswith('layer')]:
+            try:
+                idx = int(key.replace('layer', ''))
+            except Exception:
+                continue
+            if idx > n_layers:
+                params.pop(key, None)
+
         # Fixing the hyperparameters that are not optimized
         if self.args.dloss not in ['revTriplet', 'revDANN', 'DANN',
                                    'inverseTriplet', 'normae'] or 'gamma' not in params:
@@ -165,9 +221,6 @@ class TrainAE:
         if not self.args.variational or 'beta' not in params:
             # beta = 0 because useless outside a variational autoencoder
             params['beta'] = 0
-        if not self.args.zinb or 'zeta' not in params:
-            # zeta = 0 because useless outside a zinb autoencoder
-            params['zeta'] = 0
         if 1 > self.fix_thres >= 0:
             # fixes the threshold of 0s tolerated for a feature
             params['thres'] = self.fix_thres
@@ -188,7 +241,6 @@ class TrainAE:
         # scale = params['scaler']
         self.gamma = params['gamma']
         self.beta = params['beta']
-        self.zeta = params['zeta']
         self.l1 = params.get('l1', 0)
         self.reg_entropy = params.get('reg_entropy', 0)
         self.args.scaler = params['scaler']
@@ -211,10 +263,67 @@ class TrainAE:
 
         return params
 
-    def _prepare_data(self, X, y=None, groups=None, X_test=None, y_test=None, groups_test=None):
+    def get_default_layer_params(self):
+        """Build default layer parameters for any classifier depth.
+
+        Rules:
+        - Start from ``layer1`` (default 512, minimum 16)
+        - For each next layer, default to half of previous
+        - Never go below 16
+        - Explicitly provided ``layer{i}`` values still override defaults
+
+        Returns:
+            Dict like ``{'layer1': ..., 'layer2': ...}`` containing exactly
+            ``n_layers`` entries.
+        """
+        try:
+            n_layers = int(getattr(self.args, 'n_layers', 1))
+        except Exception:
+            n_layers = 1
+        n_layers = max(1, n_layers)
+
+        try:
+            first = int(getattr(self.args, 'layer1', 512))
+        except Exception:
+            first = 512
+        first = max(16, first)
+
+        layer_params = {'layer1': first}
+        prev = first
+
+        for i in range(2, n_layers + 1):
+            default_i = max(prev // 2, 16)
+            raw = getattr(self.args, f'layer{i}', default_i)
+            try:
+                value_i = int(raw)
+            except Exception:
+                value_i = default_i
+            value_i = max(16, value_i)
+            layer_params[f'layer{i}'] = value_i
+            prev = value_i
+
+        return layer_params
+
+    def _prepare_data(self, X, y=None, groups=None, X_valid=None, y_valid=None,
+                      groups_valid=None, X_test=None, y_test=None, groups_test=None,
+                      cross_validation=False, cross_test=False, val_size=0.2):
         """
         Internal method to prepare the in-memory data dictionary (self.data) from inputs.
+
+        Important contract:
+        - Batch IDs are mandatory.
+        - ``groups`` must be provided for training samples.
+        - ``groups_test`` must be provided when ``X_test`` is provided.
+
+        This is required to keep BERNN behavior explicit and avoid silently
+        assigning synthetic batch IDs that would make domain-adaptation metrics
+        ambiguous.
         """
+        # cross-test can't be done without cross-validation logic
+        if cross_test:
+            cross_validation = True
+        self._cross_test_active = cross_test
+
         # Ensure inputs are in the right format
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
@@ -222,69 +331,163 @@ class TrainAE:
             y = np.zeros(len(X))
         if not isinstance(y, np.ndarray):
             y = np.array(y)
+
+        # Normalize all labels (train, test, valid) upfront to ensure consistency.
+        y = self._normalize_labels_for_encoding(y)
+        test_labels_for_union = None
+        if y_test is not None:
+            y_test = self._normalize_labels_for_encoding(y_test)
+            test_labels_for_union = y_test
+        if y_valid is not None:
+            y_valid = self._normalize_labels_for_encoding(y_valid)
+
+        # Build label encoder on the union of train, valid, and test labels (if provided)
+        y_is_numeric = np.issubdtype(y.dtype, np.number)
+        if not y_is_numeric:
+            self._label_encoder = LabelEncoder()
+            # Union all available labels for consistent encoding
+            label_union = [y]
+            if test_labels_for_union is not None:
+                label_union.append(test_labels_for_union)
+            if y_valid is not None:
+                label_union.append(y_valid)
+            all_labels_union = np.unique(np.concatenate(label_union))
+            self._label_encoder.fit(all_labels_union)
+            y = self._label_encoder.transform(y)
+            if y_test is not None:
+                y_test = self._label_encoder.transform(y_test)
+            if y_valid is not None:
+                y_valid = self._label_encoder.transform(y_valid)
+        else:
+            self._label_encoder = None
+
         if groups is None:
-            groups = np.zeros(len(X))
+            raise ValueError("Batch IDs are mandatory: provide groups_train/groups for every training sample.")
         if not isinstance(groups, np.ndarray):
             groups = np.array(groups)
-            
+
         self.data = {
-            'inputs': {}, 'meta': {}, 'names': {}, 'labels': {}, 
+            'inputs': {}, 'meta': {}, 'names': {}, 'labels': {},
             'cats': {}, 'batches': {}, 'orders': {}, 'sets': {}
         }
-        
+
         assert len(X) == len(y) == len(groups), "X, y, groups must have same length"
-        
-        self.unique_labels = np.unique(y)
+
+        label_map = {l: i for i, l in enumerate(sorted(np.unique(y), key=str))}
+        self.unique_labels = np.array(sorted(label_map.keys(), key=str))
         self.unique_batches = np.unique(groups)
-        
-        if self.groupkfold and len(self.unique_batches) > 1:
-            from sklearn.model_selection import StratifiedGroupKFold
-            skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=1)
-            train_inds, valid_inds = next(skf.split(X, y, groups))
-        else:
-            from sklearn.model_selection import StratifiedKFold
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=1)
-            train_inds, valid_inds = next(skf.split(X, y))
-            
-        self.data['inputs']['train'] = X.iloc[train_inds]
-        self.data['inputs']['valid'] = X.iloc[valid_inds]
-        self.data['labels']['train'] = y[train_inds]
-        self.data['labels']['valid'] = y[valid_inds]
-        self.data['batches']['train'] = groups[train_inds]
-        self.data['batches']['valid'] = groups[valid_inds]
-        
-        batch_map = {b: i for i, b in enumerate(self.unique_batches)}
-        self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
-        self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
-        
-        if X_test is not None:
-            if not isinstance(X_test, pd.DataFrame):
-                X_test = pd.DataFrame(X_test)
-            if y_test is None:
-                y_test = np.zeros(len(X_test))
-            if groups_test is None:
-                groups_test = np.zeros(len(X_test))
-            if not isinstance(y_test, np.ndarray):
-                y_test = np.array(y_test)
-            if not isinstance(groups_test, np.ndarray):
-                groups_test = np.array(groups_test)
-                
+
+        # --- SPLIT LOGIC ---
+        # If X_valid/y_valid are provided, use them for valid
+        # If X_test/y_test are provided, use them for test
+        # If neither, split into train/valid/test
+        # If only test is missing, split once for valid, leave test empty
+        # If only valid is missing, raise error
+
+        # If both valid and test are provided, assign directly
+        if X_valid is not None and y_valid is not None and X_test is not None and y_test is not None:
+            self.data['inputs']['train'] = X
+            self.data['labels']['train'] = y
+            self.data['batches']['train'] = groups
+            self.data['inputs']['valid'] = X_valid
+            self.data['labels']['valid'] = y_valid
+            self.data['batches']['valid'] = groups_valid if groups_valid is not None else np.zeros(len(X_valid))
             self.data['inputs']['test'] = X_test
             self.data['labels']['test'] = y_test
-            self.data['batches']['test'] = np.array([batch_map.get(b, 0) for b in groups_test])
+            self.data['batches']['test'] = groups_test if groups_test is not None else np.zeros(len(X_test))
+        # If only test is provided, assign test, split for valid
+        elif X_test is not None and y_test is not None:
+            # Split X into train/valid
+            n_splits = int(1.0 / val_size) if val_size > 0 else 5
+            if len(self.unique_batches) > 1:
+                from sklearn.model_selection import StratifiedGroupKFold
+                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                split_iter = list(skf.split(X, y, groups))
+            else:
+                from sklearn.model_selection import StratifiedKFold
+                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                split_iter = list(skf.split(X, y))
+            valid_fold = 0
+            train_inds, valid_inds = split_iter[valid_fold]
+            self.data['inputs']['train'] = X.iloc[train_inds]
+            self.data['labels']['train'] = y[train_inds]
+            self.data['batches']['train'] = groups[train_inds]
+            self.data['inputs']['valid'] = X.iloc[valid_inds]
+            self.data['labels']['valid'] = y[valid_inds]
+            self.data['batches']['valid'] = groups[valid_inds]
+            batch_map = {b: i for i, b in enumerate(self.unique_batches)}
+            self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
+            self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
+            # Assign test directly
+            if not isinstance(groups_test, np.ndarray):
+                groups_test = np.array(groups_test)
+            if not isinstance(X_test, pd.DataFrame):
+                X_test = pd.DataFrame(X_test)
+            self.data['inputs']['test'] = X_test
+            self.data['labels']['test'] = y_test
+            self.data['batches']['test'] = groups_test
+        # If only valid is provided (not supported)
+        elif X_valid is not None and y_valid is not None:
+            raise ValueError("Cannot provide only valid set without test set. Please provide test set or use only train/valid split.")
+        # If neither valid nor test is provided, split into train/valid/test
         else:
-            self.data['inputs']['test'] = pd.DataFrame(columns=X.columns)
-            self.data['labels']['test'] = np.array([])
-            self.data['batches']['test'] = np.array([])
+            n_splits = int(1.0 / val_size) if val_size > 0 else 5
+            if len(self.unique_batches) > 1:
+                from sklearn.model_selection import StratifiedGroupKFold
+                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                split_iter = list(skf.split(X, y, groups))
+            else:
+                from sklearn.model_selection import StratifiedKFold
+                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                split_iter = list(skf.split(X, y))
+            valid_fold = 0
+            test_fold = (valid_fold + 1) % n_splits
+            train_inds_v, valid_inds = split_iter[valid_fold]
+            train_inds_t, test_inds = split_iter[test_fold]
+            train_inds = np.array([x for x in range(len(X)) if x not in np.concatenate((valid_inds, test_inds))])
+            self.data['inputs']['train'] = X.iloc[train_inds]
+            self.data['labels']['train'] = y[train_inds]
+            self.data['batches']['train'] = groups[train_inds]
+            self.data['inputs']['valid'] = X.iloc[valid_inds]
+            self.data['labels']['valid'] = y[valid_inds]
+            self.data['batches']['valid'] = groups[valid_inds]
+            self.data['inputs']['test'] = X.iloc[test_inds]
+            self.data['labels']['test'] = y[test_inds]
+            self.data['batches']['test'] = groups[test_inds]
+            batch_map = {b: i for i, b in enumerate(self.unique_batches)}
+            self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
+            self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
+            self.data['batches']['test'] = np.array([batch_map[b] for b in self.data['batches']['test']])
+
+        # Ensure all keys are set for downstream code
+        for group in ['train', 'valid', 'test']:
+            if group not in self.data['inputs']:
+                self.data['inputs'][group] = pd.DataFrame()
+            if group not in self.data['labels']:
+                self.data['labels'][group] = np.array([])
+            if group not in self.data['batches']:
+                self.data['batches'][group] = np.array([])
+
+        # Invariant: all known holdout labels must already be represented in train labels.
+        # Unknown labels use sentinel -1 when y_test is omitted and are excluded.
+        all_labels = np.concatenate([self.data['labels']['train'], self.data['labels']['valid'], self.data['labels']['test']])
+        all_labels_set = set(all_labels[all_labels != -1])
+        train_label_set = set(np.unique(self.data['labels']['train']))
+        # holdout_labels = np.concatenate((self.data['labels']['valid'], self.data['labels']['test']))
+        # known_holdout_labels = holdout_labels[holdout_labels != -1]
+        missing_train_labels = all_labels_set - train_label_set
+        assert not missing_train_labels, (
+            "After split, holdout labels must be present in train labels. "
+            f"Missing in train: {sorted(missing_train_labels)}"
+        )
             
         for group in ['train', 'valid', 'test']:
             n_samples = len(self.data['inputs'][group])
             self.data['names'][group] = pd.Series([f"{group}_{i}" for i in range(n_samples)])
-            self.data['meta'][group] = pd.DataFrame(np.zeros((n_samples, 2)), columns=['Age', 'Gender'], index=self.data['inputs'][group].index)
+            # self.data['meta'][group] = pd.DataFrame(np.zeros((n_samples, 2)), columns=['Age', 'Gender'], index=self.data['inputs'][group].index)
             self.data['orders'][group] = np.arange(n_samples)
             self.data['sets'][group] = np.array([group] * n_samples)
-            label_map = {l: i for i, l in enumerate(self.unique_labels)}
-            self.data['cats'][group] = np.array([label_map.get(l, len(label_map)) for l in self.data['labels'][group]])
+            self.data['cats'][group] = np.array([label_map[l] if l in label_map else -1 for l in self.data['labels'][group]])
             
         for key in ['inputs', 'meta']:
             if len(self.data['inputs']['test']) > 0:
@@ -300,7 +503,6 @@ class TrainAE:
                 
         if self.args.controls != '':
             self.data = binarize_labels(self.data, self.args.controls)
-            self.unique_labels = np.unique(self.data['labels']['all'])
 
         if self.pools:
             for key in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
@@ -310,23 +512,79 @@ class TrainAE:
                 self.data[key]['all_pool'] = self.data[key]['all']
 
         print('Data loaded')
-        self.make_samples_weights()
+        # self.make_samples_weights()
 
-    def fit(self, X_train, y_train, groups_train=None, params=None, **kwargs):
+    def fit(self, X_train, y_train, groups_train=None, X_test=None, y_test=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
         """
-        Standard supervised/unsupervised training on training data only.
+        Standard supervised/unsupervised training.
+        If X_test is provided, it is included in the data (transductive learning) but no predictions are returned.
         """
-        self._prepare_data(X_train, y_train, groups_train)
-        return self._train(params)
+        response = -1
+        while response == -1:
+            self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
+            self._train(params)
+            self.rep += 1
 
-    def fit_transform(self, X_train, y_train, X_test, y_test, groups_train=None, groups_test=None, params=None, **kwargs):
+        return self
+
+    def fit_predict(self, X_train, y_train, X_test=None, y_test=None, groups_train=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
         """
-        Transductive learning: training using both X_train and X_test (unlabeled).
-        Returns the loss for hyperparameter optimization (Ax).
+        Fits the model (optionally transductively if X_test is provided) and returns predictions.
+        If y_test is provided, it can be used for transductive training or evaluation.
         """
-        self._prepare_data(X_train, y_train, groups_train, X_test, y_test, groups_test)
-        loss = self._train(params)
-        return loss
+        response = -1
+        while response == -1:
+            self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
+            response = self._train(params)
+            self.rep += 1
+        if X_test is not None:
+            return self.predict(X_test)
+        else:
+            return self.predict(X_train)
+
+    def fit_transform(self, *args, **kwargs):
+        """Deprecated alias for fit_predict."""
+        warnings.warn("fit_transform is deprecated, use fit_predict instead", DeprecationWarning)
+        return self.fit_predict(*args, **kwargs)
+
+    def _validate_and_save_best_checkpoint(self, ae_model, epoch, valid_mcc):
+        """
+        Validate model on validation set and save checkpoint if it's the best so far (based on MCC).
+        
+        Args:
+            ae_model: The autoencoder model to evaluate and potentially save
+            epoch: Current epoch number
+            valid_mcc: Validation MCC score
+            
+        Returns:
+            bool: True if this is a new best model, False otherwise
+        """
+        is_best = valid_mcc > self.best_mcc
+        
+        if is_best:
+            self.best_mcc = valid_mcc
+            
+            # Create checkpoint directory if it doesn't exist
+            if self.complete_log_path:
+                os.makedirs(self.complete_log_path, exist_ok=True)
+                checkpoint_path = os.path.join(self.complete_log_path, 'best_model.pth')
+                
+                # Save checkpoint to disk
+                try:
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': ae_model.state_dict(),
+                        'best_mcc': self.best_mcc,
+                    }, checkpoint_path)
+                    self.best_checkpoint_path = checkpoint_path
+                    print(f"✓ Saved best model checkpoint at epoch {epoch} (valid_mcc={valid_mcc:.4f})")
+                except Exception as e:
+                    print(f"Warning: Failed to save checkpoint: {e}")
+            
+            return True
+        
+        return False
+
 
 
     def _train(self, params=None):
@@ -351,8 +609,9 @@ class TrainAE:
         if isinstance(self.ae, nn.Module):
             print("Pre-loaded autoencoder instance detected. Skipping warmup phase.")
             warmup_epochs = 0
-            self.ae_instance = self.ae
+            ae_model = self.ae
         else:
+            ae_cls = self.load_autoencoder()
             warmup_epochs = getattr(self.args, 'warmup', 100)
             print(f"Instantiating new autoencoder. Warmup epochs: {warmup_epochs}")
             model_kwargs = {
@@ -368,28 +627,29 @@ class TrainAE:
                 'dropout': getattr(self.args, 'dropout', 0.1),
                 'variational': getattr(self.args, 'variational', 0),
                 'conditional': getattr(self.args, 'conditional', False),
-                'zinb': getattr(self.args, 'zinb', 0),
                 'add_noise': getattr(self.args, 'add_noise', 0),
                 'tied_weights': getattr(self.args, 'tied_weights', 0),
                 'device': device
             }
             try:
-                self.ae_instance = self.ae(**model_kwargs).to(device)
+                ae_model = ae_cls(**model_kwargs).to(device)
             except TypeError:
-                self.ae_instance = self.ae(self.data['inputs']['all'].shape[1], self.n_cats, self.n_batches, 0, self.args, None).to(device)
+                ae_model = ae_cls(self.data['inputs']['all'].shape[1], self.n_cats, self.n_batches, 0, self.args, None).to(device)
                 
-        if hasattr(self.ae_instance, 'mapper'):
-            self.ae_instance.mapper.to(device)
-        if hasattr(self.ae_instance, 'dec'):
-            self.ae_instance.dec.to(device)
+        self.ae = ae_model
+
+        if hasattr(self.ae, 'mapper'):
+            self.ae.mapper.to(device)
+        if hasattr(self.ae, 'dec'):
+            self.ae.dec.to(device)
             
         lr = getattr(self.args, 'lr', 1e-3)
         wd = getattr(self.args, 'wd', 1e-5)
         optimizer_type = getattr(self.args, 'optimizer_type', 'adam')
         
-        optimizer_ae = get_optimizer(self.ae_instance, lr, wd, optimizer_type)
-        if hasattr(self.ae_instance, 'classifier'):
-            self.optimizer_c = get_optimizer(self.ae_instance.classifier, getattr(self.args, 'nu', 1.0) * lr, wd, optimizer_type)
+        optimizer_ae = get_optimizer(self.ae, lr, wd, optimizer_type)
+        if hasattr(self.ae, 'classifier'):
+            self.optimizer_c = get_optimizer(self.ae.classifier, getattr(self.args, 'nu', 1.0) * lr, wd, optimizer_type)
         else:
             self.optimizer_c = None
 
@@ -405,21 +665,62 @@ class TrainAE:
         values = {}
         loggers = {}
         
+        # Initialize best_mcc for tracking (will be updated when checkpoints are saved)
+        self.best_mcc = -1
+        
         print(f"Starting training loop for {n_epochs} epochs...")
-        for epoch in range(n_epochs):
-            warmup = epoch < warmup_epochs
-            
+        from tqdm import tqdm
+        if warmup_epochs > 0:
+            warmup_pbar = tqdm(range(warmup_epochs), desc="Warmup Epochs", unit="epoch")
+            for warmup_epoch in warmup_pbar:
+                lists, traces = get_empty_traces()
+                self.ae.train()
+                self.warmup_loop(optimizer_ae, None, self.ae, celoss, loaders['all'], triplet_loss, mseloss, True, warmup_epoch, values, loggers, {}, traces, None)
+
+        pbar = tqdm(range(warmup_epochs, n_epochs), desc="Epochs", unit="epoch")
+        for epoch in pbar:
             lists, traces = get_empty_traces()
-            self.ae_instance.train()
-            
-            if warmup:
-                self.warmup_loop(optimizer_ae, None, self.ae_instance, celoss, loaders['all'], triplet_loss, mseloss, warmup, epoch, values, loggers, {}, traces, None)
-            else:
-                self.loop_train('train', optimizer_ae, self.ae_instance, None, 
-                                {'celoss': celoss, 'sceloss': sceloss, 'mseloss': mseloss, 'triplet_loss': triplet_loss}, 
-                                loaders['train'], lists, traces, nu=getattr(self.args, 'nu', 1), mapping=getattr(self.args, 'use_mapping', True))
-                    
-        self.ae = self.ae_instance
+            self.ae.train()
+            pbar.set_postfix_str("Training")
+            self.loop_train('train', optimizer_ae, self.ae, None,
+                            {'celoss': celoss, 'sceloss': sceloss, 'mseloss': mseloss, 'triplet_loss': triplet_loss},
+                            loaders['train'], lists, traces, nu=getattr(self.args, 'nu', 1), mapping=getattr(self.args, 'use_mapping', True))
+
+            # ===== VALIDATION & CHECKPOINT SAVING =====
+            # After training epoch, validate on validation set
+            if 'valid' in loaders and len(loaders['valid'].dataset) > 0:
+                valid_lists, valid_traces = get_empty_traces()
+                self.ae.eval()
+
+                with torch.no_grad():
+                    self.loop_train('valid', optimizer_ae, self.ae, None,
+                                   {'celoss': celoss, 'sceloss': sceloss, 'mseloss': mseloss, 'triplet_loss': triplet_loss},
+                                   loaders['valid'], valid_lists, valid_traces, nu=getattr(self.args, 'nu', 1), mapping=getattr(self.args, 'use_mapping', True))
+
+                # Compute validation MCC
+                try:
+                    valid_preds = np.concatenate(valid_lists['valid']['preds']).argmax(1)
+                    valid_labels = np.concatenate(valid_lists['valid']['classes'])
+                    valid_mcc = MCC(valid_labels, valid_preds)
+
+                    # Save checkpoint if this is the best MCC so far
+                    self._validate_and_save_best_checkpoint(self.ae, epoch, valid_mcc)
+
+                    if epoch % 10 == 0:
+                            print(f"Epoch {epoch}: Valid MCC = {valid_mcc:.4f}, Best MCC = {self.best_mcc:.4f}")
+                except Exception as e:
+                    print(f"Warning: Could not compute validation MCC: {e}")
+
+        # ===== LOAD BEST CHECKPOINT =====
+        # After training completes, load the best model checkpoint
+        if self.best_checkpoint_path and os.path.exists(self.best_checkpoint_path):
+            try:
+                checkpoint = torch.load(self.best_checkpoint_path, map_location=device)
+                self.ae.load_state_dict(checkpoint['model_state_dict'])
+                print(f"✓ Loaded best model from checkpoint (best_mcc={checkpoint['best_mcc']:.4f})")
+            except Exception as e:
+                print(f"Warning: Could not load best checkpoint: {e}")
+        
         print("Training completed.")
         return self
 
@@ -427,10 +728,11 @@ class TrainAE:
         """
         Transform X into the latent space of the autoencoder.
         """
-        if self.ae is None:
+        if not isinstance(self.ae, nn.Module):
             raise ValueError("AutoEncoder is not initialized. Please run training first.")
         
-        self.ae.eval()
+        self.ae.enc.eval()
+        self.ae.classifier.eval()
         
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
@@ -440,9 +742,10 @@ class TrainAE:
         dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
         loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
         
+        from tqdm import tqdm
         encoded_list = []
         with torch.no_grad():
-            for batch in loader:
+            for batch in tqdm(loader, desc="Transforming", leave=False):
                 data = batch[0].to(self.args.device)
                 
                 # Mock domain as all zeros
@@ -454,17 +757,22 @@ class TrainAE:
                 
         return np.concatenate(encoded_list, axis=0)
 
-
-
     def predict(self, X):
         """
-        Predict labels for X using the trained autoencoder instance.
+        Predict numeric class ids for X using the best trained autoencoder (loaded from checkpoint).
+        
+        Architecture Note:
+        - During training: best model weights are saved to disk when validation MCC improves
+        - At end of training: best checkpoint is loaded into self.ae
+        - During inference: self.ae contains the best model, not the last epoch
+        - This hybrid approach gives fast inference (no disk I/O) with checkpoint persistence
         """
-        ae = getattr(self, 'ae_instance', None)
-        if ae is None:
-            raise ValueError("No trained model found. Run fit() or fit_predict() first.")
-
-        ae.eval()
+        
+        if not isinstance(self.ae, nn.Module):
+            raise ValueError("AutoEncoder is not initialized. Please run training first.")
+        
+        self.ae.enc.eval()
+        self.ae.classifier.eval()
 
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
@@ -474,42 +782,72 @@ class TrainAE:
         dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
         loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
 
+        from tqdm import tqdm
         preds_list = []
         with torch.no_grad():
-            for batch in loader:
+            for batch in tqdm(loader, desc="Predicting", leave=False):
                 data = batch[0].to(device)
-                domain = torch.zeros(data.shape[0], dtype=torch.long, device=device)
-                to_rec = data.clone()
+                preds = np.asarray(self.ae.predict(data)).reshape(-1)
+                preds_list.append(np.asarray(preds).reshape(-1))
 
-                output = ae(data, to_rec, domain, sampling=False)
-                # AutoEncoder returns (enc, rec_dict, zinb_loss, kld)
-                # The classifier head is on the encoder output
-                enc = output[0]
-                if hasattr(ae, 'classifier') and ae.classifier is not None:
-                    classif = ae.classifier(enc)
-                    preds = torch.argmax(classif, dim=1)
-                else:
-                    preds = torch.zeros(data.shape[0], dtype=torch.long)
-
-                preds_list.append(preds.detach().cpu().numpy())
-
-        preds_numeric = np.concatenate(preds_list, axis=0)
-
-        if self.unique_labels is not None and len(self.unique_labels) > 0:
-            return np.array([self.unique_labels[idx] if idx < len(self.unique_labels) else str(idx)
-                             for idx in preds_numeric])
+        preds_numeric = np.concatenate(preds_list, axis=0).astype(np.int64)
+        if self._label_encoder is not None:
+            return self._label_encoder.inverse_transform(preds_numeric)
         return preds_numeric
+
+    def predict_proba(self, X):
+        """Predict class probabilities for X using the best trained autoencoder.
+
+        This mirrors ``predict`` but returns probability estimates from the
+        underlying model when available.
+        """
+        if not isinstance(self.ae, nn.Module):
+            raise ValueError("AutoEncoder is not initialized. Please run training first.")
+
+        if not hasattr(self.ae, 'predict_proba'):
+            raise AttributeError("Underlying autoencoder does not expose predict_proba.")
+
+        self.ae.eval()
+
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+
+        from torch.utils.data import DataLoader, TensorDataset
+        device = getattr(self.args, 'device', 'cpu')
+        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+
+        from tqdm import tqdm
+        proba_list = []
+        with torch.no_grad():
+            for batch in tqdm(loader, desc="Predicting probabilities", leave=False):
+                data = batch[0].to(device)
+                probs = np.asarray(self.ae.predict_proba(data))
+                proba_list.append(probs)
+
+        probs = np.concatenate(proba_list, axis=0)
+        if probs.ndim == 1:
+            probs = probs.reshape(-1, 1)
+        return probs
 
 
 
     def autocast_context(self):
         """Create autocast context for mixed precision training with bfloat16."""
-        try:
-            # Try to create autocast context with bfloat16
-            return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
-        except (AttributeError, RuntimeError):
-            # Fallback to null context if autocast or bfloat16 is not supported
+        device = str(getattr(self.args, 'device', 'cpu')).lower()
+
+        # Never request CUDA autocast on CPU runs.
+        if device == 'cpu':
             return contextlib.nullcontext()
+
+        # Use CUDA autocast only when CUDA is both requested and available.
+        if device.startswith('cuda') and torch.cuda.is_available():
+            try:
+                return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
+            except (AttributeError, RuntimeError):
+                return contextlib.nullcontext()
+
+        return contextlib.nullcontext()
 
     def default_params(self):
         """Initialize default parameters for the training process."""
@@ -532,26 +870,19 @@ class TrainAE:
             'tied_weights': 0,
             'random': 1,
             'variational': 0,
-            'zinb': 0,  # TODO resolve problems, do not use
             'use_mapping': 1,
             'bdisc': 1,
             'n_repeats': 5,
             'dloss': 'inverseTriplet',  # one of revDANN, DANN, inverseTriplet, revTriplet
-            'csv_file': 'unique_genes.csv',
-            'best_features_file': '',  # best_unique_genes.tsv
             'bad_batches': '',  # 0;23;22;21;20;19;18;17;16;15
-            'remove_zeros': 0,
             'n_meta': 0,
             'embeddings_meta': 0,
             'groupkfold': 1,
-            'dataset': 'custom',
             'bs': 32,
             'exp_id': 'default_ae_then_classifier',
-            'strategy': 'CU_DEM',  # only for alzheimer dataset
             'n_agg': 1,  # Number of trailing values to get stable valid values
             'n_layers': 2,  # N layers for classifier
-            'log1p': 1,  # log1p the data? Should be 0 with zinb
-            'pool': 1,  # only for alzheimer dataset
+            'log1p': 1,  # log1p the data?
             'kan': 1,
             'update_grid': 1,
             'use_l1': 1,
@@ -621,10 +952,17 @@ class TrainAE:
             label in self.data['labels']['train'] and label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH']}
         self.unique_unique_labels = list(self.class_weights.keys())
         for group in ['train', 'valid', 'test']:
-            # Ensure inds_to_keep is always integer dtype
-            inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels], dtype=int)
+            # In cross_test mode or for the test set, we keep all samples even if they have 
+            # unknown labels (e.g. dummy zeros) to ensure we get predictions for everything.
+            if group == 'test' or (group == 'valid' and getattr(self, '_cross_test_active', False)):
+                inds_to_keep = np.arange(len(self.data['labels'][group]), dtype=int)
+            else:
+                inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels], dtype=int)
+            
             print(f"[make_samples_weights] Group '{group}': {len(inds_to_keep)} samples to keep out of {len(self.data['labels'][group])}")
             if len(inds_to_keep) == 0:
+                if group == 'test':
+                     continue # Test set might be empty if not provided
                 raise ValueError(f"[make_samples_weights] After filtering, no samples remain for group '{group}'. Check your CSV and label filtering criteria.")
             # Defensive: ensure indices are valid
             if inds_to_keep.max(initial=-1) >= len(self.data['labels'][group]) or inds_to_keep.min(initial=0) < 0:
@@ -658,8 +996,8 @@ class TrainAE:
         elif self.args.kan == 1:
             from bernn import KANAutoEncoder3 as AutoEncoder
             from bernn import SHAPKANAutoEncoder3 as SHAPAutoEncoder
-        self.ae = AutoEncoder
         self.shap_ae = SHAPAutoEncoder
+        return AutoEncoder
 
     def log_rep(self, best_lists, best_vals, best_values, traces, metrics, run, loggers, ae, shap_ae, h,
                 epoch):
@@ -674,15 +1012,6 @@ class TrainAE:
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="tensorboard",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                          device=self.args.device)
-                except BrokenPipeError:
-                    print("\n\n\nProblem with logging stuff!\n\n\n")
-            if self.log_neptune and self.log_metrics:
-                try:
-                    metrics = log_metrics(run, best_lists, best_vals, ae,
-                                          np.unique(np.concatenate(best_lists['train']['labels'])),
-                                          np.unique(self.data['batches']), epoch=epoch, mlops="neptune",
                                           metrics=metrics, n_meta_emb=self.args.embeddings_meta,
                                           device=self.args.device)
                 except BrokenPipeError:
@@ -708,13 +1037,6 @@ class TrainAE:
 
         if self.log_metrics and self.pools:
             try:
-                if self.log_neptune:
-                    enc_data = make_data(best_lists, 'encoded_values')
-                    metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'enc', 'neptune')
-                    rec_data = make_data(best_lists, 'rec_values')
-                    metrics = log_pool_metrics(rec_data['inputs'], rec_data['batches'], rec_data['labels'],
-                                               self.unique_unique_labels, run, epoch, metrics, 'rec', 'neptune')
                 if self.log_mlflow:
                     enc_data = make_data(best_lists, 'encoded_values')
                     metrics = log_pool_metrics(enc_data['inputs'], enc_data['batches'], enc_data['labels'],
@@ -747,10 +1069,6 @@ class TrainAE:
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'tb',
                              self.complete_log_path, self.args.device)
-                if self.log_neptune:
-                    log_shap(run, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'neptune',
-                             self.complete_log_path, self.args.device)
-                    log_plots(run, best_lists, 'neptune', epoch)
                 if self.log_mlflow:
                     log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
                              self.complete_log_path, self.args.device)
@@ -764,26 +1082,14 @@ class TrainAE:
 
         rec_data, enc_data = to_csv(best_lists, self.complete_log_path, columns)
 
-        if self.log_neptune:
-            run["recs"].track_files(f'{self.complete_log_path}/recs.csv')
-            run["encs"].track_files(f'{self.complete_log_path}/encs.csv')
-
+        # Pool/batch metrics are optional and absent for non-pool datasets.
         best_values['pool_metrics'] = {}
-        try:
+        if 'batches' in metrics:
             best_values['batches'] = metrics['batches']
-        except Exception as e:
-            print(f"Error in batches: {e}")
-            pass
-        try:
+        if 'pool_metrics_enc' in metrics:
             best_values['pool_metrics']['enc'] = metrics['pool_metrics_enc']
-        except Exception as e:
-            print(f"Error in pool_metrics_enc: {e}")
-            pass
-        try:
+        if 'pool_metrics_rec' in metrics:
             best_values['pool_metrics']['rec'] = metrics['pool_metrics_rec']
-        except Exception as e:
-            print(f"Error in pool_metrics_rec: {e}")
-            pass
 
         if self.log_tb:
             loggers['tb_logging'].logging(best_values, metrics)
@@ -817,13 +1123,6 @@ class TrainAE:
                                          np.array([self.unique_labels[x] for x in preds[group]]).reshape(-1, 1),
                                          names[group].reshape(-1, 1)), 1)).to_csv(
                 f'{self.complete_log_path}/{group}_predictions.csv')
-            if self.log_neptune:
-                run[f"{group}_predictions"].track_files(f'{self.complete_log_path}/{group}_predictions.csv')
-                try:
-                    run[f'{group}_AUC'] = metrics.roc_auc_score(y_true=cats[group], y_score=scores[group],
-                                                            multi_class='ovr')
-                except Exception as e:
-                    print(f"Error in {group} AUC: {e}")
             if self.log_mlflow:
                 try:
                     mlflow.log_metric(f'{group}_AUC',
@@ -875,7 +1174,7 @@ class TrainAE:
             
             # Use autocast for mixed precision training
             with self.autocast_context():
-                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+                enc, rec, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
                 rec = rec['mean']
 
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
@@ -942,11 +1241,10 @@ class TrainAE:
             else:
                 classif_loss = celoss(preds, cats)
 
-            if not self.args.zinb:
-                if isinstance(rec, list):
-                    rec = rec[-1]
-                if isinstance(to_rec, list):
-                    to_rec = to_rec[-1]
+            if isinstance(rec, list):
+                rec = rec[-1]
+            if isinstance(to_rec, list):
+                to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
             lists[group]['domains'] += [
                 np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])
@@ -1003,131 +1301,73 @@ class TrainAE:
 
         return classif_loss, lists, traces
 
-    def loop_train(self, group, optimizer, ae, scheduler, losses, loader, lists, traces, nu=1, mapping=True):
+    def train_bdisc(self, group, optimizer, ae, scheduler, loader):
         """
-        Joint training/eval step: classification + reconstruction.
-
-        Args:
-            group: 'train' | 'valid' | 'test'
-            optimizer: optimizer for classifier (or ae if applicable)
-            ae: autoencoder model
-            scheduler: LR scheduler (can be None or ReduceLROnPlateau/others)
-            losses: dict with {'mseloss': ..., 'celoss': ...}
-            loader: DataLoader
-            lists: accumulators dict
-            traces: metrics traces dict
-            nu: weight for classification loss
-            mapping: pass-through to AE forward
-
-        Returns:
-            classif_loss, lists, traces
+        Optimize the batch/domain discriminator (DANN discriminator).
         """
-        sampling = True if (group in ['train', 'valid'] and nu != 0) else False
-        classif_loss = None
-        # Collect features/labels to fit persistent KNN after the loop when using triplet
-        knn_feats, knn_labels = [], []
-
+        sampling = True if (group in ['train', 'valid']) else False
+        celoss = nn.CrossEntropyLoss()
+        bclassif_loss = None
         for i, batch in enumerate(loader):
-            if group == 'train' and nu != 0:
+            if group == 'train':
                 optimizer.zero_grad()
-
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, \
-                meta_neg_batch_sample, set_name = batch
-
+            data, meta_inputs, names, labels, domain, to_rec, *_ = batch
             data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
-
-            # Concatenate meta to inputs if configured
+            domain = domain.to(self.args.device).long()
+            meta_inputs = meta_inputs.to(self.args.device).float()
             if self.args.n_meta > 0:
                 data = torch.cat((data, meta_inputs), 1)
                 to_rec = torch.cat((to_rec, meta_inputs), 1)
-
-            not_to_rec = not_to_rec.to(self.args.device).float()
-
-            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
-            rec = rec['mean']
-            if self.args.train_after_warmup:
-                rec_loss = losses['mseloss'](rec, to_rec)
-            else:
-                rec_loss = torch.tensor(0.0, device=self.args.device)
-
-            # Classifier head; for triplet we only collect train features to fit KNN later
-            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                feats = torch.cat((enc, meta_inputs), 1) if self.args.embeddings_meta else enc
-                if group == 'train' and nu != 0:
-                    knn_feats.append(feats.detach().float().cpu().numpy())
-                    knn_labels.append(labels.detach().int().cpu().numpy())
-                preds = None
-            else:
-                if self.args.embeddings_meta:
-                    preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-                else:
-                    preds = ae.classifier(enc)
-
+            enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+            enc.requires_grad_()
             domain_preds = ae.dann_discriminator(enc)
+            bclassif_loss = celoss(domain_preds, domain.long().to(self.args.device))
+            if torch.isnan(bclassif_loss):
+                print("NAN in batch discriminator loss!")
+            bclassif_loss.backward()
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+        return bclassif_loss
 
-            # One-hot targets (needed only for CE)
-            if getattr(self.args, 'classif_loss', 'ce') != 'triplet':
-                if torch.all(labels < self.n_cats):
-                    cats = to_categorical(labels.long(), self.n_cats).to(self.args.device).float()
-                else:
-                    cats = torch.zeros((labels.shape[0], self.n_cats), device=self.args.device)
-                    cats[:, 0] = 1
-            else:
-                cats = None
-
-            # Select classification loss
-            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
-                pos_to_rec = pos_to_rec.to(self.args.device).float()
-                neg_to_rec = neg_to_rec.to(self.args.device).float()
-                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
-                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
-                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
-                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
-                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
-                if not self.args.train_after_warmup:
-                    enc = ae.classifier.net[0](enc)
-                    pos_enc = ae.classifier.net[0](pos_enc)
-                    neg_enc = ae.classifier.net[0](neg_enc)
-                classif_loss = class_triplet(enc, pos_enc, neg_enc)
-            else:
-                classif_loss = losses['celoss'](preds, cats)
-
-            # Handle possible list outputs
-            if not self.args.zinb:
-                if isinstance(rec, list):
-                    rec = rec[-1]
-                if isinstance(to_rec, list):
-                    to_rec = to_rec[-1]
-
-            # Backprop when training
+    def train_classifier(self, group, optimizer, ae, scheduler, loader, nu=1):
+        """
+        Optimize only the classifier (AE frozen if train_after_warmup==0).
+        """
+        sampling = True if (group in ['train', 'valid'] and nu != 0) else False
+        celoss = nn.CrossEntropyLoss()
+        classif_loss = None
+        for i, batch in enumerate(loader):
             if group == 'train' and nu != 0:
-                w = 1.0
-                total_loss = w * nu * classif_loss + rec_loss
-                try:
-                    total_loss.backward()
-                except Exception as e:
-                    print(f"Error in total_loss: {e}")
-                optimizer.step()
-                if getattr(self.args, 'scheduler', None) is not None and getattr(self.args, 'scheduler', None) != 'ReduceLROnPlateau':
-                    scheduler.step()
-
-        # Fit persistent KNN at the end of training loop when using triplet
-        if getattr(self.args, 'classif_loss', 'ce') == 'triplet' and group == 'train' and len(knn_feats) > 0:
-            try:
-                X_all = np.concatenate(knn_feats, axis=0)
-                y_all = np.concatenate(knn_labels, axis=0)
-                self.knn.fit(X_all, y_all)
-                self._knn_ready = True
-            except Exception as e:
-                print(f"KNN fit failed, falling back to batch KNN: {e}")
-                self._knn_ready = False
-
+                optimizer.zero_grad()
+            data, meta_inputs, names, labels, domain, to_rec, *_ = batch
+            data = data.to(self.args.device).float()
+            to_rec = to_rec.to(self.args.device).float()
+            meta_inputs = meta_inputs.to(self.args.device).float()
+            if self.args.n_meta > 0:
+                data = torch.cat((data, meta_inputs), 1)
+                to_rec = torch.cat((to_rec, meta_inputs), 1)
+            if hasattr(self.args, 'train_after_warmup') and self.args.train_after_warmup == 0:
+                ae.eval()
+                ae.classifier.train()
+                for param in ae.parameters():
+                    param.requires_grad = False
+                for param in ae.classifier.parameters():
+                    param.requires_grad = True
+            else:
+                ae.train()
+                for param in ae.parameters():
+                    param.requires_grad = True
+            enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+            logits = ae.classifier(enc)
+            classif_loss = celoss(logits, labels.long().to(self.args.device))
+            if torch.isnan(classif_loss):
+                print("NAN in classifier loss!")
+            classif_loss.backward()
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
         return classif_loss
 
     def forward_discriminate(self, optimizer_b, ae, celoss, loader):
@@ -1138,7 +1378,7 @@ class TrainAE:
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
             data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -1147,17 +1387,18 @@ class TrainAE:
                 data = torch.cat((data, meta_inputs), 1)
                 to_rec = torch.cat((to_rec, meta_inputs), 1)
             with torch.no_grad():
-                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
-            with torch.enable_grad():
-                domain_preds = ae.dann_discriminator(enc)
+                enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+            # with torch.enable_grad():
+            enc.requires_grad_()
+            domain_preds = ae.dann_discriminator(enc)
 
-                bclassif_loss = celoss(domain_preds,
-                                       to_categorical(domain.long(), self.n_batches).to(self.args.device).float())
-                if torch.isnan(bclassif_loss):
-                    print("NAN in batch discriminator loss!")
-                bclassif_loss.backward()
-                # nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
-                optimizer_b.step()
+            bclassif_loss = celoss(domain_preds,
+                                    to_categorical(domain.long(), self.n_batches).to(self.args.device).float())
+            if torch.isnan(bclassif_loss):
+                print("NAN in batch discriminator loss!")
+            bclassif_loss.backward()
+            # nn.utils.clip_grad_norm_(ae.dann_discriminator.parameters(), max_norm=1)
+            optimizer_b.step()
         self.unfreeze_layers(ae)
 
     def get_dloss(self, celoss, domain, domain_preds, set_num=None):
@@ -1315,7 +1556,7 @@ class TrainAE:
         """
         Regularization for KAN
         Args:
-            model: Autoencoder model
+            model: AutoEncoder model
             l1: L1 regularization
             reg_entropy: Entropy regularization
 
@@ -1374,9 +1615,8 @@ class TrainAE:
                 inputs = torch.cat((inputs, meta_inputs), 1)
                 to_rec = torch.cat((to_rec, meta_inputs), 1)
 
-            enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
+            enc, rec, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
             rec = rec['mean']
-            zinb_loss = zinb_loss.to(self.args.device)
             reverse = ReverseLayerF.apply(enc, 1)
             if self.args.dloss == 'DANN':
                 domain_preds = ae.dann_discriminator(reverse)
@@ -1406,8 +1646,8 @@ class TrainAE:
                 if self.args.n_meta > 0:
                     pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
                     neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
-                pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
-                neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
+                pos_enc, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
+                neg_enc, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(enc, pos_enc, neg_enc)
                 # domain = domain.argmax(1)
 
@@ -1421,8 +1661,6 @@ class TrainAE:
             if self.args.scaler == 'binarize':
                 rec = torch.sigmoid(rec)
             rec_loss = mseloss(rec, to_rec)
-            # else:
-            #     rec_loss = zinb_loss
             traces['rec_loss'] += [rec_loss.item()]
             traces['dom_loss'] += [dloss.item()]
             traces['dom_acc'] += [np.mean([0 if pred != dom else 1 for pred, dom in
@@ -1456,10 +1694,11 @@ class TrainAE:
                 l1_loss = self.reg_kan(ae, self.l1, self.reg_entropy)
             else:
                 l1_loss = torch.zeros(1).to(self.args.device)[0]
-            loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + self.zeta * zinb_loss + l1_loss
+            loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + l1_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
                 return 0, ae, warmup
+            assert loss.requires_grad, "Total loss does not require grad!"
             loss.backward()
             # Clip gradients if requested
             if hasattr(self.args, 'clip_val') and self.args.clip_val and self.args.clip_val > 0:
@@ -1619,7 +1858,6 @@ if __name__ == "__main__":
     parser.add_argument('--tied_weights', type=int, default=0)
     parser.add_argument('--random', type=int, default=1)
     parser.add_argument('--variational', type=int, default=0)
-    parser.add_argument('--zinb', type=int, default=0)  # TODO resolve problems, do not use
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
@@ -1638,7 +1876,7 @@ if __name__ == "__main__":
     parser.add_argument('--strategy', type=str, default='CU_DEM', help='only for alzheimer dataset')
     parser.add_argument('--n_agg', type=int, default=5, help='Number of trailing values to get stable valid values')
     parser.add_argument('--n_layers', type=int, default=2, help='N layers for classifier')
-    parser.add_argument('--log1p', type=int, default=1, help='log1p the data? Should be 0 with zinb')
+    parser.add_argument('--log1p', type=int, default=1, help='log1p the data?')
     parser.add_argument('--pool', type=int, default=1, help='only for alzheimer dataset')
 
     args = parser.parse_args()
@@ -1654,7 +1892,7 @@ if __name__ == "__main__":
         print(f"Error creating experiment: {e}")
         print(f"\n\nExperiment {args.exp_id} already exists\n\n")
     train = TrainAE(args, fix_thres=-1, load_tb=False, log_metrics=True, keep_models=False,
-                    log_inputs=False, log_plots=True, log_tb=False, log_neptune=False,
+                    log_inputs=False, log_plots=True, log_tb=False,
                     log_mlflow=True, groupkfold=args.groupkfold, pools=True)
 
     # train.train()
@@ -1670,7 +1908,7 @@ if __name__ == "__main__":
         {"name": "warmup", "type": "range", "bounds": [10, 1000]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice",
-         "values": ['l1', 'minmax', "l2"]},  # scaler whould be no for zinb
+         "values": ['l1', 'minmax', "l2"]},
         {"name": "layer2", "type": "range", "bounds": [32, 512]},
         {"name": "layer1", "type": "range", "bounds": [512, 1024]},
     ]
@@ -1682,9 +1920,6 @@ if __name__ == "__main__":
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.zinb:
-        # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,

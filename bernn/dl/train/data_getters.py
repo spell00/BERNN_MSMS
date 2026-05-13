@@ -128,8 +128,7 @@ def get_alzheimer(path, args, seed=42):
             ]).squeeze()
 
             data['inputs'][group] = matrix.iloc[:, pos].T
-            if not args.zinb:
-                data['inputs'][group] = data['inputs'][group].apply(impute_zero, axis=0)
+            data['inputs'][group] = data['inputs'][group].apply(impute_zero, axis=0)
             data['meta'][group] = pd.DataFrame(meta_age.iloc[meta_pos].to_numpy(), columns=['Age'],
                                                index=data['inputs'][group].index)
             data['meta'][group] = pd.concat((data['meta'][group],
@@ -309,9 +308,7 @@ def get_amide(path, args, seed=42):
                     return new_x
                 return peak
 
-            if not args.zinb:
-                print('Imputing zeros.')
-                matrix = matrix.apply(impute_zero, axis=0)
+            matrix = matrix.apply(impute_zero, axis=0)
             pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
             pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
@@ -439,8 +436,6 @@ def get_mice(path, args, seed=42):
                 return peak
 
             matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
-            # if not args.zinb:
-            #     matrix = matrix.apply(impute_zero, axis=0)
             if args.remove_zeros:
                 mask1 = (matrix == 0).mean(axis=0) < 0.1
                 matrix = matrix.loc[:, mask1]
@@ -707,9 +702,6 @@ def get_bacteria_images(path, args, seed=42):
                 train_nums = np.arange(0, len(data['labels']['train']))
                 train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
 
-            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
-            # if not args.zinb:
-            # matrix = matrix.apply(impute_zero, axis=0)
             if args.remove_zeros:
                 mask1 = (matrix == 0).mean(axis=0) < 0.1
                 matrix = matrix.loc[:, mask1]
@@ -840,9 +832,6 @@ def get_bacteria_images_ms2(path, args, seed=42):
                 train_nums = np.arange(0, len(data['labels']['train']))
                 train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
 
-            # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
-            # if not args.zinb:
-            # matrix = matrix.apply(impute_zero, axis=0)
             if args.remove_zeros:
                 mask1 = (matrix == 0).mean(axis=0) < 0.1
                 matrix = matrix.loc[:, mask1]
@@ -870,7 +859,6 @@ def get_bacteria_images_ms2(path, args, seed=42):
                 train_inds, valid_inds = skf.split(train_nums, data['labels']['train']).__next__()
 
             # matrix = matrix.fillna(0).iloc[:, pos].T.iloc[samples_to_keep]
-            # if not args.zinb:
             # matrix = matrix.apply(impute_zero, axis=0)
             if args.remove_zeros:
                 mask1 = (matrix == 0).mean(axis=0) < 0.1

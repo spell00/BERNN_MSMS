@@ -1,7 +1,3 @@
-NEPTUNE_API_TOKEN = "YOUR-API-KEY"
-NEPTUNE_PROJECT_NAME = "YOUR-PROJECT-NAME"
-NEPTUNE_MODEL_NAME = "YOUR-MODEL-NAME"
-
 import matplotlib
 from bernn.utils.pool_metrics import log_pool_metrics
 
@@ -26,7 +22,7 @@ import sklearn
 
 from sklearn import metrics
 from tensorboardX import SummaryWriter
-from ax.service.managed_loop import optimize
+from bernn.utils.ax_compat import optimize
 from sklearn.metrics import matthews_corrcoef as MCC
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from bernn.ml.train.params_gp import *
@@ -46,13 +42,6 @@ from bernn.dl.models.pytorch.utils.losses import get_losses
 import mlflow
 import warnings
 from datetime import datetime
-# from torchvision import transforms
-# from fastapi import BackgroundTasks, FastAPI
-# from threading import Thread
-
-# app = FastAPI()
-
-warnings.filterwarnings("ignore")
 
 random.seed(1)
 torch.manual_seed(1)
@@ -111,19 +100,12 @@ class TrainAE:
         if not self.args.variational or 'beta' not in params:
             # beta = 0 because useless outside a variational autoencoder
             params['beta'] = 0
-        if not self.args.zinb or 'zeta' not in params:
-            # zeta = 0 because useless outside a zinb autoencoder
-            params['zeta'] = 0
         if 1 > self.fix_thres >= 0:
             # fixes the threshold of 0s tolerated for a feature
             params['thres'] = self.fix_thres
         else:
             params['thres'] = 0
 
-        # params['dropout'] = 0
-        # params['smoothing'] = 0
-        # params['margin'] = 0
-        # params['wd'] = 0
         print(params)
 
         # Assigns the hyperparameters getting optimized
@@ -134,7 +116,6 @@ class TrainAE:
         self.gamma = params['gamma']
         self.beta = params['beta']
         self.zeta = params['zeta']
-        thres = params['thres']
         wd = params['wd']
         nu = params['nu']
         lr = params['lr']
@@ -147,12 +128,9 @@ class TrainAE:
         self.args.disc_b_warmup = params['disc_b_warmup']
 
         self.args.ncols = params['ncols']
-        # if ncols > self.data['inputs']['train'].shape[1]:
-        #     self.args.ncols = self.data['inputs']['train'].shape[1]
 
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
-        # self.log_path is where tensorboard logs are saved
         self.foldername = str(uuid.uuid4())
 
         self.complete_log_path = f'logs/ae_classifier/{self.foldername}'
@@ -164,7 +142,6 @@ class TrainAE:
         self.args.model_name = 'ae_classifier'
         if self.log_tb:
             loggers['tb_logging'] = TensorboardLoggingAE(hparams_filepath, params, variational=self.args.variational,
-                                                         zinb=self.args.zinb,
                                                          tw=self.args.tied_weights,
                                                          dloss=self.args.dloss,
                                                          tl=0,  # to remove, useless now
@@ -180,11 +157,9 @@ class TrainAE:
             mlflow.set_experiment(
                 self.args.exp_id,
             )
-            # try:
+
             mlflow.start_run()
-            # except:
-            #     mlflow.end_run()
-            #     mlflow.start_run()
+
             mlflow.log_params({
                 "inputs_type": args.csv_file.split(".csv")[0],
                 "best_unique": args.best_features_file.split(".tsv")[0],
@@ -194,7 +169,6 @@ class TrainAE:
                 "dloss": args.dloss,
                 "predict_tests": args.predict_tests,
                 "variational": args.variational,
-                "zinb": args.zinb,
                 "threshold": args.threshold,
                 "rec_loss_type": args.rec_loss,
                 "bad_batches": args.bad_batches,
@@ -226,10 +200,6 @@ class TrainAE:
         self.best_mcc = -1
         self.warmup_counter = 0
         self.warmup_b_counter = 0
-        if self.args.warmup > 0:
-            warmup = True
-        else:
-            warmup = False
         self.warmup_disc_b = False
         self.columns = None
         self.log_deep_only = True
@@ -260,19 +230,10 @@ class TrainAE:
         event_acc = EventAccumulator(hparams_filepath)
         event_acc.Reload()
         if len(event_acc.Tags()['tensors']) > 2 and self.load_tb:
-            # try:
-            #     best_acc = get_best_acc_from_tb(event_acc)
-            # except:
             pass
         else:
-            # If thres > 0, features that are 0 for a proportion of samples smaller than thres are removed
-            # data = self.keep_good_features(thres)
-
-            # Transform the data with the chosen scaler
             data = copy.deepcopy(self.data)
             data, self.scaler = scale_data(scale, data, self.args.device)
-            # feature_selection = get_feature_selection_method('mutual_info_classif')
-            # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
             for g in list(data['inputs'].keys()):
                 data['inputs'][g] = data['inputs'][g].round(4)
             # Gets all the pytorch dataloaders to train the models
@@ -294,7 +255,7 @@ class TrainAE:
                              n_emb=self.args.embeddings_meta,
                              dropout=dropout,
                              variational=self.args.variational, conditional=False,
-                             zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                             add_noise=0, tied_weights=self.args.tied_weights,
                              device=self.args.device).to(self.args.device)
             ae.mapper.to(self.args.device)
             ae.dec.to(self.args.device)
@@ -310,7 +271,7 @@ class TrainAE:
                                       n_emb=self.args.embeddings_meta,
                                       dropout=dropout,
                                       variational=self.args.variational, conditional=False,
-                                      zinb=self.args.zinb, add_noise=0, tied_weights=self.args.tied_weights,
+                                      add_noise=0, tied_weights=self.args.tied_weights,
                                       device=self.args.device).to(self.args.device)
             shap_ae.mapper.to(self.args.device)
             shap_ae.dec.to(self.args.device)
@@ -372,8 +333,6 @@ class TrainAE:
                             continue
                         closs, lists, traces = self.loop(group, optimizer_ae, ae, sceloss,
                                                          loaders[group], lists, traces, nu=0)
-                # cm = sklearn.metrics.confusion_matrix(np.concatenate(lists['valid']['classes']), np.concatenate(lists['valid']['preds']).argmax(1))
-                # classif_order = np.argsort([cm[i, i]/np.sum([np.sum(cm[i, :]), np.sum(cm[:, i])]) for i in range(len(cm))])[::-1]
                 traces = self.get_mccs(lists, traces)
                 values = log_traces(traces, values)
                 if self.log_tb:
@@ -586,7 +545,6 @@ class TrainAE:
             best_values['batches'] = metrics['batches']
             best_values['pool_metrics']['enc'] = metrics['pool_metrics_enc']
             best_values['pool_metrics']['rec'] = metrics['pool_metrics_rec']
-        # TODO change logging with tensorboard and neptune. The previous
         if self.log_tb:
             loggers['tb_logging'].logging(best_values, metrics)
         if self.log_mlflow:
@@ -689,11 +647,10 @@ class TrainAE:
             # else:
             #     rec_loss = torch.zeros(1).to(device)[0]
 
-            if not self.args.zinb:
-                if isinstance(rec, list):
-                    rec = rec[-1]
-                if isinstance(to_rec, list):
-                    to_rec = to_rec[-1]
+            if isinstance(rec, list):
+                rec = rec[-1]
+            if isinstance(to_rec, list):
+                to_rec = to_rec[-1]
             lists[group]['set'] += [np.array([group for _ in range(len(domain))])]
             lists[group]['domains'] += [np.array([self.unique_batches[d] for d in domain.detach().int().cpu().numpy()])]
             lists[group]['domain_preds'] += [domain_preds.detach().float().cpu().numpy()]
@@ -1029,7 +986,6 @@ class TrainAE:
             values = log_traces(traces, values)
             self.warmup_counter += 1
             # best_values = get_best_values(traces, ae_only=True)
-            # TODO change logging with tensorboard and neptune. The previous
             if self.log_tb:
                 loggers['tb_logging'].logging(values, metrics)
             if self.log_mlflow:
@@ -1063,7 +1019,6 @@ if __name__ == "__main__":
     parser.add_argument('--rec_loss', type=str, default='mse')
     parser.add_argument('--tied_weights', type=int, default=0)
     parser.add_argument('--variational', type=int, default=0)
-    parser.add_argument('--zinb', type=int, default=0)
     parser.add_argument('--use_valid', type=int, default=0, help='Use if valid data is in a seperate file')
     parser.add_argument('--use_test', type=int, default=0, help='Use if test data is in a seperate file')
     parser.add_argument('--use_mapping', type=int, default=1, help="Use batch mapping for reconstruct")
@@ -1133,9 +1088,6 @@ if __name__ == "__main__":
     if args.variational:
         # beta = 0 because useless outside a variational autoencoder
         parameters += [{"name": "beta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
-    if args.zinb:
-        # zeta = 0 because useless outside a zinb autoencoder
-        parameters += [{"name": "zeta", "type": "range", "bounds": [1e-2, 1e2], "log_scale": True}]
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,

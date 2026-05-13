@@ -458,8 +458,11 @@ def plot_confusion_matrix(cm, class_names, acc):
     cm (array, shape = [n, n]): a confusion matrix of integer classes
     class_names (array, shape = [n]): String names of the integer classes
   """
+    import warnings
     figure = plt.figure(figsize=(8, 8))
-    cm_normal = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+        cm_normal = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     cm_normal[np.isnan(cm_normal)] = 0
     plt.imshow(cm_normal, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title(f"Confusion matrix (acc: {acc})")

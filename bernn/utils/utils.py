@@ -27,6 +27,8 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
+                        # Ensure float dtype to avoid pandas warning
+                        data['inputs'][group] = data['inputs'][group].astype(float)
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
@@ -38,6 +40,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
+                    data['meta'][group] = data['meta'][group].astype(float)
                     data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
@@ -54,6 +57,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
+                        data['inputs'][group] = data['inputs'][group].astype(float)
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
@@ -65,6 +69,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
+                    data['meta'][group] = data['meta'][group].astype(float)
                     data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
@@ -81,6 +86,7 @@ def scale_data(scale, data, device='cpu'):
                     # columns = data['inputs'][group][mask].columns
                     # indices = data['inputs'][group][mask].index
                     if data['inputs'][group][mask].shape[0] > 0:
+                        data['inputs'][group] = data['inputs'][group].astype(float)
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
@@ -92,6 +98,7 @@ def scale_data(scale, data, device='cpu'):
                 columns = data['meta'][group].columns
                 indices = data['meta'][group].index
                 if data['meta'][group].shape[0] > 0:
+                    data['meta'][group] = data['meta'][group].astype(float)
                     data['meta'][group] = scaler.transform(data['meta'][group])
                 else:
                     data['meta'][group] = data['meta'][group]
@@ -106,6 +113,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -120,6 +128,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -134,6 +143,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -148,6 +158,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -162,6 +173,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -176,6 +188,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -190,6 +203,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -204,6 +218,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]
@@ -218,6 +233,7 @@ def scale_data(scale, data, device='cpu'):
                     columns = data[data_type][group].columns
                     indices = data[data_type][group].index
                     if data[data_type][group].shape[0] > 0:
+                        data[data_type][group] = data[data_type][group].astype(float)
                         data[data_type][group] = scaler.transform(data[data_type][group])
                     else:
                         data[data_type][group] = data[data_type][group]

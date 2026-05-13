@@ -26,8 +26,6 @@ import mlflow
 
 np.random.seed(42)
 
-warnings.filterwarnings('ignore')
-
 DIR = 'src/models/sklearn/'
 
 
@@ -55,14 +53,13 @@ def count_labels(arr):
 
 def get_confusion_matrix(reals, preds, unique_labels):
     acc = np.mean([1 if pred == label else 0 for pred, label in zip(preds, reals)])
-    cm = metrics.confusion_matrix(reals, preds)
-    figure = plot_confusion_matrix(cm, unique_labels, acc)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+        cm = metrics.confusion_matrix(reals, preds, labels=unique_labels)  # Explicitly pass labels
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+        figure = plot_confusion_matrix(cm, unique_labels, acc)
 
-    # cm = np.zeros([len(unique_labels), len(unique_labels)])
-    # for real, pred in zip(reals, preds):
-    #     confusion_matrix[int(real), int(pred)] += 1
-    # indices = [f"{lab}" for lab in unique_labels]
-    # columns = [f"{lab}" for lab in unique_labels]
     return figure
 
 
@@ -496,9 +493,7 @@ class Train2:
             save_confusion_matrix(fig, f"{self.log_path}/confusion_matrices/{self.name}_{self.model_name}_train",
                                   acc=score_train, mcc=mcc_train, group='train', rep=self.rep)
             if self.mlops == 'tensorboard':
-                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_train", fig, self.iter)
-            if self.mlops == 'neptune':
-                self.logger[f"cm_{self.name}_{self.model_name}_train"].upload(fig)
+                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_train", fig, self.iter)            
             if self.mlops == 'mlflow':
                 mlflow.log_figure(fig, f"{self.log_path}/confusion_matrices/cm_{self.name}_train_{self.rep}.png")
 
@@ -506,9 +501,7 @@ class Train2:
             save_confusion_matrix(fig, f"{self.log_path}/confusion_matrices/{self.name}_{self.model_name}_valid",
                                   acc=score_valid, mcc=mcc_valid, group='valid', rep=self.rep)
             if self.mlops == 'tensorboard':
-                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_valid", fig, self.iter)
-            if self.mlops == 'neptune':
-                self.logger[f"cm_{self.name}_{self.model_name}_valid"].upload(fig)
+                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_valid", fig, self.iter)            
             if self.mlops == 'mlflow':
                 mlflow.log_figure(fig, f"{self.log_path}/confusion_matrices/cm_{self.name}_valid_{self.rep}.png")
 
@@ -516,9 +509,7 @@ class Train2:
             save_confusion_matrix(fig, f"{self.log_path}/confusion_matrices/{self.name}_{self.model_name}_test",
                                   acc=score_test, mcc=mcc_test, group='test', rep=self.rep)
             if self.mlops == 'tensorboard':
-                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_test", fig, self.iter)
-            if self.mlops == 'neptune':
-                self.logger[f"cm_{self.name}_{self.model_name}_test"].upload(fig)
+                self.logger.add_figure(f"cm_{self.name}_{self.model_name}_test", fig, self.iter)            
             if self.mlops == 'mlflow':
                 mlflow.log_figure(fig, f"{self.log_path}/confusion_matrices/cm_{self.name}_test_{self.rep}.png")
 

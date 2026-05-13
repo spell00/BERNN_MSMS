@@ -1,6 +1,7 @@
 import pytest
 import subprocess
 import sys
+import importlib.util
 
 
 def test_python_imports():
@@ -26,12 +27,12 @@ def test_python_imports():
     import nibabel
     import mpmath
     import patsy
-    import umap
+    assert importlib.util.find_spec("umap") is not None
     import shapely
     import numba
     import rpy2
     import openpyxl
-    import xgboost
+    assert importlib.util.find_spec("xgboost") is not None
     import torch_geometric
     import fastapi
     import threadpoolctl

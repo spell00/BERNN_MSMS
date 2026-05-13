@@ -16,34 +16,37 @@ from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
 def _make_sample_data(n=80, n_features=30, n_batches=3, n_classes=2, seed=0):
     rng = np.random.default_rng(seed)
     feat_cols = [f"feature_{i}" for i in range(n_features)]
+    meta_cols = ["meta_0", "meta_1"]
 
     def _split_df(start, end):
         size = end - start
         return pd.DataFrame(rng.standard_normal((size, n_features)), columns=feat_cols)
 
+    def _split_meta(start, end):
+        size = end - start
+        return pd.DataFrame(rng.standard_normal((size, len(meta_cols))), columns=meta_cols)
+
     def _labels(start, end):
-        return np.array([f"l{i % n_classes}" for i in range(start, end)])
+        return np.array([i % n_classes for i in range(start, end)], dtype=np.int64)
 
     def _batches(start, end):
-        return np.array([f"b{i % n_batches}" for i in range(start, end)])
+        return np.array([i % n_batches for i in range(start, end)], dtype=np.int64)
 
     def _names(start, end):
         return np.array([f"s{i}" for i in range(start, end)])
 
     splits = {"all": (0, n), "train": (0, n // 2), "valid": (n // 2, n * 3 // 4), "test": (n * 3 // 4, n)}
-    data: dict = {"inputs": {}, "batches": {}, "labels": {}, "names": {}}
+    data: dict = {"inputs": {}, "meta": {}, "batches": {}, "labels": {}, "cats": {}, "sets": {}, "names": {}}
 
     for split, (s, e) in splits.items():
         df = _split_df(s, e)
-        data["inputs"][split] = pd.concat([
-            pd.DataFrame(_names(s, e), columns=["names"]),
-            pd.DataFrame(_labels(s, e), columns=["labels"]),
-            pd.DataFrame(_batches(s, e), columns=["batches"]),
-            df,
-        ], axis=1)
+        data["inputs"][split] = df
+        data["meta"][split] = _split_meta(s, e)
         data["batches"][split] = _batches(s, e)
         data["labels"][split] = _labels(s, e)
-        data["names"][split] = _names(s, e)
+        data["cats"][split] = data["labels"][split].copy()
+        data["sets"][split] = np.array([split] * (e - s))
+        data["names"][split] = pd.Series(_names(s, e))
 
     return data
 
@@ -97,7 +100,6 @@ def _make_args(**overrides):
         scheduler="ReduceLROnPlateau",
         path=".",
         log_tb=0,
-        log_neptune=0,
         log_mlflow=0,
         keep_models=0,
         log_inputs=0,
@@ -119,7 +121,7 @@ def _make_trainer(args, tmp_path, **kwargs):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
+
         log_mlflow=False,
         groupkfold=False,
         pools=False,

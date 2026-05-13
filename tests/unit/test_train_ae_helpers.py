@@ -55,7 +55,7 @@ def _minimal_args(**overrides):
         scheduler="ReduceLROnPlateau",
         path=".",
         log_tb=0,
-        log_neptune=0,
+
         log_mlflow=0,
         keep_models=0,
         log_inputs=0,
@@ -79,7 +79,6 @@ def trainer(tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
         log_mlflow=False,
         groupkfold=False,
         pools=False,
@@ -179,8 +178,7 @@ def test_make_params_fix_thres_applied(tmp_path):
     t = TrainAE(
         args, path=str(tmp_path), fix_thres=0.3,
         load_tb=False, log_metrics=False, keep_models=False,
-        log_inputs=False, log_plots=False, log_tb=False,
-        log_neptune=False, log_mlflow=False, groupkfold=False, pools=False,
+        log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False, groupkfold=False, pools=False,
     )
     params = _base_params()
     t.make_params(params)

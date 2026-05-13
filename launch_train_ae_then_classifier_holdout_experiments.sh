@@ -7,15 +7,9 @@ sleep_seconds=${SLEEP_SECONDS:-60}
 dry_run=${DRY_RUN:-0}
 max_jobs=${MAX_JOBS:-1}
 current_jobs=0
-log_neptune=${LOG_NEPTUNE:-0}
 log_mlflow=${LOG_MLFLOW:-1}
 log_tb=${LOG_TB:-0}
 log_dvclive=${LOG_DVCLIVE:-0}
-
-if [ "$log_neptune" != "0" ]; then
-	echo "[DEPRECATED] Neptune integration is disabled. For now, please use MLflow (LOG_MLFLOW=1)."
-	log_neptune=0
-fi
 
 n_trials=30  # The number of hyperparameter configurations to try
 n_repeats=5  # The number of times to repeat the experiment for each hyperparameter configuration
@@ -44,12 +38,12 @@ do
 		  	cuda=$((i%1)) # Divide by the number of gpus available
 			cmd=(
 				"$python_bin" bernn/dl/train/train_ae_then_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs
-			--zinb=0 --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup  --tied_weights=0 --bdisc=1 \
+			--kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup  --tied_weights=0 --bdisc=1 \
 			--rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
 			--groupkfold=$groupkfold --embeddings_meta=$n_emb --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
 			--n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
 			--update_grid=$update_grid --use_l1=$use_l1 --prune_network=$prune_network \
-			--log_neptune=$log_neptune --log_mlflow=$log_mlflow --log_tb=$log_tb
+			--log_mlflow=$log_mlflow --log_tb=$log_tb
 			)
 			if [ "$dry_run" = "1" ]; then
 				printf '%s\n' "${cmd[*]}"

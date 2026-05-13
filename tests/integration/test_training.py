@@ -11,6 +11,7 @@ def sample_data():
     # Create sample dataset
     n_samples = 100
     n_features = 50
+    n_meta = 2
     n_batches = 3
     n_classes = 2
 
@@ -32,57 +33,98 @@ def sample_data():
             'test': pd.DataFrame(
                 np.random.randn(n_samples//4, n_features),
                 columns=[f'feature_{i}' for i in range(n_features)]
+            ),
+            'train_pool': pd.DataFrame(
+                np.random.randn(n_samples//2, n_features),
+                columns=[f'feature_{i}' for i in range(n_features)]
+            ),
+            'valid_pool': pd.DataFrame(
+                np.random.randn(n_samples//4, n_features),
+                columns=[f'feature_{i}' for i in range(n_features)]
+            ),
+            'test_pool': pd.DataFrame(
+                np.random.randn(n_samples//4, n_features),
+                columns=[f'feature_{i}' for i in range(n_features)]
+            ),
+            'all_pool': pd.DataFrame(
+                np.random.randn(n_samples, n_features),
+                columns=[f'feature_{i}' for i in range(n_features)]
             )
         },
+        'meta': {
+            'all': pd.DataFrame(np.random.randn(n_samples, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'train': pd.DataFrame(np.random.randn(n_samples//2, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'valid': pd.DataFrame(np.random.randn(n_samples//4, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'test': pd.DataFrame(np.random.randn(n_samples//4, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'train_pool': pd.DataFrame(np.random.randn(n_samples//2, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'valid_pool': pd.DataFrame(np.random.randn(n_samples//4, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'test_pool': pd.DataFrame(np.random.randn(n_samples//4, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+            'all_pool': pd.DataFrame(np.random.randn(n_samples, n_meta), columns=[f'meta_{i}' for i in range(n_meta)]),
+        },
         'batches': {
-            'all': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples)]),
-            'train': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//2)]),
-            'valid': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//4)]),
-            'test': np.array(['b' + str(x) for x in np.random.randint(0, n_batches, n_samples//4)])
+            'all': np.random.randint(0, n_batches, n_samples),
+            'train': np.random.randint(0, n_batches, n_samples//2),
+            'valid': np.random.randint(0, n_batches, n_samples//4),
+            'test': np.random.randint(0, n_batches, n_samples//4),
+            'train_pool': np.random.randint(0, n_batches, n_samples//2),
+            'valid_pool': np.random.randint(0, n_batches, n_samples//4),
+            'test_pool': np.random.randint(0, n_batches, n_samples//4),
+            'all_pool': np.random.randint(0, n_batches, n_samples),
         },
         'labels': {
-            'all': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples)]),
-            'train': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//2)]),
-            'valid': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//4)]),
-            'test': np.array(['l' + str(x) for x in np.random.randint(0, n_classes, n_samples//4)])
+            'all': np.random.randint(0, n_classes, n_samples),
+            'train': np.random.randint(0, n_classes, n_samples//2),
+            'valid': np.random.randint(0, n_classes, n_samples//4),
+            'test': np.random.randint(0, n_classes, n_samples//4),
+            'train_pool': np.random.randint(0, n_classes, n_samples//2),
+            'valid_pool': np.random.randint(0, n_classes, n_samples//4),
+            'test_pool': np.random.randint(0, n_classes, n_samples//4),
+            'all_pool': np.random.randint(0, n_classes, n_samples),
+        },
+        'cats': {
+            'all': None,
+            'train': None,
+            'valid': None,
+            'test': None,
+            'train_pool': None,
+            'valid_pool': None,
+            'test_pool': None,
+            'all_pool': None,
+        },
+        'sets': {
+            'all': np.array(['all'] * n_samples),
+            'train': np.array(['train'] * (n_samples // 2)),
+            'valid': np.array(['valid'] * (n_samples // 4)),
+            'test': np.array(['test'] * (n_samples // 4)),
+            'train_pool': np.array(['train_pool'] * (n_samples // 2)),
+            'valid_pool': np.array(['valid_pool'] * (n_samples // 4)),
+            'test_pool': np.array(['test_pool'] * (n_samples // 4)),
+            'all_pool': np.array(['all_pool'] * n_samples),
         },
         'names': {
-            'all': np.array(['s' + str(x) for x in np.arange(0, n_samples)]),
-            'train': np.array(['s' + str(x) for x in np.arange(0, n_samples//2)]),
-            'valid': np.array(['s' + str(x) for x in np.arange(0, n_samples//4)]),
-            'test': np.array(['s' + str(x) for x in np.arange(0, n_samples//4)])
+            'all': pd.Series(['s' + str(x) for x in np.arange(0, n_samples)]),
+            'train': pd.Series(['s' + str(x) for x in np.arange(0, n_samples//2)]),
+            'valid': pd.Series(['s' + str(x) for x in np.arange(0, n_samples//4)]),
+            'test': pd.Series(['s' + str(x) for x in np.arange(0, n_samples//4)]),
+            'train_pool': pd.Series(['sp' + str(x) for x in np.arange(0, n_samples//2)]),
+            'valid_pool': pd.Series(['sp' + str(x) for x in np.arange(0, n_samples//4)]),
+            'test_pool': pd.Series(['sp' + str(x) for x in np.arange(0, n_samples//4)]),
+            'all_pool': pd.Series(['sp' + str(x) for x in np.arange(0, n_samples)]),
         }
     }
-    data['inputs']['all'] = pd.concat((
-        pd.DataFrame(data['names']['all'].reshape(len(data['names']['all']), 1)),
-        pd.DataFrame(data['labels']['all'].reshape(len(data['labels']['all']), 1)),
-        pd.DataFrame(data['batches']['all'].reshape(len(data['batches']['all']), 1)),
-        data['inputs']['all']
-    ), axis=1)
-    data['inputs']['train'] = pd.concat((
-        pd.DataFrame(data['names']['train'].reshape(len(data['names']['train']), 1)),
-        pd.DataFrame(data['labels']['train'].reshape(len(data['labels']['train']), 1)),
-        pd.DataFrame(data['batches']['train'].reshape(len(data['batches']['train']), 1)),
-        data['inputs']['train']
-    ), axis=1)
-    data['inputs']['valid'] = pd.concat((
-        pd.DataFrame(data['names']['valid'].reshape(len(data['names']['valid']), 1)),
-        pd.DataFrame(data['labels']['valid'].reshape(len(data['labels']['valid']), 1)),
-        pd.DataFrame(data['batches']['valid'].reshape(len(data['batches']['valid']), 1)),
-        data['inputs']['valid']
-    ), axis=1)
-    data['inputs']['test'] = pd.concat((
-        pd.DataFrame(data['names']['test'].reshape(len(data['names']['test']), 1)),
-        pd.DataFrame(data['labels']['test'].reshape(len(data['labels']['test']), 1)),
-        pd.DataFrame(data['batches']['test'].reshape(len(data['batches']['test']), 1)),
-        data['inputs']['test']
-    ), axis=1)
-    for split in ['all', 'train', 'valid', 'test']:
-        df = data['inputs'][split]
-        cols = df.columns.tolist()
-        cols[:3] = ['names', 'labels', 'batches']
-        data['inputs'][split] = df.set_axis(cols, axis=1)  # Reassign the DataFrame after setting the axis
-        print(data['inputs'][split].columns[:5])
+    # Ensure balanced labels: half one label, half the other
+    for split in ['all', 'train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all_pool']:
+        n = len(data['labels'][split])
+        data['labels'][split][:n // 2] = 0
+        data['labels'][split][n // 2:] = 1
+    # Ensure all splits include all labels
+    for split in ['train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool']:
+        data['labels'][split][0] = 0  # Ensure at least one instance of label 0
+        data['labels'][split][1] = 1  # Ensure at least one instance of label 1
+    for split in ['all', 'train', 'valid', 'test', 'train_pool', 'valid_pool', 'test_pool', 'all_pool']:
+        data['cats'][split] = data['labels'][split].copy()
+        if split in ['all', 'train', 'valid', 'test']:
+            print(data['inputs'][split].columns[:5])
     return data
 
 
@@ -152,7 +194,6 @@ def test_training_loop(sample_data, mock_args, tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
         log_mlflow=False,
         groupkfold=True,
         pools=True
@@ -184,18 +225,19 @@ def test_training_loop(sample_data, mock_args, tmp_path):
         'prune_threshold': 0.0
     }
 
-    # Write the data to a csv file
-    sample_data['inputs']['all'].to_csv(trainer.path + '/mock.csv', index=False)
-    # Save mock top features to tsv
-    pd.DataFrame(sample_data['inputs']['all'].columns[3:]).to_csv(trainer.path + '/mock_top_features.tsv', index=False)
+    # Write the data to files outside the trainer (external loading contract)
+    csv_path = tmp_path / 'mock.csv'
+    tsv_path = tmp_path / 'mock_top_features.tsv'
+    sample_data['inputs']['all'].to_csv(csv_path, index=False)
+    pd.DataFrame(sample_data['inputs']['all'].columns).to_csv(tsv_path, index=False)
 
     try:
         result = trainer.train(params)
         assert isinstance(result, (float, int)), "Training should return a numeric value"
     except Exception as e:
         pytest.skip(f"Training failed due to: {str(e)}")
-    # Delete the csv
-    os.remove(trainer.path + '/mock.csv')
+    if csv_path.exists():
+        os.remove(csv_path)
 
 
 @pytest.mark.integration
@@ -218,7 +260,6 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
         log_mlflow=False,
         groupkfold=True,
         pools=True
@@ -230,10 +271,11 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
     trainer.unique_batches = np.unique(sample_data['batches']['all'])
     trainer.columns = sample_data['inputs']['all'].columns
 
-    # Write the data to a csv file
-    sample_data['inputs']['all'].to_csv(trainer.path + '/mock.csv', index=False)
-    # Save mock top features to tsv
-    pd.DataFrame(sample_data['inputs']['all'].columns[3:]).to_csv(trainer.path + '/mock_top_features.tsv', index=False)
+    # Write the data to files outside the trainer (external loading contract)
+    csv_path = tmp_path / 'mock.csv'
+    tsv_path = tmp_path / 'mock_top_features.tsv'
+    sample_data['inputs']['all'].to_csv(csv_path, index=False)
+    pd.DataFrame(sample_data['inputs']['all'].columns).to_csv(tsv_path, index=False)
 
     # Run training with some test parameters
     params = {
@@ -260,5 +302,5 @@ def test_full_training_pipeline(sample_data, mock_args, tmp_path):
         assert isinstance(result, (float, int)), "Training should return a numeric value"
     except Exception as e:
         pytest.skip(f"Training failed due to: {str(e)}")
-    # Delete the csv
-    os.remove(trainer.path + '/mock.csv')
+    if csv_path.exists():
+        os.remove(csv_path)

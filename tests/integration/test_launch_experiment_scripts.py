@@ -27,7 +27,7 @@ def _extract_declared_flags(train_script: Path) -> set[str]:
 
 @pytest.mark.integration
 def test_expected_logging_flags_are_supported_by_trainers():
-    expected_flags = {"log_neptune", "log_mlflow", "log_tb"}
+    expected_flags = {"log_mlflow", "log_tb"}
 
     declared_ae_clf = _extract_declared_flags(TRAIN_AE_CLF)
     declared_ae_then = _extract_declared_flags(TRAIN_AE_THEN)
@@ -40,21 +40,9 @@ def test_expected_logging_flags_are_supported_by_trainers():
 
 
 @pytest.mark.integration
-def test_neptune_is_marked_deprecated_in_python_entrypoints():
-    expected_text = "[DEPRECATED] Neptune integration is disabled"
-    text_ae_clf = TRAIN_AE_CLF.read_text(encoding="utf-8")
-    text_ae_then = TRAIN_AE_THEN.read_text(encoding="utf-8")
-
-    assert expected_text in text_ae_clf
-    assert expected_text in text_ae_then
-
-
-@pytest.mark.integration
 def test_python_entrypoints_prefer_mlflow_defaults():
     text_ae_clf = TRAIN_AE_CLF.read_text(encoding="utf-8")
     text_ae_then = TRAIN_AE_THEN.read_text(encoding="utf-8")
 
-    assert "parser.add_argument('--log_neptune', type=int, default=0" in text_ae_clf
     assert "parser.add_argument('--log_mlflow', type=int, default=1" in text_ae_clf
-    assert "parser.add_argument('--log_neptune', type=int, default=0" in text_ae_then
     assert "parser.add_argument('--log_mlflow', type=int, default=1" in text_ae_then

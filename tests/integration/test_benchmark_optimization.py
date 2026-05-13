@@ -17,6 +17,7 @@ from pathlib import Path
 
 # ─── Locate the benchmark data ─────────────────────────────────────────────
 BENCHMARK_CSV = Path(__file__).resolve().parents[2] / "data" / "benchmark" / "intensities.csv"
+ADENOCARCINOMA_CSV = Path(__file__).resolve().parents[2] / "data" / "adenocarcinoma_data.csv"
 
 
 def pytest_configure(config):
@@ -29,6 +30,13 @@ def benchmark_data_path():
     if not BENCHMARK_CSV.exists():
         pytest.skip(f"Benchmark CSV not found: {BENCHMARK_CSV}")
     return str(BENCHMARK_CSV)
+
+
+@pytest.fixture(scope="module")
+def adenocarcinoma_data_path():
+    if not ADENOCARCINOMA_CSV.exists():
+        pytest.skip(f"Adenocarcinoma CSV not found: {ADENOCARCINOMA_CSV}")
+    return str(ADENOCARCINOMA_CSV)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
@@ -83,7 +91,6 @@ def _benchmark_args(csv_file, path, **overrides):
         scheduler="ReduceLROnPlateau",
         path=path,
         log_tb=0,
-        log_neptune=0,
         log_mlflow=0,
         keep_models=0,
         log_inputs=0,
@@ -139,6 +146,97 @@ def test_benchmark_get_data_roundtrip(benchmark_data_path):
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.benchmark
+def test_benchmark_prepare_data_preserves_train_label_coverage(benchmark_data_path, tmp_path):
+    """After BERNN split prep, every known holdout label must already exist in train labels."""
+    from bernn.utils.data_getters import get_data
+    from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
+
+    path = str(Path(benchmark_data_path).parent)
+    csv_file = Path(benchmark_data_path).name
+    args = _benchmark_args(csv_file, path, groupkfold=0, pool=0, bs=32)
+
+    data, _, _ = get_data(path, args, seed=42)
+
+    trainer = TrainAEClassifierHoldout(
+        args,
+        path=str(tmp_path),
+        fix_thres=-1,
+        load_tb=False,
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    trainer._prepare_data(
+        X=data["inputs"]["train"],
+        y=data["labels"]["train"],
+        groups=data["batches"]["train"],
+        X_test=data["inputs"]["test"],
+        y_test=data["labels"]["test"],
+        groups_test=data["batches"]["test"],
+        cross_validation=False,
+        cross_test=False,
+        val_size=0.2,
+    )
+
+    train_labels = set(np.unique(trainer.data["labels"]["train"]))
+    holdout_labels = set(np.unique(np.concatenate((trainer.data["labels"]["valid"], trainer.data["labels"]["test"]))))
+    assert holdout_labels <= train_labels
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_adenocarcinoma_prepare_data_preserves_train_label_coverage(adenocarcinoma_data_path, tmp_path):
+    """After BERNN split prep, every known holdout label must already exist in train labels (adenocarcinoma)."""
+    from bernn.utils.data_getters import get_data
+    from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
+
+    path = str(Path(adenocarcinoma_data_path).parent)
+    csv_file = Path(adenocarcinoma_data_path).name
+    args = _benchmark_args(csv_file, path, groupkfold=0, pool=0, bs=32)
+
+    data, _, _ = get_data(path, args, seed=42)
+
+    trainer = TrainAEClassifierHoldout(
+        args,
+        path=str(tmp_path),
+        fix_thres=-1,
+        load_tb=False,
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+
+    trainer._prepare_data(
+        X=data["inputs"]["train"],
+        y=data["labels"]["train"],
+        groups=data["batches"]["train"],
+        X_test=data["inputs"]["test"],
+        y_test=data["labels"]["test"],
+        groups_test=data["batches"]["test"],
+        cross_validation=False,
+        cross_test=False,
+        val_size=0.2,
+    )
+
+    train_labels = set(np.unique(trainer.data["labels"]["train"]))
+    holdout_labels = set(np.unique(np.concatenate((trainer.data["labels"]["valid"], trainer.data["labels"]["test"]))))
+    assert holdout_labels <= train_labels
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+@pytest.mark.benchmark
 def test_benchmark_single_train_call(benchmark_data_path, tmp_path):
     """A single train() call on the benchmark dataset should return a finite float."""
     from bernn.utils.data_getters import get_data
@@ -160,7 +258,6 @@ def test_benchmark_single_train_call(benchmark_data_path, tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
         log_mlflow=False,
         groupkfold=False,
         pools=False,
@@ -228,7 +325,7 @@ def test_benchmark_single_train_call_then_classifier_holdout(benchmark_data_path
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
+
         log_mlflow=False,
         groupkfold=False,
         pools=False,
@@ -272,6 +369,7 @@ def test_benchmark_single_train_call_then_classifier_holdout(benchmark_data_path
 @pytest.mark.integration
 @pytest.mark.slow
 @pytest.mark.benchmark
+@pytest.mark.filterwarnings("ignore:DataFrameGroupBy.apply operated on the grouping columns.*:FutureWarning:ax.core.data")
 def test_benchmark_ax_optimization_3_trials(benchmark_data_path, tmp_path):
     """
     Full Ax HPO loop with 3 trials on the real benchmark dataset.
@@ -281,7 +379,8 @@ def test_benchmark_ax_optimization_3_trials(benchmark_data_path, tmp_path):
     from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
 
     try:
-        from ax.service.managed_loop import optimize
+        from ax.api.client import Client
+        from ax.api.configs import RangeParameterConfig, ChoiceParameterConfig
     except ImportError:
         pytest.skip("ax-platform not available")
 
@@ -313,7 +412,7 @@ def test_benchmark_ax_optimization_3_trials(benchmark_data_path, tmp_path):
         log_inputs=False,
         log_plots=False,
         log_tb=False,
-        log_neptune=False,
+
         log_mlflow=False,
         groupkfold=False,
         pools=False,
@@ -332,33 +431,72 @@ def test_benchmark_ax_optimization_3_trials(benchmark_data_path, tmp_path):
         {"name": "warmup", "type": "range", "bounds": [1, 3]},
         {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.3]},
-        {"name": "scaler", "type": "choice", "values": ["standard", "minmax", "robust"]},
+        {
+            "name": "scaler",
+            "type": "choice",
+            "values": ["standard", "minmax", "robust"],
+            "is_ordered": False,
+            "sort_values": False,
+        },
         {"name": "layer1", "type": "range", "bounds": [32, 128]},
         {"name": "layer2", "type": "range", "bounds": [16, 64]},
     ]
 
-    def ax_eval(parameterization):
-        # Ensure data is still injected (Ax may serialize/reload trainer state)
-        trainer.data = data
-        trainer.unique_labels = unique_labels
-        trainer.unique_batches = unique_batches
-        trainer.columns = data["inputs"]["all"].columns
-        try:
-            result = trainer.train(parameterization)
-            return float(result)
-        except Exception as e:
-            print(f"[AX WARN] trial failed: {e}")
-            return 1e9
-
     t0 = time.time()
-    best_parameters, values, experiment, model = optimize(
-        parameters=parameters,
-        evaluation_function=ax_eval,
-        objective_name="closs",
-        minimize=True,
-        total_trials=3,
-        random_seed=42,
-    )
+    param_configs = []
+    for p in parameters:
+        if p["type"] == "range":
+            lo, hi = p["bounds"]
+            is_int = isinstance(lo, int) and isinstance(hi, int)
+            param_configs.append(
+                RangeParameterConfig(
+                    name=p["name"],
+                    bounds=(lo, hi),
+                    parameter_type="int" if is_int else "float",
+                    scaling="log" if p.get("log_scale", False) else "linear",
+                )
+            )
+        elif p["type"] == "choice":
+            values = p["values"]
+            first = values[0]
+            if isinstance(first, bool):
+                param_type = "bool"
+            elif isinstance(first, int):
+                param_type = "int"
+            elif isinstance(first, float):
+                param_type = "float"
+            else:
+                param_type = "str"
+            param_configs.append(
+                ChoiceParameterConfig(
+                    name=p["name"],
+                    values=list(values),
+                    parameter_type=param_type,
+                    is_ordered=p.get("is_ordered"),
+                )
+            )
+
+    client = Client(random_seed=42)
+    client.configure_experiment(parameters=param_configs, name="benchmark_ax_client")
+    # Minimize closs by maximizing negative closs.
+    client.configure_optimization(objective="-closs")
+
+    for _ in range(3):
+        for trial_index, parameterization in client.get_next_trials(max_trials=1).items():
+            trainer.data = data
+            trainer.unique_labels = unique_labels
+            trainer.unique_batches = unique_batches
+            trainer.columns = data["inputs"]["all"].columns
+            try:
+                result = float(trainer.train(parameterization))
+                if not np.isfinite(result):
+                    raise ValueError(f"Non-finite objective: {result}")
+                client.complete_trial(trial_index=trial_index, raw_data={"closs": result})
+            except Exception as e:
+                print(f"[AX WARN] trial failed: {e}")
+                client.mark_trial_failed(trial_index=trial_index, failed_reason=str(e))
+
+    best_parameters, best_metrics, _, _ = client.get_best_parameterization(use_model_predictions=False)
     elapsed = time.time() - t0
 
     # ── Assertions ──────────────────────────────────────────
@@ -368,9 +506,9 @@ def test_benchmark_ax_optimization_3_trials(benchmark_data_path, tmp_path):
     assert "layer1" in best_parameters, "best_parameters should contain 'layer1'"
 
     # Values should be finite
-    best_obj = values[0].get("closs", {})
-    if isinstance(best_obj, dict):
-        best_val = best_obj.get("mean", None)
+    best_obj = best_metrics.get("closs", None)
+    if isinstance(best_obj, tuple):
+        best_val = best_obj[0]
     else:
         best_val = best_obj
     if best_val is not None:

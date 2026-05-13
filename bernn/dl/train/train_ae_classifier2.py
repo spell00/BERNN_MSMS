@@ -1,5 +1,4 @@
 import warnings
-warnings.filterwarnings("ignore")
 
 from types import SimpleNamespace
 from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout  # [`bernn.dl.train.train_ae_classifier_holdout.TrainAEClassifierHoldout`](bernn/dl/train/train_ae_classifier_holdout.py)
@@ -13,7 +12,6 @@ args = SimpleNamespace(
     kan=0,              # use standard AE (lighter)
     bdisc=0,            # disable batch discriminator for simplicity
     log_mlflow=False,
-    log_neptune=False,
     log_tb=False,
     log_metrics=False,
     log_plots=False,
@@ -51,7 +49,6 @@ trainer = TrainAEClassifierHoldout(
     log_inputs=False,
     log_plots=False,
     log_tb=False,
-    log_neptune=False,
     log_mlflow=False,
     groupkfold=True,
     pools=False

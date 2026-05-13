@@ -98,6 +98,7 @@ def get_alzheimer(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=1) < 0.2
                 matrix = matrix.loc[mask1]
             if args.log1p:
+                matrix = matrix.astype(float)
                 matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
 
             def impute_zero(peak):
@@ -126,8 +127,6 @@ def get_alzheimer(path, args, seed=42):
             ]).squeeze()
 
             data['inputs'][group] = matrix.iloc[:, pos].T
-            if not args.zinb:
-                data['inputs'][group] = data['inputs'][group].apply(impute_zero, axis=0)
             data['meta'][group] = pd.DataFrame(meta_age.iloc[meta_pos].to_numpy(), columns=['Age'],
                                                index=data['inputs'][group].index)
             data['meta'][group] = pd.concat((data['meta'][group],
@@ -323,6 +322,7 @@ def get_amide(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=0) < 0.2
                 matrix = matrix.loc[:, mask1]
             if args.log1p:
+                matrix = matrix.astype(float)
                 matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
 
             def impute_zero(peak):
@@ -635,6 +635,7 @@ def get_data(path, args, seed=42):
                 mask1 = (matrix == 0).mean(axis=0) < 0.1
                 matrix = matrix.loc[:, mask1]
             if args.log1p:
+                matrix = matrix.astype(float)
                 matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
             pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]

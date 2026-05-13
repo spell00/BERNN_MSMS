@@ -43,13 +43,13 @@ cmd=(
     TF_NUM_INTRAOP_THREADS=$cpu_threads
     TF_NUM_INTEROP_THREADS=1
     "$python_bin" bernn/dl/train/train_ae_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs \
-    --zinb=0 --kan=0 --variational=0 --train_after_warmup=1 --tied_weights=0 --bdisc=1 \
+    --kan=0 --variational=0 --train_after_warmup=1 --tied_weights=0 --bdisc=1 \
     --rec_loss=l1 --dloss=DANN --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
     --groupkfold=$groupkfold --embeddings_meta=$n_emb --device=$device --dataset=$dataset --n_trials=$n_trials \
     --n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
     --best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 \
     --prune_threshold=0 --warmup_after_warmup=0 --prune_network=$prune_network \
-    --log_neptune=0 --log_mlflow=1 --log_tb=0 --log_dvclive=0
+    --log_mlflow=1 --log_tb=0 --log_dvclive=0
 )
 
 printf '%s\n' "${cmd[@]}"

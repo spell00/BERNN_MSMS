@@ -81,7 +81,8 @@ def to_categorical(y, num_classes):
     Returns:
         Tensor corresponding to the one-hot encoded classes
     """
-    return torch.eye(num_classes, dtype=torch.int)[y]
+    eye = torch.eye(num_classes, dtype=torch.int, device=y.device)
+    return eye[y]
 
 
 def plot_confusion_matrix(cm, class_names, acc):
@@ -149,21 +150,21 @@ class LogConfusionMatrix:
             self.batches[group] += [np.concatenate(lists[group]['domains'][:n_mini_batches])]
 
     def plot(self, logger, epoch, unique_labels, mlops):
+        import warnings
         for group in ['train', 'valid', 'test']:
             preds = np.concatenate(self.preds[group])
             classes = np.concatenate(self.classes[group])
-            cm = sklearn.metrics.confusion_matrix(classes, preds)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+                cm = sklearn.metrics.confusion_matrix(classes, preds, labels=unique_labels)
 
             acc = np.mean([0 if pred != c else 1 for pred, c in zip(preds, classes)])
 
-            try:
-                figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(self.classes['train']))], acc=acc)
-            except:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
                 figure = plot_confusion_matrix(cm, class_names=unique_labels, acc=acc)
             if mlops == "tensorboard":
                 logger.add_figure(f"CM_{group}_all", figure, epoch)
-            elif mlops == "neptune":
-                logger[f"CM_{group}_all"].upload(figure)
             elif mlops == "mlflow":
                 if MLFLOW_AVAILABLE:
                     mlflow.log_figure(figure, f"CM_{group}_all.png")
@@ -184,10 +185,10 @@ class LogConfusionMatrix:
 
         train = Train("Reconstruction", RandomForestClassifier, rec_data, hparams_names,
                       self.complete_log_path,
-                      args, run, ovr=0, binary=False, mlops='neptune')
+                      args, run, ovr=0, binary=False, mlops='mlflow')
         _ = gp_minimize(train.train, rfc_space, n_calls=20, random_state=1)
         train = Train("Encoded", RandomForestClassifier, enc_data, hparams_names, self.complete_log_path,
-                      args, run, ovr=0, binary=False, mlops='neptune')
+                      args, run, ovr=0, binary=False, mlops='mlflow')
         _ = gp_minimize(train.train, rfc_space, n_calls=20, random_state=1)
 
 
@@ -204,19 +205,20 @@ def log_confusion_matrix(logger, epoch, lists, unique_labels, traces, mlops):
     Returns:
         Nothing. The logger doesn't need to be returned, it saves things on disk
     """
+    import warnings
     for values in list(lists.keys())[1:]:
         # Calculate the confusion matrix.
         if len(lists[values]['preds']) == 0:
             continue
         preds = np.concatenate(lists[values]['preds']).argmax(1)
         classes = np.concatenate(lists[values]['classes'])
-        cm = sklearn.metrics.confusion_matrix(classes, preds)
-        figure = plot_confusion_matrix(cm, class_names=unique_labels[:len(np.unique(classes))],
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning, message=".*A single label was found in 'y_true' and 'y_pred'.*confusion matrix.*")
+            cm = sklearn.metrics.confusion_matrix(classes, preds, labels=unique_labels)
+        figure = plot_confusion_matrix(cm, class_names=unique_labels,
                                        acc=traces[values]['acc'])
         if mlops == "tensorboard":
             logger.add_figure(f"CM_{values}_all", figure, epoch)
-        elif mlops == "neptune":
-            logger[f"CM_{values}_all"].upload(figure)
         elif mlops == "mlflow":
             if MLFLOW_AVAILABLE:
                 mlflow.log_figure(figure, f"CM_{values}_all")
@@ -314,8 +316,6 @@ def save_roc_curve(model, x_test, y_test, unique_labels, name, binary, acc, mlop
         if logger is not None:
             if mlops == 'tensorboard':
                 logger.add_figure(name, fig, epoch)
-            if mlops == 'neptune':
-                logger[name].log(fig)
             if mlops == 'mlflow':
                 if MLFLOW_AVAILABLE:
                     mlflow.log_figure(fig, name)
@@ -395,9 +395,7 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
         if logger is not None:
             if mlops == 'tensorboard':
                 logger.add_figure(name, fig, epoch)
-            if mlops == 'neptune':
-                logger[name].log(fig)
-            if mlops == 'mlops':
+            if mlops == 'mlflow':
                 if MLFLOW_AVAILABLE:
                     mlflow.log_figure(fig, name)
         # setup plot details
@@ -443,8 +441,6 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
         if logger is not None:
             if mlops == 'tensorboard':
                 logger.add_figure(f'{name}_multiclass', fig, epoch)
-            if mlops == 'neptune':
-                logger[f'{name}_multiclass'].log(fig)
             if mlops == 'mlflow':
                 if MLFLOW_AVAILABLE:
                     mlflow.log_figure(fig, f'{name}_multiclass')
@@ -620,9 +616,12 @@ def log_traces(traces, values):
     if len(traces['train']['closs']) > 0:
         for g in list(traces.keys())[3:]:
             if g not in ['all', 'all_pool']:
-                values[g]['closs'] += [np.mean(traces[g]['closs'])]
-                values[g]['acc'] += [np.mean(traces[g]['acc'])]
-                values[g]['top3'] += [np.mean(traces[g]['top3'])]
+                if len(traces[g]['closs']) > 0:
+                    values[g]['closs'] += [np.mean(traces[g]['closs'])]
+                if len(traces[g]['acc']) > 0:
+                    values[g]['acc'] += [np.mean(traces[g]['acc'])]
+                if len(traces[g]['top3']) > 0:
+                    values[g]['top3'] += [np.mean(traces[g]['top3'])]
                 values[g]['mcc'] += [traces[g]['mcc']]
 
     return values
@@ -717,38 +716,6 @@ def add_to_logger(values, logger, epoch):
                 logger.add_scalar(f'/mcc/{group}/all_concentrations', values[group]['mcc'][-1], epoch)
             if not np.isnan(values[group]['top3'][-1]):
                 logger.add_scalar(f'/top3/{group}/all_concentrations', values[group]['top3'][-1], epoch)
-        except:
-            pass
-
-
-def add_to_neptune(values, run):
-    """
-    Add values to the neptune run
-    Args:
-        values: Dict of values to be logged
-        run: Logger for the current experiment
-        epoch: Epoch of the values getting logged
-
-    """
-    if len(values['rec_loss']) > 0:
-        if not np.isnan(values['rec_loss'][-1]):
-            run["rec_loss"].log(values['rec_loss'][-1])
-    if len(values['dom_loss']) > 0:
-        if not np.isnan(values['dom_loss'][-1]):
-            run["dom_loss"].log(values['dom_loss'][-1])
-    if len(values['dom_acc']) > 0:
-        if not np.isnan(values['dom_acc'][-1]):
-            run["dom_acc"].log(values['dom_acc'][-1])
-    for group in list(values.keys())[4:]:
-        try:
-            if not np.isnan(values[group]['closs'][-1]):
-                run[f'/closs/{group}'].log(values[group]['closs'][-1])
-            if not np.isnan(values[group]['acc'][-1]):
-                run[f'/acc/{group}/all_concentrations'].log(values[group]['acc'][-1])
-            if not np.isnan(values[group]['mcc'][-1]):
-                run[f'/mcc/{group}/all_concentrations'].log(values[group]['mcc'][-1])
-            if not np.isnan(values[group]['top3'][-1]):
-                run[f'/top3/{group}/all_concentrations'].log(values[group]['top3'][-1])
         except:
             pass
 
