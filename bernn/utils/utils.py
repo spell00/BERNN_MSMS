@@ -32,19 +32,6 @@ def scale_data(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = RobustScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = data['meta'][group].astype(float)
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'standard_per_batch':
         scalers = {b: StandardScaler() for b in unique_batches}
@@ -61,19 +48,6 @@ def scale_data(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = StandardScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = data['meta'][group].astype(float)
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'minmax_per_batch':
         scalers = {b: MinMaxScaler() for b in unique_batches}
@@ -90,23 +64,10 @@ def scale_data(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = MinMaxScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = data['meta'][group].astype(float)
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'robust':
         scaler = RobustScaler()
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -121,7 +82,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'robust_minmax':
         scaler = Pipeline([('robust', RobustScaler()), ('minmax', MinMaxScaler())])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -136,7 +97,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'standard':
         scaler = StandardScaler()
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -151,7 +112,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'standard_minmax':
         scaler = Pipeline([('standard', StandardScaler()), ('minmax', MinMaxScaler())])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -166,7 +127,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'minmax':
         scaler = MinMaxScaler()
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -181,7 +142,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'l1_minmax':
         scaler = Pipeline([('l1', Normalizer(norm='l1')), ('minmax', MinMaxScaler())])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -196,7 +157,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'l2_minmax':
         scaler = Pipeline([('l2', Normalizer(norm='l2')), ('minmax', MinMaxScaler())])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -211,7 +172,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'l1':
         scaler = Pipeline([('l1', Normalizer(norm='l1'))])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -226,7 +187,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'l2':
         scaler = Pipeline([('l2', Normalizer(norm='l2'))])
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             scaler.fit(data[data_type]['all'])
             for group in list(data[data_type].keys()):
                 if data[data_type][group].shape[0] > 0:
@@ -268,7 +229,7 @@ def scale_data_images(scale, data, device='cpu'):
 
     elif scale == 'standard':
         # scaler = StandardScaler()
-        for data_type in ['inputs', 'meta']:
+        for data_type in ['inputs']:
             data[data_type]['all'] = data[data_type]['all'] - data[data_type]['all'].mean(axis=(1, 2), keepdims=True)
             data[data_type]['all'] = data[data_type]['all'] / data[data_type]['all'].std(axis=(1, 2), keepdims=True)
             for group in list(data[data_type].keys()):
@@ -312,18 +273,6 @@ def scale_data_per_batch(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = RobustScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'standard':
         scalers = {b: StandardScaler() for b in unique_batches}
@@ -339,18 +288,6 @@ def scale_data_per_batch(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = StandardScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'minmax':
         scalers = {b: MinMaxScaler() for b in unique_batches}
@@ -366,18 +303,6 @@ def scale_data_per_batch(scale, data, device='cpu'):
                         data['inputs'][group].iloc[mask] = scalers[b].transform(data['inputs'][group][mask])
                     else:
                         data['inputs'][group][mask] = data['inputs'][group][mask]
-            # data[data_type][group] = pd.DataFrame(data[data_type][group], columns=columns, index=indices)
-        scaler = MinMaxScaler()
-        scaler.fit(data['meta']['all'])
-        for group in list(data['meta'].keys()):
-            if data['meta'][group].shape[0] > 0:
-                columns = data['meta'][group].columns
-                indices = data['meta'][group].index
-                if data['meta'][group].shape[0] > 0:
-                    data['meta'][group] = scaler.transform(data['meta'][group])
-                else:
-                    data['meta'][group] = data['meta'][group]
-                data['meta'][group] = pd.DataFrame(data['meta'][group], columns=columns, index=indices)
 
     elif scale == 'none':
         return data

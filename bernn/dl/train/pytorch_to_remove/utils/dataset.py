@@ -48,14 +48,13 @@ def read_csv(path):
 
 
 class MSDataset3(Dataset):
-    def __init__(self, data, meta, names=None, labels=None, batches=None, 
+    def __init__(self, data, names=None, labels=None, batches=None, 
                  sets=None, transform=None, crop_size=-1,
                  add_noise=False, random_recs=False, triplet_dloss=False):
         """
         
         Args:
             data: pd.DataFrame or np.ndarray, the input data
-            meta: pd.DataFrame or np.ndarray, metadata associated with the data
             names: list or pd.Series, names of the samples
             labels: list or np.ndarray, labels for each sample
             batches: list or np.ndarray, batch identifiers for each sample
@@ -67,7 +66,6 @@ class MSDataset3(Dataset):
             triplet_dloss: str, type of triplet loss to use ('revTriplet', 'inverseTriplet', etc.)
         """
         self.samples = torch.from_numpy(data.to_numpy()).float()
-        self.meta = torch.from_numpy(meta.to_numpy()).float() if isinstance(meta, pd.DataFrame) else torch.tensor(meta).float()
         self.names = names
         self.labels = np.array(labels)
         self.batches = np.array(batches)
@@ -89,9 +87,7 @@ class MSDataset3(Dataset):
 
         # Group by label and batch for sampling
         self.labels_data = {label: self.samples[self.labels == label] for label in np.unique(self.labels)}
-        self.labels_meta_data = {label: self.meta[self.labels == label] for label in np.unique(self.labels)}
         self.batches_data = {batch: self.samples[self.batches == batch] for batch in np.unique(self.batches)}
-        self.batches_meta_data = {batch: self.meta[self.batches == batch] for batch in np.unique(self.batches)}
 
         self.n_labels = {label: len(self.labels_data[label]) for label in self.labels_data}
         self.n_batches = {batch: len(self.batches_data[batch]) for batch in self.batches_data}
@@ -104,7 +100,6 @@ class MSDataset3(Dataset):
         batch = self.batches[idx]
         set_name = self.sets[idx] if self.sets is not None and len(self.sets) > 0 else 'unknown'
         name = str(self.names[idx]) if self.names is not None else None
-        meta_to_rec = self.meta[idx]
         x = self.samples[idx]
 
         # Reconstruction targets
@@ -132,10 +127,8 @@ class MSDataset3(Dataset):
                 not_batch = np.random.choice(list(self.batches_data.keys()))
             pos = self.batches_data[batch][torch.randint(0, self.n_batches[batch], (1,))].squeeze()
             neg = self.batches_data[not_batch][torch.randint(0, self.n_batches[not_batch], (1,))].squeeze()
-            meta_pos = self.batches_meta_data[batch][torch.randint(0, self.n_batches[batch], (1,))].squeeze()
-            meta_neg = self.batches_meta_data[not_batch][torch.randint(0, self.n_batches[not_batch], (1,))].squeeze()
         else:
-            pos = neg = meta_pos = meta_neg = x
+            pos = neg = x
 
         # Optional crop
         if self.crop_size != -1:
@@ -161,12 +154,12 @@ class MSDataset3(Dataset):
                 x = x * (torch.rand_like(x) < 0.9)
 
         return (
-            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
-            pos, neg, meta_pos, meta_neg, set_name
+            x, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos, neg, set_name
         )
 
 class MSDataset4(Dataset):
-    def __init__(self, data, meta, cultpures, names=None, labels=None,
+    def __init__(self, data, cultpures, names=None, labels=None,
                  labels_names=None, batches=None, 
                  sets=None, transform=None, crop_size=-1,
                  add_noise=False, random_recs=False, triplet_dloss=False):
@@ -179,7 +172,6 @@ class MSDataset4(Dataset):
 
         self.add_noise = add_noise
         self.names = names
-        self.meta = meta
         self.sets = sets
         self.transform = transform
         self.crop_size = crop_size
@@ -193,15 +185,11 @@ class MSDataset4(Dataset):
         batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
         try:
             self.labels_data = {label: data.iloc[labels_inds[label]].to_numpy() for label in labels}
-            self.labels_meta_data = {label: meta.iloc[labels_inds[label]].to_numpy() for label in labels}
             self.batches_data = {batch: data.iloc[batches_inds[batch]].to_numpy() for batch in batches}
-            self.batches_meta_data = {batch: meta.iloc[batches_inds[batch]].to_numpy() for batch in batches}
         except Exception as e:
             print(f"Error in labels_data: {e}")
             self.labels_data = {label: data[labels_inds[label]] for label in labels}
-            self.labels_meta_data = {label: meta[labels_inds[label]] for label in labels}
             self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
-            self.batches_meta_data = {batch: meta[batches_inds[batch]] for batch in batches}
 
         self.n_labels = {label: len(self.labels_data[label]) for label in labels}
         self.n_batches = {batch: len(self.batches_data[batch]) for batch in batches}
@@ -216,7 +204,6 @@ class MSDataset4(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        meta_to_rec = None
         if self.labels is not None:
             label = self.labels[idx]
             label_name = self.labels_names[idx]
@@ -233,10 +220,6 @@ class MSDataset4(Dataset):
             except Exception as e:
                 print(f"Error in names: {e}")
                 name = str(self.names[idx])
-            if isinstance(self.meta, pd.DataFrame):
-                meta_to_rec = self.meta.iloc[idx].to_numpy()
-            else:
-                meta_to_rec = self.meta[idx]
         else:
             label = None
             label_name = None
@@ -249,7 +232,6 @@ class MSDataset4(Dataset):
                 not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
             ind = np.random.randint(0, self.n_labels[not_label])
             not_to_rec = self.labels_data[not_label][ind].copy()
-            meta_to_rec = self.meta[idx]
         else:
             if label_name != 'blanc':
                 to_rec = self.cultpures[label_name].copy()
@@ -273,13 +255,9 @@ class MSDataset4(Dataset):
             neg_ind = np.random.randint(0, self.n_batches[not_batch_label])
             pos_batch_sample = self.batches_data[batch][pos_ind].copy()
             neg_batch_sample = self.batches_data[not_batch_label][neg_ind].copy()
-            meta_pos_batch_sample = self.batches_meta_data[batch][pos_ind].copy()
-            meta_neg_batch_sample = self.batches_meta_data[not_batch_label][neg_ind].copy()
         else:
             pos_batch_sample = self.samples[idx].copy()
             neg_batch_sample = self.samples[idx].copy()
-            meta_pos_batch_sample = self.samples[idx].copy()
-            meta_neg_batch_sample = self.samples[idx].copy()
         x = self.samples[idx]
         if self.crop_size != -1:
             max_start_crop = x.shape[1] - self.crop_size
@@ -305,8 +283,8 @@ class MSDataset4(Dataset):
                 x = x * mask
 
         return (
-            x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
-            pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set1
+            x, name, label, batch, to_rec, not_to_rec, pos_to_rec, neg_to_rec,
+            pos_batch_sample, neg_batch_sample, set1
         )
 
 
@@ -450,34 +428,34 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
         # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].to_numpy().reshape(1, -1)), np.std(data['inputs']['train'].to_numpy().reshape(1, -1))),
     ])
 
-    train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'].to_numpy(),
+    train_set = MSDataset3(data['inputs']['train'], data['names']['train'].to_numpy(),
                            data['cats']['train'], [x for x in data['batches']['train']],
                            [x for x in data['sets']['train']], transform=transform, crop_size=-1,
                            random_recs=random_recs, triplet_dloss=triplet_dloss)
-    train_pool_set = MSDataset3(data['inputs']['train_pool'], data['meta']['train_pool'], data['names']['train_pool'],
+    train_pool_set = MSDataset3(data['inputs']['train_pool'], data['names']['train_pool'],
                                 data['cats']['train_pool'], [x for x in data['batches']['train_pool']],
                                 [x for x in data['sets']['train_pool']], transform=transform, crop_size=-1,
                                 random_recs=False, triplet_dloss=triplet_dloss)
-    valid_pool_set = MSDataset3(data['inputs']['valid_pool'], data['meta']['valid_pool'], data['names']['valid_pool'],
+    valid_pool_set = MSDataset3(data['inputs']['valid_pool'], data['names']['valid_pool'],
                                 data['cats']['valid_pool'], [x for x in data['batches']['valid_pool']],
                                 [x for x in data['sets']['valid_pool']], transform=transform, crop_size=-1,
                                 random_recs=False, triplet_dloss=triplet_dloss)
-    test_pool_set = MSDataset3(data['inputs']['test_pool'], data['meta']['test_pool'], data['names']['test_pool'],
+    test_pool_set = MSDataset3(data['inputs']['test_pool'], data['names']['test_pool'],
                                data['cats']['test_pool'], [x for x in data['batches']['test_pool']],
                                [x for x in data['sets']['test_pool']], transform=transform, crop_size=-1,
                                random_recs=False, triplet_dloss=triplet_dloss)
-    valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'].to_numpy(),
+    valid_set = MSDataset3(data['inputs']['valid'], data['names']['valid'].to_numpy(),
                            data['cats']['valid'], [x for x in data['batches']['valid']],
                            [x for x in data['sets']['valid']], transform=transform, crop_size=-1, random_recs=False,
                            triplet_dloss=triplet_dloss)
-    valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'].to_numpy(),
+    valid_set2 = MSDataset3(data['inputs']['valid'], data['names']['valid'].to_numpy(),
                             data['cats']['valid'], [x for x in data['batches']['valid']],
                             [x for x in data['sets']['valid']], transform=transform, crop_size=-1, random_recs=False,
                             triplet_dloss=triplet_dloss)
-    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
+    test_set = MSDataset3(data['inputs']['test'], data['names']['test'].to_numpy(),
                           data['cats']['test'], [x for x in data['batches']['test']], [x for x in data['sets']['test']],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'].to_numpy(),
+    test_set2 = MSDataset3(data['inputs']['test'], data['names']['test'].to_numpy(),
                            data['cats']['test'], [x for x in data['batches']['test']],
                            [x for x in data['sets']['test']], transform=transform, crop_size=-1, random_recs=False,
                            triplet_dloss=triplet_dloss)
@@ -600,10 +578,10 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                              transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
 
     else:
-        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset3(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']], [x for x in data['sets']['all']], transform=transform,
                              crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-        all_set_pool = MSDataset3(data['inputs']['all_pool'], data['meta']['all_pool'], data['names']['all_pool'],
+        all_set_pool = MSDataset3(data['inputs']['all_pool'], data['names']['all_pool'],
                                   data['cats']['all_pool'], [x for x in data['batches']['all_pool']],
                                   [x for x in data['sets']['all_pool']], transform=transform, crop_size=-1,
                                   random_recs=False, triplet_dloss=triplet_dloss)
@@ -642,42 +620,39 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
         # torchvision.transforms.Normalize(np.mean(data['inputs']['train'].to_numpy().reshape(1, -1)), np.std(data['inputs']['train'].to_numpy().reshape(1, -1))),
     ])
 
-    train_set = MSDataset4(data['inputs']['train'], data['meta']['train'], data['names']['train'],
-                           data['cats']['train'],
+    train_set = MSDataset4(data['inputs']['train'], data['names']['train'], data['cats']['train'],
                            data['batches']['train'],
                            transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
-    train_pool_set = MSDataset4(data['inputs']['train_pool'], data['meta']['train_pool'], data['names']['train_pool'],
+    train_pool_set = MSDataset4(data['inputs']['train_pool'], data['names']['train_pool'], data['cats']['train_pool'],
                                 data['cats']['train_pool'],
                                 [x for x in data['batches']['train_pool']],
                                 transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                                 quantize=False, device=device)
-    valid_pool_set = MSDataset4(data['inputs']['valid_pool'], data['meta']['valid_pool'], data['names']['valid_pool'],
-                                data['cats']['valid_pool'],
+    valid_pool_set = MSDataset4(data['inputs']['valid_pool'], data['names']['valid_pool'], data['cats']['valid_pool'],
                                 [x for x in data['batches']['valid_pool']],
                                 transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                                 quantize=False, device=device)
-    test_pool_set = MSDataset4(data['inputs']['test_pool'], data['meta']['test_pool'], data['names']['test_pool'],
+    test_pool_set = MSDataset4(data['inputs']['test_pool'], data['names']['test_pool'], data['cats']['test_pool'],
                                data['cats']['test_pool'],
                                [x for x in data['batches']['test_pool']],
                                transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                                quantize=False, device=device)
-    valid_set = MSDataset4(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                           data['cats']['valid'],
+    valid_set = MSDataset4(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
                            [x for x in data['batches']['valid']],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
-    valid_set2 = MSDataset4(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
+    valid_set2 = MSDataset4(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
                             data['cats']['valid'],
                             [x for x in data['batches']['valid']],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                             quantize=False, device=device)
-    test_set = MSDataset4(data['inputs']['test'], data['meta']['test'], data['names']['test'],
+    test_set = MSDataset4(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                           data['cats']['test'],
                           [x for x in data['batches']['test']],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                           quantize=False, device=device)
-    test_set2 = MSDataset4(data['inputs']['test'], data['meta']['test'], data['names']['test'],
+    test_set2 = MSDataset4(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                            data['cats']['test'],
                            [x for x in data['batches']['test']],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
@@ -801,11 +776,11 @@ def get_images_loaders(data, random_recs, samples_weights, triplet_dloss, ae=Non
                              transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
 
     else:
-        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset3(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']], transform=transform, crop_size=-1, random_recs=False,
                              triplet_dloss=triplet_dloss)
-        all_set_pool = MSDataset3(data['inputs']['all_pool'], data['meta']['all_pool'], data['names']['all_pool'],
-                                  data['cats']['all_pool'], [x for x in data['batches']['all_pool']],
+        all_set_pool = MSDataset3(data['inputs']['all_pool'], data['names']['all_pool'], data['cats']['all_pool'],
+                                  [x for x in data['batches']['all_pool']],
                                   transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders['all'] = DataLoader(all_set,
@@ -878,32 +853,32 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
         # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
-    train_set = MSDataset5(data['inputs']['train'], data['meta']['train'], data['names']['train'],
+    train_set = MSDataset5(data['inputs']['train'], data['names']['train'],
                            data['cats']['train'],
                            data['batches']['train'],
                            sets=data['sets']['train'],
                            transform=transform_train, crop_size=-1, random_recs=random_recs,
                            triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
-    valid_set = MSDataset5(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
+    valid_set = MSDataset5(data['inputs']['valid'], data['names']['valid'],
                            data['cats']['valid'],
                            [x for x in data['batches']['valid']],
                            sets=data['sets']['valid'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                            quantize=False, device=device)
-    valid_set2 = MSDataset5(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
+    valid_set2 = MSDataset5(data['inputs']['valid'], data['names']['valid'],
                             data['cats']['valid'],
                             [x for x in data['batches']['valid']],
                             sets=data['sets']['valid'],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                             quantize=False, device=device)
-    test_set = MSDataset5(data['inputs']['test'], data['meta']['test'], data['names']['test'],
+    test_set = MSDataset5(data['inputs']['test'], data['names']['test'],
                           data['cats']['test'],
                           [x for x in data['batches']['test']],
                           sets=data['sets']['test'],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss,
                           quantize=False, device=device)
-    test_set2 = MSDataset5(data['inputs']['test'], data['meta']['test'], data['names']['test'],
+    test_set2 = MSDataset5(data['inputs']['test'], data['names']['test'],
                            data['cats']['test'],
                            [x for x in data['batches']['test']],
                            sets=data['sets']['test'],
@@ -1013,7 +988,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss
                              random_recs=random_recs, quantize=False, triplet_dloss=triplet_dloss, device=device)
 
     else:
-        all_set = MSDataset5(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset5(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']],
                              sets=data['sets']['all'],
                              transform=transform_train, crop_size=-1,
@@ -1046,19 +1021,19 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
         # torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
-    train_set = MSDataset3(data['inputs']['train'], data['meta']['train'], data['names']['train'],
-                           data['cats']['train'], [x for x in data['batches']['train']], sets=data['sets']['all'],
+    train_set = MSDataset3(data['inputs']['train'], data['names']['train'], data['cats']['train'],
+                           [x for x in data['batches']['train']], sets=data['sets']['all'],
                            transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
-    valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                           data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                           [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                            data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set2 = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                            [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                           [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                           crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set2 = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                            [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                            crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
@@ -1161,7 +1136,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                              triplet_dloss=triplet_dloss)
 
     else:
-        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset3(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']], sets=data['sets']['all'], transform=transform,
                              crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
@@ -1192,24 +1167,22 @@ def get_loaders_bacteria(data, random_recs, samples_weights, triplet_dloss, ae=N
         torchvision.transforms.Normalize(0.5, 0.5),
     ])
 
-    train_set = MSDataset3(data['inputs']['train'], data['meta']['train'],
-                           data['names']['train'], data['cats']['train'],
+    train_set = MSDataset3(data['inputs']['train'], data['names']['train'], data['cats']['train'],
                            [x for x in data['batches']['train']], sets=data['sets']['all'],
                            transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
-    valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                           data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                           [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    upos_set = MSDataset3(data['inputs']['urinespositives'], data['meta']['urinespositives'],
-                          data['names']['urinespositives'], data['cats']['urinespositives'],
+    upos_set = MSDataset3(data['inputs']['urinespositives'], data['names']['urinespositives'], data['cats']['urinespositives'],
                           [x for x in data['batches']['urinespositives']], sets=data['sets']['urinespositives'],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                            data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set2 = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                            [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                           [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                           crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
-    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set2 = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                            [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                            crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
@@ -1317,7 +1290,7 @@ def get_loaders_bacteria(data, random_recs, samples_weights, triplet_dloss, ae=N
                              triplet_dloss=triplet_dloss)
 
     else:
-        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset3(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']], sets=data['sets']['all'], transform=transform,
                              crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
@@ -1350,25 +1323,24 @@ def get_loaders_bacteria2(data, random_recs, samples_weights, triplet_dloss, ae=
         ]
         for label in np.unique(data['labels']['culturespures'])
     }
-    train_set = MSDataset4(data['inputs']['train'], data['meta']['train'], cultpures,
+    train_set = MSDataset4(data['inputs']['train'], cultpures,
                            data['names']['train'], data['cats']['train'], data['labels']['train'],
                            [x for x in data['batches']['train']], sets=data['sets']['all'],
                            transform=transform, crop_size=-1, random_recs=random_recs,
                            triplet_dloss=triplet_dloss, add_noise=add_noise)
-    valid_set = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                           data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                           [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                            transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=False)
-    upos_set = MSDataset3(data['inputs']['urinespositives'], data['meta']['urinespositives'],
-                          data['names']['urinespositives'], data['cats']['urinespositives'],
+    upos_set = MSDataset3(data['inputs']['urinespositives'], data['names']['urinespositives'], data['cats']['urinespositives'],
                           [x for x in data['batches']['urinespositives']], sets=data['sets']['urinespositives'],
                           transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=False)
-    valid_set2 = MSDataset3(data['inputs']['valid'], data['meta']['valid'], data['names']['valid'],
-                            data['cats']['valid'], [x for x in data['batches']['valid']], sets=data['sets']['valid'],
+    valid_set2 = MSDataset3(data['inputs']['valid'], data['names']['valid'], data['cats']['valid'],
+                            [x for x in data['batches']['valid']], sets=data['sets']['valid'],
                             transform=transform, crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=False)
-    test_set = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                           [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                           crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=False)
-    test_set2 = MSDataset3(data['inputs']['test'], data['meta']['test'], data['names']['test'], data['cats']['test'],
+    test_set2 = MSDataset3(data['inputs']['test'], data['names']['test'], data['cats']['test'],
                            [x for x in data['batches']['test']], sets=data['sets']['test'], transform=transform,
                            crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=False)
 
@@ -1470,7 +1442,7 @@ def get_loaders_bacteria2(data, random_recs, samples_weights, triplet_dloss, ae=
                              triplet_dloss=triplet_dloss, add_noise=add_noise)
 
     else:
-        all_set = MSDataset3(data['inputs']['all'], data['meta']['all'], data['names']['all'], data['cats']['all'],
+        all_set = MSDataset3(data['inputs']['all'], data['names']['all'], data['cats']['all'],
                              [x for x in data['batches']['all']], sets=data['sets']['all'], transform=transform,
                              crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss, add_noise=add_noise)
 
@@ -1732,7 +1704,7 @@ class MSCSV2:
 
 
 class MSDataset5(Dataset):
-    def __init__(self, data, meta, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,
+    def __init__(self, data, names=None, labels=None, batches=None, sets=None, transform=None, quantize=False,
                  remove_paddings=False, crop_size=-1, add_noise=False, random_recs=False, triplet_dloss=False,
                  device='cuda'):
         self.random_recs = random_recs
@@ -1741,7 +1713,6 @@ class MSDataset5(Dataset):
         self.sets = sets
         self.add_noise = add_noise
         self.names = names
-        self.meta = meta
         self.transform = transform
         self.crop_size = crop_size
         self.labels = labels
@@ -1752,24 +1723,12 @@ class MSDataset5(Dataset):
         self.remove_paddings = remove_paddings
         self.labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels}
         self.batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches}
-        # try:
-        # self.labels_data = {label: data[labels_inds[label]] for label in labels}
-        # self.labels_meta_data = {label: meta[labels_inds[label]] for label in labels}
-        # self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
-        # self.batches_meta_data = {batch: meta[batches_inds[batch]] for batch in batches}
-        # except:
-        #     print(labels)
-        # self.n_labels = {label: len(self.labels_data[label]) for label in labels}
-        # self.n_batches = {batch: len(self.batches_data[batch]) for batch in batches}
         self.triplet_dloss = triplet_dloss
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        meta_pos_batch_sample = None
-        meta_neg_batch_sample = None
-        meta_to_rec = None
         if self.labels is not None:
             label = self.labels[idx]
             set = self.sets[idx]
@@ -1778,11 +1737,6 @@ class MSDataset5(Dataset):
                 name = self.names[idx]
             except:
                 name = str(self.names.iloc[idx])
-            try:
-                meta_to_rec = self.meta[idx]
-            except:
-                meta_to_rec = self.meta.iloc[idx].to_numpy()
-
         else:
             label = None
             batch = None
@@ -1795,8 +1749,6 @@ class MSDataset5(Dataset):
                 not_label = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
             ind = np.random.randint(0, len(self.labels_inds[not_label]))
             not_to_rec = self.samples[self.labels_inds[not_label][not_label][ind].copy()]
-            meta_not_to_rec = self.meta[self.labels_inds[not_label][not_label][ind].copy()]
-            meta_to_rec = self.meta[idx]
         else:
             to_rec = self.samples[idx]
             not_to_rec = np.array([0])
@@ -1808,13 +1760,9 @@ class MSDataset5(Dataset):
             neg_ind = np.random.randint(0, len(self.batches_inds[not_batch_label]))
             pos_batch_sample = self.samples[self.batches_inds[batch][pos_ind]].copy()
             neg_batch_sample = self.samples[self.batches_inds[not_batch_label][neg_ind]].copy()
-            meta_pos_batch_sample = self.meta[self.batches_inds[batch][pos_ind]].copy()
-            meta_neg_batch_sample = self.meta[self.batches_inds[not_batch_label][neg_ind]].copy()
         else:
             pos_batch_sample = np.array([0])
             neg_batch_sample = np.array([0])
-            meta_pos_batch_sample = np.array([0])
-            meta_neg_batch_sample = np.array([0])
         x = self.samples[idx]
         if self.crop_size != -1:
             max_start_crop = x.shape[1] - self.crop_size
@@ -1841,6 +1789,6 @@ class MSDataset5(Dataset):
         if self.add_noise:
             if np.random.random() > 0.5:
                 x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
-        return x, meta_to_rec, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, \
-            meta_pos_batch_sample, meta_neg_batch_sample, set
+        return x, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, set
+
 

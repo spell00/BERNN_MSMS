@@ -810,26 +810,16 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 self.optimizer_c.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
 
-            # If n_meta > 0, meta data added to inputs
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
             enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
             rec = rec['mean']
 
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
+            preds = ae.classifier(enc)
 
             domain_preds = ae.dann_discriminator(enc)
             try:
@@ -858,10 +848,6 @@ class TrainAE:
             lists[group]['encoded_values'] += [enc.detach().float().cpu().numpy()]
             lists[group]['rec_values'] += [rec.detach().float().cpu().numpy()]
             lists[group]['names'] += [names]
-            lists[group]['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
-            lists[group]['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
-            lists[group]['atn'] += [str(x) for x in
-                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists[group]['inputs'] += [data['inputs']['all'].to_numpy()]
             try:
                 lists[group]['labels'] += [np.array(

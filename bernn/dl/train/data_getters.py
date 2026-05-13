@@ -17,7 +17,7 @@ def get_alzheimer(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+    for info in ['inputs', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -47,8 +47,6 @@ def get_alzheimer(path, args, seed=42):
 
             data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
             data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
                 data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
             data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
@@ -65,8 +63,6 @@ def get_alzheimer(path, args, seed=42):
             train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
             data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
                 data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
-            data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
-                data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
             data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
                 data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
             data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
@@ -79,18 +75,6 @@ def get_alzheimer(path, args, seed=42):
                 valid_inds], data['cats']['train_pool'][test_inds]
 
         else:
-            meta = pd.read_csv(
-                f"{path}/subjects_experiment_ATN_verified_diagnosis.csv", sep=","
-            )
-            meta_names = pd.Series([x.split('_')[1].split('-')[0] for x in meta.loc[:, 'sample_id']])
-            meta_labels = meta.loc[:, 'ATN_diagnosis']
-            # meta_atn = meta.loc[:, 'CSF ATN Status Binary']
-            meta_gender = meta.loc[:, 'Gender']
-            meta_age = meta.loc[:, 'Age at time of LP (yrs)']
-            meta_not_nans = [i for i, x in enumerate(meta_labels.isna()) if not x]
-            meta_names, meta_labels = meta_names.iloc[meta_not_nans], meta_labels.iloc[meta_not_nans]
-            meta_gender, meta_age = meta_gender.iloc[meta_not_nans], meta_age.iloc[meta_not_nans]
-            meta_gender = np.array([1 if x == 'Female' else 0 for i, x in enumerate(meta_gender)])
             matrix = pd.read_csv(
                 f"{path}/{args.csv_file}", sep=','
             )
@@ -114,14 +98,8 @@ def get_alzheimer(path, args, seed=42):
             names = [x.split("\\")[-1].split("_")[1] for x in matrix.columns]
             names = np.array(["_".join(x.split("-")) for x in names])
             batches = np.array([int(x.split("\\")[-1].split("-")[1].split("_")[0]) for x in matrix.columns])
-            meta_names2 = np.array([name.split('_')[0] for name in meta_names.values])
             names2 = np.array([name.split('_')[0] for name in names])
-            meta_pos = [
-                np.argwhere(name == meta_names2)[0][0]
-                for i, name in enumerate(names2) if name in meta_names2.tolist()
-            ]
             pool_pos = [i for i, name in enumerate(names) if name.split("_")[0] == 'Pool']
-            pool_meta_pos = [i for i, name in enumerate(meta_names) if name.split("_")[0] == 'Pool']
             pos = np.concatenate([
                 np.argwhere(name == names2)
                 for i, name in enumerate(np.unique(meta_names2)) if name in names2.tolist()
@@ -129,11 +107,6 @@ def get_alzheimer(path, args, seed=42):
 
             data['inputs'][group] = matrix.iloc[:, pos].T
             data['inputs'][group] = data['inputs'][group].apply(impute_zero, axis=0)
-            data['meta'][group] = pd.DataFrame(meta_age.iloc[meta_pos].to_numpy(), columns=['Age'],
-                                               index=data['inputs'][group].index)
-            data['meta'][group] = pd.concat((data['meta'][group],
-                                             pd.DataFrame(meta_gender[meta_pos], columns=['Gender'],
-                                                          index=data['inputs'][group].index)), 1)
             data['names'][group] = meta_names.iloc[meta_pos]
             data['labels'][group] = meta_labels.iloc[meta_pos].to_numpy()
             data['batches'][group] = batches[pos]
@@ -1040,7 +1013,7 @@ def get_dummy(path, args, seed=42):
 
     # Concatenate ALL groups
     for key in list(data.keys()):
-        if key in ['inputs', 'meta']:
+        if key in ['inputs']:
             data[key]['all'] = pd.concat((
                 data[key]['train'], data[key]['valid'], data[key]['test']
             ), 0)

@@ -612,22 +612,13 @@ class TrainAE:
                 neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
 
-            # If n_meta > 0, meta data added to inputs
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
             enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
             rec = rec['mean']
 
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
+            preds = ae.classifier(enc)
 
             domain_preds = ae.dann_discriminator(enc)
             try:

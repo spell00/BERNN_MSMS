@@ -18,7 +18,7 @@ def get_harvard(args, path='data'):
     not_zero_cols = []
     unique_labels = np.array([])
     data = {}
-    for info in ['inputs', 'names', 'labels', 'cats', 'batches', 'meta', 'orders']:
+    for info in ['inputs', 'names', 'labels', 'cats', 'batches', 'orders']:
         data[info] = {}
         for group in ['all', 'train', 'valid', 'test']:
             data[info][group] = np.array([])
@@ -332,8 +332,6 @@ def get_prostate(args, path, seed=42):
                 train_inds, test_inds = skf.split(train_nums, data['labels']['train']).__next__()
             data['inputs']['train'], data['inputs']['valid'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[test_inds]
             data['names']['train'], data['names']['valid'] = data['names']['train'].iloc[train_inds], \
                 data['names']['train'].iloc[test_inds]
             data['labels']['train'], data['labels']['valid'] = data['labels']['train'][train_inds], \
