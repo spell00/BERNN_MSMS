@@ -24,7 +24,6 @@ csv_file=unique_genes.csv
 path=data/Alzheimer
 update_grid=1
 use_l1=1
-n_emb=2
 prune_network=0
 
 i=0
@@ -39,8 +38,8 @@ do
 			cmd=(
 				"$python_bin" bernn/dl/train/train_ae_then_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs
 			--kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup  --tied_weights=0 --bdisc=1 \
-			--rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
-			--groupkfold=$groupkfold --embeddings_meta=$n_emb --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
+			--rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 \
+			--groupkfold=$groupkfold --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
 			--n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
 			--update_grid=$update_grid --use_l1=$use_l1 --prune_network=$prune_network \
 			--log_mlflow=$log_mlflow --log_tb=$log_tb

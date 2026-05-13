@@ -90,8 +90,8 @@ do
                             TF_NUM_INTEROP_THREADS=1
                             "$python_bin" -m bernn.dl.train.train_ae_classifier_holdout --early_stop=$early_stop --n_epochs=$n_epochs \
                             --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
-                            --rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 --n_meta=$n_emb \
-                            --groupkfold=$groupkfold --embeddings_meta=$n_emb --device=$device --dataset=$dataset --n_trials=$n_trials \
+                            --rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 \
+                            --groupkfold=$groupkfold --device=$device --dataset=$dataset --n_trials=$n_trials \
                             --n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
                             --best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 \
                             --prune_threshold=$prune_threshold --warmup_after_warmup=$warmup_after_warmup \

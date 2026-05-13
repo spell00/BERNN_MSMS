@@ -35,15 +35,6 @@ import pandas as pd
 matplotlib.use('Agg')
 CUDA_VISIBLE_DEVICES = ""
 
-# import StratifiedGroupKFold
-# from sklearn.model_selection import StratifiedKFold, StratifiedGroupKFold
-# from bernn.utils.utils import get_unique_labels
-
-# from fastapi import BackgroundTasks, FastAPI
-# from threading import Thread
-
-# app = FastAPI()
-
 random.seed(1)
 torch.manual_seed(1)
 np.random.seed(1)
@@ -185,8 +176,6 @@ class TrainAEClassifierHoldout(TrainAE):
             "scaler": params['scaler'],
             "csv_file": getattr(self.args, 'csv_file', 'unknown'),
             "model_name": getattr(self.args, 'model_name', 'unknown'),
-            "n_meta": getattr(self.args, 'n_meta', 0),
-            "n_emb": getattr(self.args, 'embeddings_meta', 0),
             "groupkfold": getattr(self.args, 'groupkfold', True),
             "foldername": self.foldername,
             "use_mapping": getattr(self.args, 'use_mapping', True),
@@ -289,19 +278,19 @@ class TrainAEClassifierHoldout(TrainAE):
         if not self.log_mlflow:
             model = None
             run = None
-        seed = 0
+            
         best_closses = []
         best_mccs = []
-        while self.rep < self.args.n_repeats:
+        if self.rep < self.args.n_repeats:
             # prune_threshold = self.args.prune_threshold
-            print(f'Rep: {self.rep}, Seed: {seed}')
+            print(f'Rep: {self.rep}, Seed: {self.seed}')
             epoch = 0
-            self.best_loss = np.inf
-            self.best_closs = np.inf
-            self.best_dom_loss = np.inf
-            self.best_dom_acc = np.inf
-            self.best_acc = 0
-            self.best_mcc = -1
+            best_loss = np.inf
+            best_closs = np.inf
+            best_dom_loss = np.inf
+            best_dom_acc = np.inf
+            best_acc = 0
+            best_mcc = -1
             self.warmup_counter = 0
             self.warmup_b_counter = 0
             self.warmup_disc_b = False
@@ -312,7 +301,7 @@ class TrainAEClassifierHoldout(TrainAE):
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                    np.unique(self.data['batches']['valid']),
                                                    np.unique(self.data['batches']['test']))))
-                seed += 1
+                self.seed += 1
                 if combination not in self.combinations:
                     self.combinations += [combination]
                 else:
@@ -325,20 +314,12 @@ class TrainAEClassifierHoldout(TrainAE):
             event_acc = EventAccumulator(self.hparams_filepath)
             event_acc.Reload()
             if len(event_acc.Tags()['tensors']) > 2 and self.load_tb:
-                # try:
-                #     best_acc = get_best_acc_from_tb(event_acc)
-                # except:
                 pass
             else:
-                # If thres > 0, features that are 0 for a proportion of samples smaller than thres are removed
-                # data = self.keep_good_features(thres)
-
                 # Transform the data with the chosen scaler
                 data = copy.deepcopy(self.data)
                 data, self.scaler = scale_data(params['scaler'], data, self.args.device)
 
-                # feature_selection = get_feature_selection_method('mutual_info_classif')
-                # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
                 for g in list(data['inputs'].keys()):
                     data['inputs'][g] = data['inputs'][g].round(4)
                 # Gets all the pytorch dataloaders to train the models
@@ -359,8 +340,6 @@ class TrainAEClassifierHoldout(TrainAE):
                         mapper=self.args.use_mapping,
                         layers=self.get_ordered_layers(params),
                         n_layers=self.args.n_layers,
-                        n_meta=self.args.n_meta,
-                        n_emb=self.args.embeddings_meta,
                         dropout=params['dropout'],
                         variational=self.args.variational,
                         conditional=False,
@@ -388,8 +367,6 @@ class TrainAEClassifierHoldout(TrainAE):
                             mapper=self.args.use_mapping,
                             layers=self.get_ordered_layers(params),
                             n_layers=self.args.n_layers,
-                            n_meta=self.args.n_meta,
-                            n_emb=self.args.embeddings_meta,
                             dropout=params['dropout'],
                             variational=self.args.variational, conditional=False,
                             add_noise=0, tied_weights=self.args.tied_weights,
@@ -413,8 +390,6 @@ class TrainAEClassifierHoldout(TrainAE):
                             mapper=self.args.use_mapping,
                             layers=self.get_ordered_layers(params),
                             n_layers=self.args.n_layers,
-                            n_meta=self.args.n_meta,
-                            n_emb=self.args.embeddings_meta,
                             dropout=params['dropout'],
                             variational=self.args.variational,
                             conditional=False,
@@ -449,7 +424,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                 early_stop_counter = 0
                 best_vals = values
-                if self.rep > 1:  # or warmup_counter == 100:
+                if self.rep > 1:
                     self.ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth', weights_only=True))
                     print("\n\nNO WARMUP\n\n")
                 if self.rep == 1:
@@ -522,7 +497,7 @@ class TrainAEClassifierHoldout(TrainAE):
                         add_to_mlflow(values, epoch)
                     valid_window = values['valid']['mcc'][-self.args.n_agg:]
 
-                    if len(valid_window) > 0 and len(values['valid']['mcc']) > self.args.n_agg and np.mean(valid_window) > self.best_mcc:
+                    if len(valid_window) > 0 and len(values['valid']['mcc']) >= self.args.n_agg and np.mean(valid_window) > best_mcc:
                         print(f"Best Classification Mcc Epoch {epoch}, "
                             f"Acc: {values['test']['acc'][-1]}"
                             f"VALID Mcc: {values['valid']['mcc'][-1]}"
@@ -530,17 +505,18 @@ class TrainAEClassifierHoldout(TrainAE):
                             f"Classification train loss: {values['train']['closs'][-1]},"
                             f" valid loss: {values['valid']['closs'][-1]},"
                             f" test loss: {values['test']['closs'][-1]}")
-                        self.best_mcc = np.mean(valid_window)
+                        best_mcc = np.mean(valid_window)
                         torch.save(self.ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}_state.pth')
                         torch.save(self.ae, f'{self.complete_log_path}/model_{self.rep}.pth')
+                        self._save_best_model_state(epoch, best_mcc)
                         best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
                         best_vals = values.copy()
-                        best_vals['rec_loss'] = self.best_loss
-                        best_vals['dom_loss'] = self.best_dom_loss
-                        best_vals['dom_acc'] = self.best_dom_acc
+                        best_vals['rec_loss'] = best_loss
+                        best_vals['dom_loss'] = best_dom_loss
+                        best_vals['dom_acc'] = best_dom_acc
                         early_stop_counter = 0
 
-                    if values['valid']['acc'][-1] > self.best_acc:
+                    if values['valid']['acc'][-1] > best_acc:
                         print(f"Best Classification Acc Epoch {epoch}, "
                               f"Acc: {values['test']['acc'][-1]}"
                               f"Mcc: {values['test']['mcc'][-1]}"
@@ -548,17 +524,17 @@ class TrainAEClassifierHoldout(TrainAE):
                               f" valid loss: {values['valid']['closs'][-1]},"
                               f" test loss: {values['test']['closs'][-1]}")
 
-                        self.best_acc = values['valid']['acc'][-1]
+                        best_acc = values['valid']['acc'][-1]
                         early_stop_counter = 0
 
-                    if values['valid']['closs'][-1] < self.best_closs:
+                    if values['valid']['closs'][-1] < best_closs:
                         print(f"Best Classification Loss Epoch {epoch}, "
                               f"Acc: {values['test']['acc'][-1]} "
                               f"Mcc: {values['test']['mcc'][-1]} "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
                               f"valid loss: {values['valid']['closs'][-1]}, "
                               f"test loss: {values['test']['closs'][-1]}")
-                        self.best_closs = values['valid']['closs'][-1]
+                        best_closs = values['valid']['closs'][-1]
                         early_stop_counter = 0
                     else:
                         # if epoch > self.warmup:
@@ -570,7 +546,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     if params['prune_threshold'] > 0:
                         n_neurons = self.ae.prune_model_paperwise(False, False, weight_threshold=params['prune_threshold'])
 
-                best_mccs += [self.best_mcc]
+                best_mccs += [best_mcc]
 
                 best_lists, traces = get_empty_traces()
                 
@@ -592,7 +568,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     for group in list(data['inputs'].keys()):
                         closs, best_lists, traces = self.loop(group, None, self.ae, sceloss,
                                                               loaders[group], best_lists, traces, nu=0, mapping=False)
-                best_closses += [self.best_closs]
+                best_closses += [best_closs]
 
                 self.log_rep(best_lists, best_vals, best_values, traces, metrics, run, loggers, self.ae,
                              shap_ae if self.use_shap else None, self.rep, epoch)
@@ -627,7 +603,10 @@ class TrainAEClassifierHoldout(TrainAE):
         # daemon.start()
         if self.log_mlflow:
             mlflow.log_param('finished', 1)
-        self.logging(run, loggers['cm_logger'])
+        try:
+            self.logging(run, loggers['cm_logger'])
+        except Exception as e:
+            print(f"Logging failed: {e}")
 
         if not self.keep_models:
             # shutil.rmtree(f'{self.complete_log_path}/traces', ignore_errors=True)
@@ -636,14 +615,16 @@ class TrainAEClassifierHoldout(TrainAE):
             shutil.rmtree(f'{self.complete_log_path}', ignore_errors=True)
         print('\n\nDuration: {}\n\n'.format(datetime.now() - start_time))
         best_closs = np.mean(best_closses) if len(best_closses) > 0 else np.inf
-        if best_closs < self.best_closs:
-            self.best_closs = best_closs
+        if best_closs < best_closs:
+            best_closs = best_closs
             print("Best closs!")
 
         # It should not be necessary. To remove once certain the "Too many files open" error is no longer a problem
         plt.close('all')
+        
+        self.rep += 1
 
-        return self.best_mcc
+        return np.mean(best_mccs)
 
     def increase_pruning_threshold(self):
         '''
@@ -681,6 +662,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_warmup_stop', type=int, default=0, help='If 0, then no early warmup stop')
     parser.add_argument('--train_after_warmup', type=int, default=1, help="Train autoencoder after warmup")
     parser.add_argument('--warmup_after_warmup', type=int, default=1, help="Warmup after warmup")
+    parser.add_argument('--max_warmup', type=int, default=10, help="Maximum number of warmup iterations")
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
@@ -700,8 +682,6 @@ if __name__ == "__main__":
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=1)
-    parser.add_argument('--n_meta', type=int, default=0)
-    parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
@@ -821,7 +801,7 @@ if __name__ == "__main__":
         {"name": "wd", "type": "range", "bounds": [1e-6, 1e-3], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [10, 100]},
+        {"name": "warmup", "type": "range", "bounds": [1, args.max_warmup]},
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
         {"name": "scaler", "type": "choice", "values": ['standard', 'robust', 'standard_per_batch', 'robust_per_batch']},
         {"name": "thres", "type": "range", "bounds": [0.0, 0.1]},
@@ -852,27 +832,22 @@ if __name__ == "__main__":
                 X, y, groups_train=groups, X_test=None, y_test=None, groups_test=None, params=param_clean,
                 cross_validation=bool(args.cross_validation), cross_test=bool(args.cross_test)
             )
-            loss = float(train.best_closs)
+            valid_mcc = float(train.best_mcc)
+            train._reset_counts()
         except Exception as e:
             print(f"[AX WARN] Trial failed: {e}")
             traceback.print_exc()
             loss = 1e9
         # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
         # but explicit dict form is more robust; returning scalar is also fine. Choose one:
-        return loss  # scalar OK because objective_name='closs'
+        return valid_mcc  # scalar OK because objective_name='mcc'
 
     best_parameters, values, experiment, model = optimize(
         parameters=parameters,
         evaluation_function=ax_eval,
-        objective_name='closs',
-        minimize=True,
+        objective_name='mcc',
+        minimize=False,
         total_trials=args.n_trials,
         random_seed=41
     )
 
-    # fig = plt.figure()
-    # render(plot_contour(model=model, param_x="learning_rate", param_y="weight_decay", metric_name='Loss'))
-    # fig.savefig('test.jpg')
-    # print('Best Loss:', values[0]['loss'])
-    # print('Best Parameters:')
-    # print(json.dumps(best_parameters, indent=4))

@@ -454,8 +454,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 "scaler": params['scaler'],
                 "csv_file": getattr(self.args, 'csv_file', 'unknown'),
                 "model_name": getattr(self.args, 'model_name', 'unknown'),
-                "n_meta": getattr(self.args, 'n_meta', 0),
-                "n_emb": getattr(self.args, 'embeddings_meta', 0),
                 "groupkfold": getattr(self.args, 'groupkfold', True),
                 "foldername": self.foldername,
                 "use_mapping": getattr(self.args, 'use_mapping', True),
@@ -471,21 +469,20 @@ class TrainAEThenClassifierHoldout(TrainAE):
         else:
             model = None
             run = None
-        seed = 0
         best_closses = []
         best_mccs = []
 
         # warmup is done only once, at first repeat
-        warmup_counter = 0
-        warmup_b_counter = 0
+        self.warmup_counter = 0
+        self.warmup_b_counter = 0
         if self.args.warmup > 0:
             warmup = True
         else:
             warmup = False
-        warmup_disc_b = False
+        self.warmup_disc_b = False
 
-        while self.rep < self.args.n_repeats:
-            print(f'Rep: {self.rep}, Seed: {seed}')
+        if self.rep < self.args.n_repeats:
+            print(f'Rep: {self.rep}, Seed: {self.seed}')
             epoch = 0
             best_loss = np.inf
             best_closs = np.inf
@@ -499,7 +496,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                    np.unique(self.data['batches']['valid']),
                                                    np.unique(self.data['batches']['test']))))
-                seed += 1
+                self.seed += 1
                 if combination not in self.combinations:
                     self.combinations += [combination]
                 else:
@@ -534,8 +531,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 mapper=self.args.use_mapping,
                 layers=self.get_ordered_layers(params),
                 n_layers=self.args.n_layers,
-                n_meta=self.args.n_meta,
-                n_emb=self.args.embeddings_meta,
                 dropout=dropout,
                 variational=self.args.variational,
                 conditional=False,
@@ -559,8 +554,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
             if self.log_dvclive:
                 log_num_neurons(getattr(self, 'live', None), n_neurons, init_n_neurons, mlops='dvclive', step=0)
 
-            # if self.args.embeddings_meta > 0:
-            #     n_meta = self.n_meta
             shap_ae = None
             if self.use_shap:
                 shap_ae = self.shap_ae(
@@ -571,8 +564,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     mapper=self.args.use_mapping,
                     layers=self.get_ordered_layers(params),
                     n_layers=self.args.n_layers,
-                    n_meta=self.args.n_meta,
-                    n_emb=self.args.embeddings_meta,
                     dropout=dropout,
                     variational=self.args.variational,
                     conditional=False,
@@ -622,14 +613,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         for i, all_batch in iterator:
                             if warmup or self.args.train_after_warmup:
                                 optimizer_ae.zero_grad()
-                            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+                            inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                                pos_batch_sample, neg_batch_sample, _ = all_batch
                             inputs = inputs.to(self.args.device).float()
-                            meta_inputs = meta_inputs.to(self.args.device).float()
                             to_rec = to_rec.to(self.args.device).float()
-                            if self.args.n_meta > 0:
-                                inputs = torch.cat((inputs, meta_inputs), 1)
-                                to_rec = torch.cat((to_rec, meta_inputs), 1)
 
                             enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True)
                             if enc.abs().sum() == 0 or rec['mean'][0].abs().sum() == 0:
@@ -648,11 +635,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             elif self.args.dloss == 'revTriplet':
                                 pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                                 neg_batch_sample = neg_batch_sample.to(self.args.device).float()
-                                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                                if self.args.n_meta > 0:
-                                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                                 pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                                 dloss = triplet_loss(reverse,
@@ -662,11 +644,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             elif self.args.dloss == 'inverseTriplet':
                                 pos_batch_sample, neg_batch_sample = neg_batch_sample.to(
                                     self.args.device).float(), pos_batch_sample.to(self.args.device).float()
-                                meta_pos_batch_sample, meta_neg_batch_sample = meta_neg_batch_sample.to(
-                                    self.args.device).float(), meta_pos_batch_sample.to(self.args.device).float()
-                                if self.args.n_meta > 0:
-                                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                                 pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                                 dloss = triplet_loss(enc, pos_enc, neg_enc)
@@ -710,10 +687,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             lists['all']['rec_values'] += [
                                 rec.detach().float().cpu().numpy()]
                             lists['all']['names'] += [names]
-                            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
-                            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
-                            lists['all']['atn'] += [str(x) for x in
-                                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
                             lists['all']['inputs'] += [data['inputs']['all'].to_numpy()]
                             try:
                                 lists['all']['labels'] += [np.array(
@@ -994,6 +967,7 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=-1)
     parser.add_argument('--train_after_warmup', type=int, default=0)
+    parser.add_argument('--max_warmup', type=int, default=0)
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
@@ -1009,8 +983,6 @@ if __name__ == "__main__":
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv', help='')
     parser.add_argument('--bad_batches', type=str, default='', help='0;23;22;21;20;19;18;17;16;15')
     parser.add_argument('--remove_zeros', type=int, default=0)
-    parser.add_argument('--n_meta', type=int, default=0)
-    parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')
@@ -1114,7 +1086,7 @@ if __name__ == "__main__":
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [100, 1000]},
+        {"name": "warmup", "type": "range", "bounds": [1, args.max_warmup]},
         # {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},

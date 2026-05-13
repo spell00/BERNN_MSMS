@@ -55,7 +55,6 @@ class TrainingConfig:
     update_grid: bool = True
 
     # Data processing
-    n_meta: int = 0
     embeddings_meta: int = 0
     groupkfold: bool = True
     log1p: bool = True

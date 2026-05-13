@@ -287,8 +287,6 @@ class TrainAE:
                 "scaler": params['scaler'],
                 "csv_file": args.csv_file,
                 "model_name": args.model_name,
-                "n_meta": args.n_meta,
-                "n_emb": args.embeddings_meta,
                 "groupkfold": args.groupkfold,
                 "foldername": self.foldername,
                 "use_mapping": args.use_mapping,
@@ -353,22 +351,9 @@ class TrainAE:
 
                 # Transform the data with the chosen scaler
                 data = copy.deepcopy(self.data)
-                # data, self.scaler = scale_data(scale, data, self.args.device)
-
-                # feature_selection = get_feature_selection_method('mutual_info_classif')
-                # mi = feature_selection(data['inputs']['train'], data['cats']['train'])
-                # for g in list(data['inputs'].keys()):
-                #     data['inputs'][g] = data['inputs'][g].round(4)
-                # Gets all the pytorch dataloaders to train the models
-                # if self.pools:
-                # loaders = get_images_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None, None, bs=64)
-                # else:
                 loaders = get_images_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss, None, None, bs=self.args.bs)
                 print(self.n_batches, self.n_cats)
                 ae = Predictor(n_classes=self.n_cats, n_batches=self.n_batches).to(self.args.device)
-                # if self.args.embeddings_meta > 0:
-                #     n_meta = self.n_meta
-                # shap_ae = SHAPAutoEncoder(n_classes=self.n_cats, n_batches=self.n_batches).to(self.args.device)
                 shap_ae = None
                 # shap_ae.mapper.to(self.args.device)
                 loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
@@ -557,11 +542,10 @@ class TrainAE:
         if self.log_metrics:
             if self.log_tb:
                 try:
-                    # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']['all']), epoch, mlops="tensorboard",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          metrics=metrics,
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -570,7 +554,7 @@ class TrainAE:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']['all']), epoch, mlops="mlflow",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          metrics=metrics,
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -606,30 +590,15 @@ class TrainAE:
                                self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
                     if log_shap is not None:
-                        log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.n_meta, 'mlflow',
+                        log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 'mlflow',
                                 self.complete_log_path,
                                 self.args.device)
                 if self.log_mlflow:
                     if log_shap is not None:
-                        log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
+                        log_shap(None, shap_ae, best_lists, self.columns, 'mlflow',
                                 self.complete_log_path,
                                 self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
-
-        # columns = self.data['inputs']['all'].columns
-        # if self.args.n_meta == 2:
-        #     columns += ['gender', 'age']
-
-        # rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
-
-        # from skopt import gp_minimize
-        # train = Train2("Reconstruction", sklearn.svm.LinearSVC, rec_data, self.hparams_names,
-        #                self.complete_log_path,
-        #                args, loggers['logger_cm'], ovr=0, binary=False, mlops='mlflow')
-        # res = gp_minimize(train.train, linsvc_space, n_calls=20, random_state=1)
-        # train = Train2("Encoded", sklearn.svm.LinearSVC, enc_data, self.hparams_names, self.complete_log_path,
-        #                args, loggers['logger_cm'], ovr=0, binary=False, mlops='mlflow')
-        # res = gp_minimize(train.train, linsvc_space, n_calls=20, random_state=1)
 
         # TODO change logging with tensorboard. The previous
         if self.log_tb:
@@ -695,24 +664,15 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 optimizer_ae.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample = batch
             data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
 
-            # If n_meta > 0, meta data added to inputs
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
             enc = ae(data)
 
-            # If embedding_meta > 0, meta data added to embeddings
-            if self.args.embeddings_meta:
-                preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-            else:
-                preds = ae.classifier(enc)
+            preds = ae.classifier(enc)
 
             domain_preds = ae.dann_discriminator(enc)
             try:
@@ -779,8 +739,8 @@ class TrainAE:
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample = batch
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             with torch.no_grad():
@@ -892,8 +852,6 @@ if __name__ == "__main__":
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=1)
-    parser.add_argument('--n_meta', type=int, default=0)
-    parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=0)
     parser.add_argument('--dataset', type=str, default='bacteria')

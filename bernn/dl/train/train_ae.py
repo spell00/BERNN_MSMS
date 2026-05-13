@@ -9,7 +9,7 @@ from torch import nn
 from torch import nn
 from sklearn import metrics
 import contextlib
-
+import copy
 from bernn.utils.ax_compat import optimize, AX_AVAILABLE
 
 from sklearn.metrics import matthews_corrcoef as MCC
@@ -129,11 +129,15 @@ class TrainAE:
         """
         self.best_acc = 0
         self.best_mcc = -1
+        self.best_loss = np.inf
         self.best_closs = np.inf
         self.logged_inputs = False
         self.log_tb = log_tb
         self.log_mlflow = log_mlflow
-        
+        self.best_epoch = -1
+        self.best_valid_mcc = float("-inf")
+        self.best_state_dicts = None
+                
         if args is None:
             class Args: pass
             args = Args()
@@ -173,6 +177,7 @@ class TrainAE:
             n_neighbors = 5
         self.knn = KNeighborsClassifier(n_neighbors=n_neighbors, weights='distance')
         self.rep = 0
+        self.seed = 0
         self.combinations = []
 
 
@@ -367,7 +372,7 @@ class TrainAE:
             groups = np.array(groups)
 
         self.data = {
-            'inputs': {}, 'meta': {}, 'names': {}, 'labels': {},
+            'inputs': {}, 'names': {}, 'labels': {},
             'cats': {}, 'batches': {}, 'orders': {}, 'sets': {}
         }
 
@@ -401,11 +406,11 @@ class TrainAE:
             n_splits = int(1.0 / val_size) if val_size > 0 else 5
             if len(self.unique_batches) > 1:
                 from sklearn.model_selection import StratifiedGroupKFold
-                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y, groups))
             else:
                 from sklearn.model_selection import StratifiedKFold
-                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y))
             valid_fold = 0
             train_inds, valid_inds = split_iter[valid_fold]
@@ -431,16 +436,19 @@ class TrainAE:
             raise ValueError("Cannot provide only valid set without test set. Please provide test set or use only train/valid split.")
         # If neither valid nor test is provided, split into train/valid/test
         else:
-            n_splits = int(1.0 / val_size) if val_size > 0 else 5
+            n_splits = self.args.n_repeats
             if len(self.unique_batches) > 1:
                 from sklearn.model_selection import StratifiedGroupKFold
-                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y, groups))
             else:
                 from sklearn.model_selection import StratifiedKFold
-                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.rep)
+                skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y))
-            valid_fold = 0
+            if (self.seed - self.rep) > 10:
+                valid_fold = 1
+            else:
+                valid_fold = 0
             test_fold = (valid_fold + 1) % n_splits
             train_inds_v, valid_inds = split_iter[valid_fold]
             train_inds_t, test_inds = split_iter[test_fold]
@@ -453,11 +461,13 @@ class TrainAE:
             self.data['batches']['valid'] = groups[valid_inds]
             self.data['inputs']['test'] = X.iloc[test_inds]
             self.data['labels']['test'] = y[test_inds]
-            self.data['batches']['test'] = groups[test_inds]
+            self.data['batches']['test'] = groups[test_inds]        
+            
             batch_map = {b: i for i, b in enumerate(self.unique_batches)}
             self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
             self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
             self.data['batches']['test'] = np.array([batch_map[b] for b in self.data['batches']['test']])
+            
 
         # Ensure all keys are set for downstream code
         for group in ['train', 'valid', 'test']:
@@ -484,12 +494,11 @@ class TrainAE:
         for group in ['train', 'valid', 'test']:
             n_samples = len(self.data['inputs'][group])
             self.data['names'][group] = pd.Series([f"{group}_{i}" for i in range(n_samples)])
-            # self.data['meta'][group] = pd.DataFrame(np.zeros((n_samples, 2)), columns=['Age', 'Gender'], index=self.data['inputs'][group].index)
             self.data['orders'][group] = np.arange(n_samples)
             self.data['sets'][group] = np.array([group] * n_samples)
             self.data['cats'][group] = np.array([label_map[l] if l in label_map else -1 for l in self.data['labels'][group]])
             
-        for key in ['inputs', 'meta']:
+        for key in ['inputs']:
             if len(self.data['inputs']['test']) > 0:
                 self.data[key]['all'] = pd.concat([self.data[key]['train'], self.data[key]['valid'], self.data[key]['test']])
             else:
@@ -505,7 +514,7 @@ class TrainAE:
             self.data = binarize_labels(self.data, self.args.controls)
 
         if self.pools:
-            for key in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+            for key in ['inputs', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
                 self.data[key]['train_pool'] = self.data[key]['train']
                 self.data[key]['valid_pool'] = self.data[key]['valid']
                 self.data[key]['test_pool'] = self.data[key]['test']
@@ -514,17 +523,34 @@ class TrainAE:
         print('Data loaded')
         # self.make_samples_weights()
 
+    # TODO SHOULD REMOVE CROSS VALIDATION AND CROSS TEST TO MAKE IT MORE LIKE SKLEARN... or could it be used
     def fit(self, X_train, y_train, groups_train=None, X_test=None, y_test=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
         """
         Standard supervised/unsupervised training.
         If X_test is provided, it is included in the data (transductive learning) but no predictions are returned.
         """
         response = -1
-        while response == -1:
-            self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
-            self._train(params)
-            self.rep += 1
-
+        flag = True
+        while self.rep < (self.args.n_repeats - 1) and flag:
+            self._prepare_data(X=X_train, y=y_train, groups=groups_train,
+                               X_test=X_test, y_test=y_test, groups_test=groups_test,
+                               cross_validation=cross_validation, cross_test=cross_test,
+                               val_size=val_size)
+            response = self._train(params)
+            if response == -1 and self.seed > self.args.n_repeats * 100:
+                print("Warning: multiple training attempts failed, stopping early.")
+                print('Setting n_repeats to current n rep:', self.rep + 1)
+                self.args.n_repeats = self.rep
+                break
+            if not cross_validation and not cross_test:
+                flag = False
+        if self.best_state_dicts is not None:
+            self.restore_best_model_state()
+        else:
+            raise RuntimeError(
+                "BERNN fit finished but no best model state was saved. "
+                "This likely means no valid validation epoch completed."
+            )
         return self
 
     def fit_predict(self, X_train, y_train, X_test=None, y_test=None, groups_train=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
@@ -536,7 +562,6 @@ class TrainAE:
         while response == -1:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
             response = self._train(params)
-            self.rep += 1
         if X_test is not None:
             return self.predict(X_test)
         else:
@@ -585,7 +610,19 @@ class TrainAE:
         
         return False
 
-
+    def _reset_counts(self):
+        """
+        Resets any internal counts or state that should be cleared between training runs.
+        This can be useful if the same TrainAE instance is reused for multiple fits.
+        """
+        self.rep = 0
+        self.seed = 0
+        self.combinations = []
+        self._knn_ready = False
+        # Optionally clear best model tracking if you want each fit to be independent
+        self.best_mcc = -1
+        # self.best_checkpoint_path = None
+        # self.best_model_state = None
 
     def _train(self, params=None):
         """
@@ -622,8 +659,6 @@ class TrainAE:
                 'layer1': getattr(self.args, 'layer1', 512),
                 'layer2': getattr(self.args, 'layer2', 128),
                 'n_layers': getattr(self.args, 'n_layers', 2),
-                'n_meta': getattr(self.args, 'n_meta', 0),
-                'n_emb': getattr(self.args, 'embeddings_meta', 0),
                 'dropout': getattr(self.args, 'dropout', 0.1),
                 'variational': getattr(self.args, 'variational', 0),
                 'conditional': getattr(self.args, 'conditional', False),
@@ -666,7 +701,7 @@ class TrainAE:
         loggers = {}
         
         # Initialize best_mcc for tracking (will be updated when checkpoints are saved)
-        self.best_mcc = -1
+        mcc = -1
         
         print(f"Starting training loop for {n_epochs} epochs...")
         from tqdm import tqdm
@@ -707,7 +742,7 @@ class TrainAE:
                     self._validate_and_save_best_checkpoint(self.ae, epoch, valid_mcc)
 
                     if epoch % 10 == 0:
-                            print(f"Epoch {epoch}: Valid MCC = {valid_mcc:.4f}, Best MCC = {self.best_mcc:.4f}")
+                            print(f"Epoch {epoch}: Valid MCC = {valid_mcc:.4f}, Best MCC = {self.best_mcc}")
                 except Exception as e:
                     print(f"Warning: Could not compute validation MCC: {e}")
 
@@ -875,8 +910,6 @@ class TrainAE:
             'n_repeats': 5,
             'dloss': 'inverseTriplet',  # one of revDANN, DANN, inverseTriplet, revTriplet
             'bad_batches': '',  # 0;23;22;21;20;19;18;17;16;15
-            'n_meta': 0,
-            'embeddings_meta': 0,
             'groupkfold': 1,
             'bs': 32,
             'exp_id': 'default_ae_then_classifier',
@@ -1008,12 +1041,11 @@ class TrainAE:
         if self.log_metrics:
             if self.log_tb and self.log_metrics:
                 try:
-                    # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
+                    # logger, lists, values, model, unique_labels, mlops, epoch, metrics, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="tensorboard",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                          device=self.args.device)
+                                          metrics=metrics, device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
             if self.log_mlflow and self.log_metrics:
@@ -1021,7 +1053,7 @@ class TrainAE:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="mlflow",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          metrics=metrics,
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -1030,7 +1062,7 @@ class TrainAE:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="dvclive",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          metrics=metrics,
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging dvclive!\n\n\n")
@@ -1067,18 +1099,16 @@ class TrainAE:
                     # logger.add(loggers['logger_cm'], epoch, best_lists,
                     #            self.unique_labels, best_traces, 'tensorboard')
                     log_plots(loggers['logger_cm'], best_lists, 'tensorboard', epoch)
-                    log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'tb',
+                    log_shap(loggers['logger_cm'], shap_ae, best_lists, self.columns, 'tb',
                              self.complete_log_path, self.args.device)
                 if self.log_mlflow:
-                    log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
+                    log_shap(None, shap_ae, best_lists, self.columns, 'mlflow',
                              self.complete_log_path, self.args.device)
                     log_plots(None, best_lists, 'mlflow', epoch)
                 if self.log_dvclive:
                     print("Logging plots to dvclive: not implemented")
 
         columns = list(self.data['inputs']['all'].columns)
-        if self.args.n_meta == 2:
-            columns += ['gender', 'age']
 
         rec_data, enc_data = to_csv(best_lists, self.complete_log_path, columns)
 
@@ -1160,16 +1190,11 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 optimizer.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, sets = batch
             data = data.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
 
-            # If n_meta > 0, meta data added to inputs
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             not_to_rec = not_to_rec.to(self.args.device).float()
             
             # Use autocast for mixed precision training
@@ -1178,7 +1203,7 @@ class TrainAE:
                 rec = rec['mean']
 
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                    feats = torch.cat((ae.classifier.net[0](enc), meta_inputs), 1) if self.args.embeddings_meta else enc
+                    feats = enc
                     # Prefer persistent KNN if available, fallback to in-batch KNN
                     X = feats.detach().float().cpu().numpy()
                     try:
@@ -1206,10 +1231,7 @@ class TrainAE:
                             proba_full[i] = counts / s if s > 0 else np.full(self.n_cats, 1.0 / self.n_cats, dtype=np.float32)
                     preds = torch.from_numpy(proba_full).to(self.args.device)
                 else:
-                    if self.args.embeddings_meta:
-                        preds = ae.classifier(torch.cat((enc, meta_inputs), 1))
-                    else:
-                        preds = ae.classifier(enc)
+                    preds = ae.classifier(enc)
 
                 domain_preds = ae.dann_discriminator(enc)
             # Build one-hot labels for metrics and CE mode
@@ -1226,11 +1248,6 @@ class TrainAE:
                 class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
                 pos_to_rec = pos_to_rec.to(self.args.device).float()
                 neg_to_rec = neg_to_rec.to(self.args.device).float()
-                mpos_bs = meta_pos_batch_sample.to(self.args.device).float()
-                mneg_bs = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_to_rec = torch.cat((pos_to_rec, mpos_bs), 1)
-                    neg_to_rec = torch.cat((neg_to_rec, mneg_bs), 1)
                 pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
                 neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
                 if not self.args.train_after_warmup:
@@ -1311,14 +1328,10 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group == 'train':
                 optimizer.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, *_ = batch
+            data, names, labels, domain, to_rec, *_ = batch
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             domain = domain.to(self.args.device).long()
-            meta_inputs = meta_inputs.to(self.args.device).float()
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
             enc.requires_grad_()
             domain_preds = ae.dann_discriminator(enc)
@@ -1341,13 +1354,9 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group == 'train' and nu != 0:
                 optimizer.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, *_ = batch
+            data, names, labels, domain, to_rec, *_ = batch
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             if hasattr(self.args, 'train_after_warmup') and self.args.train_after_warmup == 0:
                 ae.eval()
                 ae.classifier.train()
@@ -1377,15 +1386,11 @@ class TrainAE:
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, _ = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
-            if self.args.n_meta > 0:
-                data = torch.cat((data, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
             with torch.no_grad():
                 enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
             # with torch.enable_grad():
@@ -1603,17 +1608,13 @@ class TrainAE:
         for i, all_batch in iterator:
             # print(i)
             optimizer_ae.zero_grad()
-            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+            inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                pos_batch_sample, neg_batch_sample, _ = all_batch
             inputs = inputs.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             # verify if domain is str
             if isinstance(domain, str):
                 domain = torch.Tensor([[int(y) for y in x.split("_")] for x in domain])
-            if self.args.n_meta > 0:
-                inputs = torch.cat((inputs, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
 
             enc, rec, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
             rec = rec['mean']
@@ -1627,11 +1628,6 @@ class TrainAE:
             elif self.args.dloss == 'revTriplet':
                 pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                 neg_batch_sample = neg_batch_sample.to(self.args.device).float()
-                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                 pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(reverse,
@@ -1641,11 +1637,6 @@ class TrainAE:
             elif self.args.dloss == 'inverseTriplet':
                 pos_batch_sample, neg_batch_sample = neg_batch_sample.to(self.args.device).float(), pos_batch_sample.to(
                     self.args.device).float()
-                meta_pos_batch_sample, meta_neg_batch_sample = meta_neg_batch_sample.to(
-                    self.args.device).float(), meta_pos_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                 pos_enc, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                 neg_enc, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(enc, pos_enc, neg_enc)
@@ -1677,10 +1668,6 @@ class TrainAE:
             lists['all']['rec_values'] += [
                 rec.detach().float().cpu().numpy()]
             lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
-            lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
@@ -1716,8 +1703,8 @@ class TrainAE:
                 f"Domain Accuracy: {np.mean(traces['dom_acc'])}"
             )
             self.best_loss = np.mean(traces['rec_loss'])
-            self.dom_loss = np.mean(traces['dom_loss'])
-            self.dom_acc = np.mean(traces['dom_acc'])
+            # self.dom_loss = np.mean(traces['dom_loss'])
+            # self.dom_acc = np.mean(traces['dom_acc'])
             self.warmup_counter = 0
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
@@ -1800,20 +1787,51 @@ class TrainAE:
                 param.requires_grad = False
         return ae
 
-    # def prune_neurons(self, ae, threshold):
-    #     """
-    #     Prune neurons in the autoencoder
-    #     Args:
-    #         ae: AutoEncoder object
-    #     Returns:
-    #         ae: AutoEncoder object
-    #     """
-    #     for m in ae.modules():
-    #         if isinstance(m, KANAutoEncoder2):
-    #             for n in m.modules():
-    #                 for i in n.modules():
-    #                     if isinstance(i, KANLinear):
-    #                         i.prune_neurons(threshold)
+
+    def _iter_torch_modules(self):
+        """
+        Return all torch modules directly attached to the trainer.
+        Adjust names if BERNN stores modules in specific attributes.
+        """
+        for name, obj in self.__dict__.items():
+            if isinstance(obj, torch.nn.Module):
+                yield name, obj
+
+
+    def _save_best_model_state(self, epoch, valid_mcc):
+        """
+        Save a deep copy of all torch module states when validation improves.
+        """
+        if valid_mcc is None:
+            return
+
+        valid_mcc = float(valid_mcc)
+
+        if valid_mcc > self.best_valid_mcc:
+            self.best_valid_mcc = valid_mcc
+            self.best_epoch = int(epoch)
+
+            self.best_state_dicts = {
+                name: copy.deepcopy(module.state_dict())
+                for name, module in self._iter_torch_modules()
+            }
+
+
+    def restore_best_model_state(self):
+        """
+        Restore the best validation model before prediction.
+        """
+        if not self.best_state_dicts:
+            raise RuntimeError(
+                "No best model state was saved. Training may have failed before a valid epoch."
+            )
+
+        modules = dict(self._iter_torch_modules())
+
+        for name, state in self.best_state_dicts.items():
+            if name not in modules:
+                raise RuntimeError(f"Cannot restore best model: missing module '{name}'")
+            modules[name].load_state_dict(state)
 
     def count_neurons(self, ae):
         """
@@ -1866,8 +1884,6 @@ if __name__ == "__main__":
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=0)
-    parser.add_argument('--n_meta', type=int, default=0)
-    parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='custom')
     parser.add_argument('--bs', type=int, default=32, help='Batch size')

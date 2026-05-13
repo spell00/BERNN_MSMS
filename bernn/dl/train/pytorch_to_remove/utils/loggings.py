@@ -72,8 +72,6 @@ class TensorboardLoggingAE:
         self.bad_batches = args.bad_batches
         self.remove_zeros = args.remove_zeros
         self.use_mapping = args.use_mapping
-        self.n_emb = args.embeddings_meta
-        self.n_meta = args.n_meta
         self.csv_file = args.csv_file
         self.tied_weights = args.tied_weights
         HPARAMS = [
@@ -181,8 +179,6 @@ class TensorboardLoggingAE:
                 'bad_batches': self.bad_batches,
                 'remove_zeros': self.remove_zeros,
                 'use_mapping': self.use_mapping,
-                'n_emb': self.n_emb,
-                'n_meta': self.n_meta,
                 'csv_file': self.csv_file,
                 'tied_weights': self.tied_weights
             })  # record the values used in this trial
@@ -482,23 +478,13 @@ def log_kernel_explainer(model, x_df, misclassified, labels, group, run, cats, l
     make_group_difference_plot(x_df.sum(1).to_numpy(), mask, group, run, 'Kernel')
 
 
-def log_shap(run, ae, best_lists, cols, n_meta, mlops, log_path, device, log_deep_only=True):
+def log_shap(run, ae, best_lists, cols, mlops, log_path, device, log_deep_only=True):
     # explain all the predictions in the test set
     # explainer = shap.KernelExplainer(svc_linear.predict_proba, X_train[:100])
     os.makedirs(log_path, exist_ok=True)
     for group in ['valid', 'test']:
-        if n_meta > 0:
-            X = np.concatenate((
-                np.concatenate(best_lists[group]['inputs']),
-                # np.concatenate(best_lists[group]['age']).reshape(-1, 1),
-                # np.concatenate(best_lists[group]['gender']).reshape(-1, 1),
-            ), 1)
-            # X_test = torch.Tensor(X).to(device)
-            X_test_df = pd.DataFrame(X, columns=list(cols) + ['age', 'sex'])
-        else:
-            X = np.concatenate(best_lists[group]['inputs'])
-            # X_test = torch.Tensor(X).to(device)
-            X_test_df = pd.DataFrame(X, columns=list(cols))
+        X = np.concatenate(best_lists[group]['inputs'])
+        X_test_df = pd.DataFrame(X, columns=list(cols))
 
         # explainer = shap.DeepExplainer(ae, X_test)
         # explanation = shap.Explanation(X_test, feature_names=X_test_df.columns)
@@ -1117,7 +1103,7 @@ def log_CCA(ordin, logger, data, uniques, mlops, epoch):
         plt.close(fig)
 
 
-def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epoch, mlops, metrics, n_meta_emb=0, device='cuda'):
+def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epoch, mlops, metrics, device='cuda'):
     from bernn.dl.models.pytorch.utils.metrics import batch_f1_score
     
     if len(unique_labels) > 2:
@@ -1344,19 +1330,6 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
     train_enc = torch.Tensor(np.concatenate(lists['train']['encoded_values']))
     valid_enc = torch.Tensor(np.concatenate(lists['valid']['encoded_values']))
     test_enc = torch.Tensor(np.concatenate(lists['test']['encoded_values']))
-    if n_meta_emb > 0:
-        train_enc = torch.cat((train_enc,
-                               torch.Tensor(np.concatenate(lists['train']['age'])).view(-1, 1),
-                               torch.Tensor(np.concatenate(lists['train']['gender'])).view(-1, 1),
-                               ), 1)
-        valid_enc = torch.cat((valid_enc,
-                               torch.Tensor(np.concatenate(lists['valid']['age'])).view(-1, 1),
-                               torch.Tensor(np.concatenate(lists['valid']['gender'])).view(-1, 1),
-                               ), 1)
-        test_enc = torch.cat((test_enc,
-                              torch.Tensor(np.concatenate(lists['test']['age'])).view(-1, 1),
-                              torch.Tensor(np.concatenate(lists['test']['gender'])).view(-1, 1),
-                              ), 1)
     try:
         save_roc_curve(model,
                        train_enc.to(device),
@@ -1408,12 +1381,6 @@ def make_data(lists, values):
                        len(lists[group][values]) > 0},
             'batches': {group: np.concatenate(lists[group]['domains'][:n_mini_batches]) for group in list(lists.keys()) if
                         len(lists[group][values]) > 0},
-            # 'age': {group: np.concatenate(lists[group]['age']) for group in list(lists.keys()) if
-            #         len(lists[group][values]) > 0},
-            # 'gender': {group: np.concatenate(lists[group]['gender']) for group in list(lists.keys()) if
-            #            len(lists[group][values]) > 0},
-            # 'atn': {group: np.array(lists[group]['atn']) for group in list(lists.keys()) if
-            #         len(lists[group][values]) > 0},
         }
         keys = list(data['inputs'].keys())
     except:
@@ -1421,24 +1388,9 @@ def make_data(lists, values):
             'inputs': {group: np.concatenate(lists[group][values][:n_mini_batches]) for group in ['all', 'all_pool']},
             'labels': {group: np.concatenate(lists[group]['labels'][:n_mini_batches]) for group in ['all', 'all_pool']},
             'batches': {group: np.concatenate(lists[group]['domains'][:n_mini_batches]) for group in ['all', 'all_pool']},
-            # 'age': {group: np.concatenate(lists[group]['age']) for group in ['all', 'all_pool']},
-            # 'gender': {group: np.concatenate(lists[group]['gender']) for group in ['all', 'all_pool']},
-            # 'atn': {group: np.array(lists[group]['atn']) for group in ['all', 'all_pool']},
         }
         keys = ['all', 'all_pool']
 
-    # for group in keys:
-    #     meta_age = []
-    #     for age in data['age'][group]:
-    #         if age < 60:
-    #             meta_age += ['50s']
-    #         elif age < 70:
-    #             meta_age += ['60s']
-    #         elif age < 80:
-    #             meta_age += ['70s']
-    #         else:
-    #             meta_age += ['80+']
-    #     data['age'][group] = np.array(meta_age)
 
     return data
 
@@ -1455,9 +1407,6 @@ def log_plots(logger, lists, mlops, epoch):
 
                 ))
             )
-            # unique_ages = np.array(['50s', '60s', '70s', '80+'])
-            # unique_genders = np.unique(np.concatenate(lists['all']['gender']))
-            # unique_atns = np.unique([str(x) for x in np.array(lists['all']['atn'])])
             if len(lists['test'][values]) == 0:
                 continue
             uniques = {'batches': unique_batches, 'labels': unique_labels}
@@ -1489,23 +1438,6 @@ def log_input_ordination(logger, data, scaler, mlops, epoch=0):
         data['gender'] = {}
         data['age'] = {}
         data['atn'] = {}
-        for group in ['train', 'valid', 'test']:
-            tmp = scaler.inverse_transform(data['inputs'][group])
-            data['gender'][group] = tmp[:, -1].astype(int)
-            data['age'][group] = tmp[:, -2]
-            data['atn'][group] = tmp[:, -5:-2]
-            data['atn'][group] = np.array([str(x) for x in data['atn'][group]])
-            meta_age = []
-            for age in data['age'][group]:
-                if age < 60:
-                    meta_age += ['50s']
-                elif age < 70:
-                    meta_age += ['60s']
-                elif age < 80:
-                    meta_age += ['70s']
-                else:
-                    meta_age += ['80+']
-            data['age'][group] = np.array(meta_age)
 
         unique_labels = get_unique_labels(data['labels']['train'])
         unique_batches = np.unique(np.concatenate([

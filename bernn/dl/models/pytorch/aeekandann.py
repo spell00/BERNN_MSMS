@@ -395,8 +395,6 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         in_shape: int,
         n_batches: int,
         nb_classes: int,
-        n_emb: int,
-        n_meta: int,
         mapper: bool,
         variational: bool,
         layer1: int,
@@ -410,9 +408,7 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         is_sigmoid: bool = False,
     ) -> None:
         super().__init__()
-        self.n_emb = n_emb
         self.add_noise = add_noise
-        self.n_meta = n_meta
         self.device = device
         self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
@@ -420,11 +416,11 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
-        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape, layer1, layer2, dropout)
         if conditional:
-            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout)
         else:
-            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout)
         self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
 
         if variational:
@@ -433,7 +429,7 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
             self.gaussian_sampling = None
 
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
-        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
+        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers)
 
     def forward(
         self,
@@ -444,9 +440,6 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
     ) -> torch.Tensor:
         if isinstance(x, pd.DataFrame):
             x = torch.tensor(x.values).to(self.device)
-        if self.n_emb > 0:
-            meta_values = x[:, -2:]
-            x = x[:, :-2]
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
 
@@ -457,10 +450,7 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
             else:
                 enc, _, _ = self.gaussian_sampling(enc, train=False)
 
-        if self.n_emb > 0:
-            out = self.classifier(torch.cat((enc, meta_values), 1))
-        else:
-            out = self.classifier(enc)
+        out = self.classifier(enc)
         return out
 
     # Probability / prediction helpers
@@ -499,8 +489,6 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         in_shape: int,
         n_batches: int,
         nb_classes: int,
-        n_emb: int,
-        n_meta: int,
         mapper: bool,
         variational: bool,
         layers: dict,
@@ -513,9 +501,7 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         is_sigmoid: bool = False,
     ) -> None:
         super().__init__()
-        self.n_emb = n_emb
         self.add_noise = add_noise
-        self.n_meta = n_meta
         self.device = device
         self.is_sigmoid = is_sigmoid
         self.use_mapper = mapper
@@ -523,11 +509,11 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
-        self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
+        self.enc = Encoder3(in_shape, layers, dropout, device)
         if conditional:
-            self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
+            self.dec = Decoder3(in_shape, n_batches, layers, dropout, device)
         else:
-            self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
+            self.dec = Decoder3(in_shape, 0, layers, dropout, device)
 
         last_dim = list(layers.values())[-1]
         self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
@@ -538,7 +524,7 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
             self.gaussian_sampling = None
 
         self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
-        self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers)
+        self.classifier = Classifier(last_dim, nb_classes, n_layers=n_layers)
 
 
     def forward(
@@ -550,10 +536,6 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
     ) -> torch.Tensor:
         if isinstance(x, pd.DataFrame):
             x = torch.tensor(x.values).to(self.device)
-        if self.n_emb > 0:
-            meta_values = x[:, -2:]
-            if self.n_meta == 0:
-                x = x[:, :-2]
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -0.1).type_as(x)
         enc = self.enc(x)
@@ -568,10 +550,7 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
             bs = to_categorical(batches, self.n_batches + 1).to(self.device).float()
             enc = enc + self.mapper(bs).squeeze()
 
-        if self.n_emb > 0:
-            out = self.classifier(torch.cat((enc, meta_values), 1))
-        else:
-            out = self.classifier(enc)
+        out = self.classifier(enc)
         return out
 
     def predict_proba(self, x: torch.Tensor) -> np.ndarray:
@@ -618,8 +597,6 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         in_shape: int,
         n_batches: int,
         nb_classes: int,
-        n_meta: int,
-        n_emb: int,
         mapper: bool,
         variational: bool,
         layers: dict,
@@ -641,16 +618,14 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         self.n_batches = n_batches
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
-        self.n_emb = n_emb
-        self.n_meta = n_meta
         self.prune_threshold = prune_threshold
 
         # Encoder / Decoder
-        self.enc = Encoder3(in_shape + n_meta, layers, dropout, device)
+        self.enc = Encoder3(in_shape, layers, dropout, device)
         if conditional:
-            self.dec = Decoder3(in_shape + n_meta, n_batches, layers, dropout, device)
+            self.dec = Decoder3(in_shape, n_batches, layers, dropout, device)
         else:
-            self.dec = Decoder3(in_shape + n_meta, 0, layers, dropout, device)
+            self.dec = Decoder3(in_shape, 0, layers, dropout, device)
 
         last_dim = list(layers.values())[-1]
         self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
@@ -662,7 +637,7 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
             self.gaussian_sampling = None
 
         self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
-        self.classifier = Classifier(last_dim + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
+        self.classifier = Classifier(last_dim, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
 
     def forward(
@@ -770,8 +745,6 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         in_shape: int,
         n_batches: int,
         nb_classes: int,
-        n_meta: int,
-        n_emb: int,
         mapper: bool,
         variational: bool,
         layer1: int,
@@ -793,17 +766,15 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         self.n_batches = n_batches
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
-        self.n_emb = n_emb
-        self.n_meta = n_meta
         self.prune_threshold = prune_threshold
         self.is_sigmoid = is_sigmoid
 
         # Encoder / Decoder
-        self.enc = Encoder2(in_shape + n_meta, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape, layer1, layer2, dropout)
         if conditional:
-            self.dec = Decoder2(in_shape + n_meta, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout)
         else:
-            self.dec = Decoder2(in_shape + n_meta, 0, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout)
         self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
 
         # Variational sampling
@@ -813,7 +784,7 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
             self.gaussian_sampling = None
 
         self.dann_discriminator = Classifier2(layer2, 64, n_batches)
-        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
+        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
 
 
     def forward(

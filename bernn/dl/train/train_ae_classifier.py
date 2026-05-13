@@ -177,8 +177,6 @@ class TrainAE:
                 "scaler": params['scaler'],
                 "csv_file": args.csv_file,
                 "model_name": args.model_name,
-                "n_meta": args.n_meta,
-                "n_emb": args.embeddings_meta,
                 "groupkfold": args.groupkfold,
                 "foldername": self.foldername,
                 "use_mapping": args.use_mapping,
@@ -251,8 +249,6 @@ class TrainAE:
                              layer1=layer1,
                              layer2=layer2,
                              n_layers=self.args.n_layers,
-                             n_meta=self.args.n_meta,
-                             n_emb=self.args.embeddings_meta,
                              dropout=dropout,
                              variational=self.args.variational, conditional=False,
                              add_noise=0, tied_weights=self.args.tied_weights,
@@ -267,8 +263,6 @@ class TrainAE:
                                       layer1=layer1,
                                       layer2=layer2,
                                       n_layers=self.args.n_layers,
-                                      n_meta=self.args.n_meta,
-                                      n_emb=self.args.embeddings_meta,
                                       dropout=dropout,
                                       variational=self.args.variational, conditional=False,
                                       add_noise=0, tied_weights=self.args.tied_weights,
@@ -468,12 +462,10 @@ class TrainAE:
         if self.log_metrics:
             if self.log_tb:
                 try:
-                    # logger, lists, values, model, unique_labels, mlops, epoch, metrics, n_meta_emb=0, device='cuda'
                     metrics = log_metrics(loggers['logger'], best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="tensorboard",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
-                                          device=self.args.device)
+                                          metrics=metrics, n_meta_emb=0, device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
             if self.log_mlflow:
@@ -481,7 +473,7 @@ class TrainAE:
                     metrics = log_metrics(None, best_lists, best_vals, ae,
                                           np.unique(np.concatenate(best_lists['train']['labels'])),
                                           np.unique(self.data['batches']), epoch, mlops="mlflow",
-                                          metrics=metrics, n_meta_emb=self.args.embeddings_meta,
+                                          metrics=metrics,
                                           device=self.args.device)
                 except BrokenPipeError:
                     print("\n\n\nProblem with logging stuff!\n\n\n")
@@ -521,24 +513,10 @@ class TrainAE:
                              self.args.device, self.log_deep_only)
                 if self.log_mlflow:
                     log_plots(None, best_lists, 'mlflow', epoch)
-                    log_shap(None, shap_ae, best_lists, self.columns, self.args.embeddings_meta, 'mlflow',
+                    log_shap(None, shap_ae, best_lists, self.columns, 'mlflow',
                              self.complete_log_path,
                              self.args.device, self.log_deep_only)
 
-        # columns = self.data['inputs']['all'].columns
-        # if self.args.n_meta == 2:
-        #     columns += ['gender', 'age']
-        #
-        # rec_data, enc_data = to_csv(best_lists, self.complete_log_path, self.data['inputs']['all'].columns)
-
-        # from skopt import gp_minimize
-        # train = Train2("Reconstruction", sklearn.svm.LinearSVC, rec_data, self.hparams_names,
-        #                self.complete_log_path,
-        #                args, loggers['logger_cm'], ovr=0, binary=False, mlops='mlflow')
-        # res = gp_minimize(train.train, linsvc_space, n_calls=20, random_state=1)
-        # train = Train2("Encoded", sklearn.svm.LinearSVC, enc_data, self.hparams_names, self.complete_log_path,
-        #                args, loggers['logger_cm'], ovr=0, binary=False, mlops='mlflow')
-        # res = gp_minimize(train.train, linsvc_space, n_calls=20, random_state=1)
 
         best_values['pool_metrics'] = {}
         if self.log_metrics:
@@ -608,8 +586,8 @@ class TrainAE:
         for i, batch in enumerate(loader):
             if group in ['train'] and nu != 0:
                 optimizer_ae.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample, set = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -693,8 +671,8 @@ class TrainAE:
         sampling = True
         for i, batch in enumerate(loader):
             optimizer_b.zero_grad()
-            data, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, set = batch
+            data, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample, sets = batch
             # data[torch.isnan(data)] = 0
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
@@ -842,14 +820,10 @@ class TrainAE:
         # If option train_after_warmup=1, then this loop is only for preprocessing
         for i, all_batch in iterator:
             optimizer_ae.zero_grad()
-            inputs, meta_inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
-                neg_batch_sample, meta_pos_batch_sample, meta_neg_batch_sample, _ = all_batch
+            inputs, names, labels, domain, to_rec, not_to_rec, pos_batch_sample, \
+                neg_batch_sample, _ = all_batch
             inputs = inputs.to(self.args.device).float()
-            meta_inputs = meta_inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
-            if self.args.n_meta > 0:
-                inputs = torch.cat((inputs, meta_inputs), 1)
-                to_rec = torch.cat((to_rec, meta_inputs), 1)
 
             enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
             rec = rec['mean']
@@ -866,11 +840,6 @@ class TrainAE:
             elif args.dloss == 'revTriplet':
                 pos_batch_sample = pos_batch_sample.to(self.args.device).float()
                 neg_batch_sample = neg_batch_sample.to(self.args.device).float()
-                meta_pos_batch_sample = meta_pos_batch_sample.to(self.args.device).float()
-                meta_neg_batch_sample = meta_neg_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                 pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(reverse,
@@ -880,11 +849,6 @@ class TrainAE:
             elif args.dloss == 'inverseTriplet':
                 pos_batch_sample, neg_batch_sample = neg_batch_sample.to(self.args.device).float(), pos_batch_sample.to(
                     self.args.device).float()
-                meta_pos_batch_sample, meta_neg_batch_sample = meta_neg_batch_sample.to(
-                    self.args.device).float(), meta_pos_batch_sample.to(self.args.device).float()
-                if self.args.n_meta > 0:
-                    pos_batch_sample = torch.cat((pos_batch_sample, meta_pos_batch_sample), 1)
-                    neg_batch_sample = torch.cat((neg_batch_sample, meta_neg_batch_sample), 1)
                 pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
                 neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(enc, pos_enc, neg_enc)
@@ -922,10 +886,6 @@ class TrainAE:
             lists['all']['rec_values'] += [
                 rec.detach().float().cpu().numpy()]
             lists['all']['names'] += [names]
-            lists['all']['gender'] += [meta_inputs.detach().float().cpu().numpy()[:, -1]]
-            lists['all']['age'] += [meta_inputs.detach().float().cpu().numpy()[:, -2]]
-            lists['all']['atn'] += [str(x) for x in
-                                    meta_inputs.detach().float().cpu().numpy()[:, -5:-2]]
             lists['all']['inputs'] += [to_rec]
             try:
                 lists['all']['labels'] += [np.array(
@@ -943,8 +903,8 @@ class TrainAE:
                 f"Domain Losses: {np.mean(traces['dom_loss'])}, "
                 f"Domain Accuracy: {np.mean(traces['dom_acc'])}")
             self.best_loss = np.mean(traces['rec_loss'])
-            self.dom_loss = np.mean(traces['dom_loss'])
-            self.dom_acc = np.mean(traces['dom_acc'])
+            # self.dom_loss = np.mean(traces['dom_loss'])
+            # self.dom_acc = np.mean(traces['dom_acc'])
             if warmup:
                 torch.save(ae.state_dict(), f'{self.complete_log_path}/warmup.pth')
 
@@ -1022,8 +982,6 @@ if __name__ == "__main__":
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15
     parser.add_argument('--remove_zeros', type=int, default=1)
-    parser.add_argument('--n_meta', type=int, default=0)
-    parser.add_argument('--embeddings_meta', type=int, default=0)
     parser.add_argument('--features_to_keep', type=str, default='features_proteins.csv')
     parser.add_argument('--groupkfold', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='prostate')

@@ -456,7 +456,7 @@ def get_data(path, args, seed=42):
     data = {}
     # batch_cols = args.batch_columns
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+    for info in ['inputs', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -480,8 +480,6 @@ def get_data(path, args, seed=42):
 
             data['inputs']['train'], data['inputs']['valid'], data['inputs']['test'] = data['inputs']['train'].iloc[train_inds], \
                 data['inputs']['train'].iloc[valid_inds], data['inputs']['train'].iloc[test_inds]
-            data['meta']['train'], data['meta']['valid'], data['meta']['test'] = data['meta']['train'].iloc[train_inds], \
-                data['meta']['train'].iloc[valid_inds], data['meta']['train'].iloc[test_inds]
             data['labels']['train'], data['labels']['valid'], data['labels']['test'] = data['labels']['train'][train_inds], \
                 data['labels']['train'][valid_inds], data['labels']['train'][test_inds]
             data['names']['train'], data['names']['valid'], data['names']['test'] = data['names']['train'].iloc[train_inds], \
@@ -510,8 +508,6 @@ def get_data(path, args, seed=42):
                 train_inds = [x for x in train_nums_pool if x not in np.concatenate((valid_inds, test_inds))]
                 data['inputs']['train_pool'], data['inputs']['valid_pool'], data['inputs']['test_pool'], = data['inputs']['train_pool'].iloc[train_inds], \
                     data['inputs']['train_pool'].iloc[valid_inds], data['inputs']['train_pool'].iloc[test_inds]
-                data['meta']['train_pool'], data['meta']['valid_pool'], data['meta']['test_pool'], = data['meta']['train_pool'].iloc[train_inds], \
-                    data['meta']['train_pool'].iloc[valid_inds], data['meta']['train_pool'].iloc[test_inds]
                 data['labels']['train_pool'], data['labels']['valid_pool'], data['labels']['test_pool'], = data['labels']['train_pool'][train_inds], \
                     data['labels']['train_pool'][valid_inds], data['labels']['train_pool'][test_inds]
                 data['names']['train_pool'], data['names']['valid_pool'], data['names']['test_pool'], = data['names']['train_pool'][train_inds], \
@@ -546,7 +542,6 @@ def get_data(path, args, seed=42):
             data['labels'][group] = labels.to_numpy()[pos]
             data['batches'][group] = batches[pos]
             # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-            data['meta'][group] = data['inputs'][group].iloc[:, :2]
             data['orders'][group] = orders[pos]
 
             # data['labels'][group] = np.array([x.split('-')[0] for i, x in enumerate(data['labels'][group])])
@@ -561,7 +556,6 @@ def get_data(path, args, seed=42):
                 data['batches'][f"{group}_pool"] = batches[pool_pos]
 
                 # This is juste to make the pipeline work. Meta should be 0 for the amide dataset
-                data['meta'][f"{group}_pool"] = data['inputs'][f"{group}_pool"].iloc[:, :2]
                 data['orders'][f"{group}_pool"] = orders[pool_pos]
                 data['cats'][f"{group}_pool"] = np.array(
                     [len(np.unique(data['labels'][group])) for _ in batches[pool_pos]])
@@ -576,7 +570,7 @@ def get_data(path, args, seed=42):
         # print(key, data['sets'][key])
     if not args.pool:
         for key in list(data.keys()):
-            if key in ['inputs', 'meta']:
+            if key in ['inputs']:
                 data[key]['all'] = pd.concat((
                     data[key]['train'], data[key]['valid'], data[key]['test']
                 ), 0)
@@ -592,7 +586,7 @@ def get_data(path, args, seed=42):
         # print('POOL!!')
         for key in list(data.keys()):
             # print('key', key)
-            if key in ['inputs', 'meta']:
+            if key in ['inputs']:
                 data[key]['all'] = pd.concat((
                     data[key]['train'], data[key]['valid'], data[key]['test'],
                     data[key]['train_pool'], data[key]['valid_pool'], data[key]['test_pool'],
@@ -629,7 +623,7 @@ def get_bacteria_images(path, args, seed=42):
     """
     data = {}
     unique_labels = np.array([])
-    for info in ['inputs', 'meta', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
+    for info in ['inputs', 'names', 'labels', 'cats', 'batches', 'orders', 'sets']:
         data[info] = {}
         for group in ['all', 'train', 'test', 'valid']:
             data[info][group] = np.array([])
@@ -654,10 +648,9 @@ def get_bacteria_images(path, args, seed=42):
                 matrix = matrix.loc[:, mask1]
             data['inputs']['valid'], data['inputs']['train'] = data['inputs']['train'][valid_inds], data['inputs']['train'][train_inds]
             data['names']['valid'], data['names']['train'] = data['names']['train'][valid_inds], data['names']['train'][train_inds]
-            data['labels']['valid'], data['labels']['train'] = data['labels']['train'][valid_inds], data['labels']['train'][train_inds]  # .iloc[meta_pos].to_numpy()
+            data['labels']['valid'], data['labels']['train'] = data['labels']['train'][valid_inds], data['labels']['train'][train_inds]
             data['batches']['valid'], data['batches']['train'] = data['batches']['train'][valid_inds], data['batches']['train'][train_inds]
             data['orders']['valid'], data['orders']['train'] = data['orders']['train'][valid_inds], data['orders']['train'][train_inds]
-            data['meta']['valid'], data['meta']['train'] = data['inputs'][group], data['inputs']['train']
             data['sets']['valid'], data['sets']['train'] = data['sets']['train'][valid_inds], data['sets']['train'][train_inds]
             data['sets']['valid'] = np.array(['valid' for _ in data['names']['valid']])
 

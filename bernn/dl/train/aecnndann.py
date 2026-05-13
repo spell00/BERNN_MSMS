@@ -330,23 +330,21 @@ class ConvDecoder(nn.Module):
 
 
 class SHAPAutoEncoderCNN(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_emb, n_meta, mapper, variational, dropout,
+    def __init__(self, in_shape, n_batches, nb_classes, mapper, variational, dropout,
                  n_layers, zinb=False, conditional=False, add_noise=False, tied_weights=0, device='cuda'):
         super(SHAPAutoEncoderCNN, self).__init__()
-        self.n_emb = n_emb
         self.add_noise = add_noise
-        self.n_meta = n_meta
         self.device = device
         self.use_mapper = mapper
         self.n_batches = n_batches
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
-        self.enc = ConvEncoder(in_shape + n_meta, dropout)
+        self.enc = ConvEncoder(in_shape, dropout)
         if conditional:
-            self.dec = ConvDecoder(in_shape + n_meta, n_batches, dropout)
+            self.dec = ConvDecoder(in_shape, n_batches, dropout)
         else:
-            self.dec = ConvDecoder(in_shape + n_meta, 0, dropout)
+            self.dec = ConvDecoder(in_shape, 0, dropout)
         self.mapper = Classifier(n_batches + 1, 512)
 
         if variational:
@@ -354,21 +352,12 @@ class SHAPAutoEncoderCNN(nn.Module):
         else:
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(512, 64, n_batches)
-        self.classifier = Classifier(layer2 + n_emb, nb_classes, n_layers=n_layers)
-        # self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
-        # self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        # self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
+        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers)
         self.random_init(nn.init.xavier_uniform_)
 
     def forward(self, x, batches=None, sampling=False, beta=1.0):
         if type(x) == pd.core.frame.DataFrame:
             x = torch.Tensor(x.values).to(self.device)
-        if self.n_emb > 0:
-            meta_values = x[:, -2:]
-            x = x[:, :-2]
-        # if self.n_meta > 0:
-        #     x = x[:, :-2]
-        # rec = {}
         if self.add_noise:
             x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
         enc = self.enc(x)
@@ -378,10 +367,7 @@ class SHAPAutoEncoderCNN(nn.Module):
             else:
                 enc, _, _ = self.gaussian_sampling(enc, train=False)
 
-        if self.n_emb > 0:
-            out = self.classifier(torch.cat((enc, meta_values), 1))
-        else:
-            out = self.classifier(enc)
+        out = self.classifier(enc)
 
         return out
 
@@ -461,7 +447,7 @@ class SHAPAutoEncoderCNN(nn.Module):
 
 
 class AutoEncoderCNN(nn.Module):
-    def __init__(self, in_shape, n_batches, nb_classes, n_meta, n_emb, mapper, variational, dropout, n_layers, zinb=False,
+    def __init__(self, in_shape, n_batches, nb_classes, mapper, variational, dropout, n_layers, zinb=False,
                  conditional=False, add_noise=False, tied_weights=0, device='cuda'):
         super(AutoEncoderCNN, self).__init__()
         self.add_noise = add_noise
@@ -471,11 +457,11 @@ class AutoEncoderCNN(nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
         # self.gnn1 = GCNConv(in_shape, in_shape)
-        self.convEncoder = ConvEncoder(in_shape + n_meta)
+        self.convEncoder = ConvEncoder(in_shape)
         if conditional:
-            self.convDecoder = ConvDecoder(in_shape + n_meta, n_batches, layer1, dropout)
+            self.convDecoder = ConvDecoder(in_shape, n_batches, layer1, dropout)
         else:
-            self.convDecoder = ConvDecoder(in_shape + n_meta, 0, layer1, dropout)
+            self.convDecoder = ConvDecoder(in_shape, 0, layer1, dropout)
         
         self.mapper = Classifier(n_batches + 1)
 
@@ -484,10 +470,7 @@ class AutoEncoderCNN(nn.Module):
         else:
             self.gaussian_sampling = None
         self.dann_discriminator = Classifier2(layer1, 64, n_batches)
-        self.classifier = Classifier(layer1 + n_emb, nb_classes, n_layers=n_layers)
-        # self._dec_mean = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), MeanAct())
-        # self._dec_disp = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), DispAct())
-        # self._dec_pi = nn.Sequential(nn.Linear(layer1, in_shape + n_meta), nn.Sigmoid())
+        self.classifier = Classifier(layer1, nb_classes, n_layers=n_layers)
         self.random_init(nn.init.kaiming_uniform_)
 
     def forward(self, x, to_rec, batches=None, sampling=False, beta=1.0, mapping=True):
@@ -525,20 +508,9 @@ class AutoEncoderCNN(nn.Module):
         #     rec = {"mean": self.dec(enc_be, bs)}
         rec = {"mean": [self.convDecoder(enc_be)]}
 
-        # if self.zinb:
-        #     _mean = self._dec_mean(rec['mean'][0])
-        #     _disp = self._dec_disp(rec['mean'][0])
-        #     _pi = self._dec_pi(rec['mean'][0])
-        #     zinb_loss = self.zinb_loss(to_rec, _mean, _disp, _pi)
-        #     # if not sampling:
-        #     rec = {'mean': _mean, 'rec': to_rec}
-        # else:
         zinb_loss = torch.Tensor([0])
 
-        # reverse = ReverseLayerF.apply(enc, alpha)
-        # b_preds = self.classifier(reverse)
-        # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
-        return [enc, rec, zinb_loss, kl]
+        return [enc, rec, kl]
 
     def random_init(self, init_func=nn.init.kaiming_uniform_):
         for m in self.modules():
