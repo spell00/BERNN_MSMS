@@ -155,6 +155,7 @@ class TrainAE:
         self.load_tb = load_tb
         self.groupkfold = groupkfold
         self.foldername = None
+        self.complete_log_path = None
         self.verbose = 1
         self.n_cats = None
         self.data = None
@@ -562,6 +563,8 @@ class TrainAE:
         while response == -1:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
             response = self._train(params)
+        if self.best_state_dicts is not None:
+            self.restore_best_model_state()
         if X_test is not None:
             return self.predict(X_test)
         else:
@@ -588,6 +591,7 @@ class TrainAE:
         
         if is_best:
             self.best_mcc = valid_mcc
+            self._save_best_model_state(epoch, valid_mcc)
             
             # Create checkpoint directory if it doesn't exist
             if self.complete_log_path:
@@ -712,6 +716,11 @@ class TrainAE:
                 self.ae.train()
                 self.warmup_loop(optimizer_ae, None, self.ae, celoss, loaders['all'], triplet_loss, mseloss, True, warmup_epoch, values, loggers, {}, traces, None)
 
+        if getattr(self.args, 'train_only_warmup', False):
+            self._save_best_model_state(max(warmup_epochs - 1, 0), self.best_mcc if self.best_mcc > -1 else 0.0)
+            print("Warmup-only training requested; skipping supervised training epochs.")
+            return self
+
         pbar = tqdm(range(warmup_epochs, n_epochs), desc="Epochs", unit="epoch")
         for epoch in pbar:
             lists, traces = get_empty_traces()
@@ -759,38 +768,93 @@ class TrainAE:
         print("Training completed.")
         return self
 
+    def _as_inference_frame(self, X):
+        if isinstance(X, pd.DataFrame):
+            return X
+        return pd.DataFrame(X)
+
+    def _inference_loader(self, X):
+        from torch.utils.data import DataLoader, TensorDataset
+
+        X = self._as_inference_frame(X)
+        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        return DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+
+    def _default_inference_batches(self, n_rows, device):
+        return torch.zeros(n_rows, dtype=torch.long, device=device)
+
+    @staticmethod
+    def _extract_reconstruction(reconstruction):
+        if isinstance(reconstruction, dict):
+            reconstruction = reconstruction.get('mean', reconstruction)
+        if isinstance(reconstruction, (list, tuple)):
+            reconstruction = reconstruction[-1]
+        return reconstruction
+
+    def _forward_representations(self, X, return_reconstruction=False):
+        if not isinstance(self.ae, nn.Module):
+            raise ValueError("AutoEncoder is not initialized. Please run training first.")
+
+        self.ae.eval()
+        device = getattr(self.args, 'device', 'cpu')
+        encoded_list = []
+        reconstructed_list = []
+
+        with torch.no_grad():
+            for batch in self._inference_loader(X):
+                data = batch[0].to(device)
+                domain = self._default_inference_batches(data.shape[0], device)
+                output = self.ae(data, data.clone(), domain, sampling=False)
+                enc = output[0]
+                encoded_list.append(enc.detach().cpu().numpy())
+
+                if return_reconstruction:
+                    rec = self._extract_reconstruction(output[1])
+                    reconstructed_list.append(rec.detach().cpu().numpy())
+
+        encoded = np.concatenate(encoded_list, axis=0)
+        if not return_reconstruction:
+            return encoded
+        reconstructed = np.concatenate(reconstructed_list, axis=0)
+        return encoded, reconstructed
+
     def transform(self, X):
         """
         Transform X into the latent space of the autoencoder.
         """
-        if not isinstance(self.ae, nn.Module):
-            raise ValueError("AutoEncoder is not initialized. Please run training first.")
-        
-        self.ae.enc.eval()
-        self.ae.classifier.eval()
-        
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-        
-        # We need a dataloader to transform X
-        from torch.utils.data import DataLoader, TensorDataset
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
-        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
-        
-        from tqdm import tqdm
-        encoded_list = []
-        with torch.no_grad():
-            for batch in tqdm(loader, desc="Transforming", leave=False):
-                data = batch[0].to(self.args.device)
-                
-                # Mock domain as all zeros
-                domain = torch.zeros(data.shape[0], dtype=torch.long, device=self.args.device)
-                to_rec = data.clone()
-                
-                enc, _, _, _ = self.ae(data, to_rec, domain, sampling=False)
-                encoded_list.append(enc.detach().cpu().numpy())
-                
-        return np.concatenate(encoded_list, axis=0)
+        return self.get_encoded_inputs(X)
+
+    def get_encoded_inputs(self, X):
+        """Return bottleneck/latent representations for X."""
+        return self._forward_representations(X, return_reconstruction=False)
+
+    def get_reconstructed_inputs(self, X):
+        """Return autoencoder reconstructions for X."""
+        _, reconstructed = self._forward_representations(X, return_reconstruction=True)
+        return reconstructed
+
+    def infer(self, X, return_representations=False):
+        """Run inference with the trained best model.
+
+        By default this returns predicted labels, matching ``predict``. Set
+        ``return_representations=True`` to also return bottleneck encodings,
+        reconstructions, and probabilities when available.
+        """
+        predictions = self.predict(X)
+        if not return_representations:
+            return predictions
+
+        encoded, reconstructed = self._forward_representations(X, return_reconstruction=True)
+        result = {
+            'predictions': predictions,
+            'encoded': encoded,
+            'reconstructed': reconstructed,
+        }
+        try:
+            result['probabilities'] = self.predict_proba(X)
+        except Exception:
+            pass
+        return result
 
     def predict(self, X):
         """
@@ -893,6 +957,7 @@ class TrainAE:
             'early_stop': 50,
             'early_warmup_stop': -1,
             'train_after_warmup': 0,
+            'train_only_warmup': 0,
             'threshold': 0.,
             'n_epochs': 1000,
             'n_trials': 100,

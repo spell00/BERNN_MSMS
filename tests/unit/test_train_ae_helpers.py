@@ -1,6 +1,7 @@
 """Unit tests for TrainAE helpers in bernn/dl/train/train_ae.py."""
 import pytest
 import numpy as np
+import torch
 from types import SimpleNamespace
 
 from bernn.dl.train.train_ae import TrainAE
@@ -14,6 +15,7 @@ def _minimal_args(**overrides):
         early_stop=5,
         early_warmup_stop=-1,
         train_after_warmup=0,
+        train_only_warmup=0,
         threshold=0.0,
         n_epochs=1,
         rec_loss="l1",
@@ -231,3 +233,63 @@ def test_binarize_labels_produces_binary(tmp_path):
     assert set(result["labels"]["all"]).issubset({0, 1})
     assert result["labels"]["all"][0] == 0   # ctrl → 0
     assert result["labels"]["all"][1] == 1   # case → 1
+
+
+class _TinyAE(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.enc = torch.nn.Linear(2, 2)
+        self.dec = torch.nn.Linear(2, 2)
+        self.classifier = torch.nn.Linear(2, 2)
+
+    def forward(self, x, to_rec, batches=None, sampling=False, **kwargs):
+        encoded = self.enc(x)
+        reconstructed = {"mean": self.dec(encoded)}
+        return [encoded, reconstructed, torch.zeros(1)]
+
+    def predict(self, x):
+        return self.classifier(self.enc(x)).argmax(1).detach().cpu().numpy()
+
+    def predict_proba(self, x):
+        return torch.softmax(self.classifier(self.enc(x)), dim=1).detach().cpu().numpy()
+
+
+@pytest.fixture
+def inference_trainer(trainer):
+    trainer.ae = _TinyAE()
+    trainer.args.device = "cpu"
+    trainer.args.bs = 2
+    return trainer
+
+
+@pytest.mark.unit
+def test_get_encoded_inputs_returns_bottleneck(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    encoded = inference_trainer.get_encoded_inputs(X)
+    assert encoded.shape == (3, 2)
+
+
+@pytest.mark.unit
+def test_get_reconstructed_inputs_returns_original_feature_shape(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    reconstructed = inference_trainer.get_reconstructed_inputs(X)
+    assert reconstructed.shape == (3, 2)
+
+
+@pytest.mark.unit
+def test_infer_can_return_predictions_and_representations(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    result = inference_trainer.infer(X, return_representations=True)
+    assert set(["predictions", "encoded", "reconstructed", "probabilities"]).issubset(result)
+    assert result["predictions"].shape == (3,)
+    assert result["encoded"].shape == (3, 2)
+    assert result["reconstructed"].shape == (3, 2)
+    assert result["probabilities"].shape == (3, 2)
+
+
+@pytest.mark.unit
+def test_validate_and_save_best_checkpoint_keeps_in_memory_state(inference_trainer, tmp_path):
+    inference_trainer.complete_log_path = str(tmp_path)
+    assert inference_trainer._validate_and_save_best_checkpoint(inference_trainer.ae, epoch=4, valid_mcc=0.25)
+    assert inference_trainer.best_state_dicts is not None
+    assert inference_trainer.best_epoch == 4
