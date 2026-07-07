@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 # Build argument for Python version
 ARG PYTHON_VERSION=3.11
@@ -26,8 +26,7 @@ RUN apt-get update && \
         r-base-dev \
         r-cran-devtools \
         python3-dev \
-        software-properties-common \
-        linux-modules-nvidia-525-generic && \
+        software-properties-common && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     rm -rf /var/lib/apt/lists/*
@@ -36,7 +35,7 @@ RUN apt-get update && \
 RUN if [ "$PYTHON_VERSION" = "3.11" ]; then \
         add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update && \
-        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
+        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv && \
         ln -sf /usr/bin/python3.11 /usr/bin/python && \
         ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
         curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
@@ -46,7 +45,7 @@ RUN if [ "$PYTHON_VERSION" = "3.11" ]; then \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         add-apt-repository ppa:deadsnakes/ppa && \
         apt-get update && \
-        apt-get install -y --no-install-recommends python3.12 python3.12-dev && \
+        apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-venv && \
         ln -sf /usr/bin/python3.12 /usr/bin/python && \
         ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
         curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
