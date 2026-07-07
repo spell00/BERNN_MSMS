@@ -20,7 +20,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base r-base-dev
+          sudo apt-get install -y --no-install-recommends r-base r-base-dev libtirpc-dev
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
