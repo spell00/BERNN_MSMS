@@ -6,12 +6,7 @@ from itertools import cycle
 
 # Third-party imports
 import torch
-try:
-    import mlflow
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    MLFLOW_AVAILABLE = False
-    mlflow = None
+from bernn.utils.mlflow_compat import mlflow, MLFLOW_AVAILABLE
 import sklearn
 import numpy as np
 import tensorflow as tf
@@ -23,7 +18,6 @@ from skopt import gp_minimize
 
 # Local imports
 from .....ml.train.params_gp import *
-from .....ml.train.sklearn_train_nocv import Train
 
 
 def get_optimizer(model, learning_rate, weight_decay, optimizer_type, momentum=0.9):
@@ -172,6 +166,7 @@ class LogConfusionMatrix:
         del cm, figure
 
     def get_rf_results(self, run, args):
+        from .....ml.train.sklearn_train_nocv import Train
         hparams_names = [x.name for x in rfc_space]
         enc_data = {name: {x: None for x in ['train', 'valid', 'test']} for name in ['cats', 'inputs', 'batches']}
         rec_data = {name: {x: None for x in ['train', 'valid', 'test']} for name in ['cats', 'inputs', 'batches']}

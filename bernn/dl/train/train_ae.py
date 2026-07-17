@@ -19,7 +19,7 @@ from ..models.pytorch.aedann import ReverseLayerF
 from ..models.pytorch.ekan.src.efficient_kan.kan import KANLinear
 from ..models.pytorch.utils.loggings import log_metrics, \
     log_plots, log_shap, log_mlflow, log_dvclive
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 from bernn.utils.utils import to_csv
 from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
     log_traces, add_to_mlflow
@@ -412,8 +412,14 @@ class TrainAE:
                 from sklearn.model_selection import StratifiedKFold
                 skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y))
+            required_labels = set(np.unique(y))
             valid_fold = 0
             train_inds, valid_inds = split_iter[valid_fold]
+            for candidate_fold, (candidate_train, candidate_valid) in enumerate(split_iter):
+                if required_labels.issubset(set(np.unique(y[candidate_train]))):
+                    valid_fold = candidate_fold
+                    train_inds, valid_inds = candidate_train, candidate_valid
+                    break
             self.data['inputs']['train'] = X.iloc[train_inds]
             self.data['labels']['train'] = y[train_inds]
             self.data['batches']['train'] = groups[train_inds]
@@ -436,7 +442,7 @@ class TrainAE:
             raise ValueError("Cannot provide only valid set without test set. Please provide test set or use only train/valid split.")
         # If neither valid nor test is provided, split into train/valid/test
         else:
-            n_splits = self.args.n_repeats
+            n_splits = max(3, int(getattr(self.args, 'n_repeats', 3)))
             if len(self.unique_batches) > 1:
                 from sklearn.model_selection import StratifiedGroupKFold
                 skf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
@@ -527,11 +533,22 @@ class TrainAE:
     def fit(self, X_train, y_train, groups_train=None, X_test=None, y_test=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
         """
         Standard supervised/unsupervised training.
-        If X_test is provided, it is included in the data (transductive learning) but no predictions are returned.
+
+        Compatibility notes:
+        - ``batches_train``/``batches_test`` are accepted as aliases for
+          ``groups_train``/``groups_test``. This matches leaderboard runners
+          that use batch terminology directly.
+        - ``y_test`` may be ``None``; test labels are never required for
+          holdout prediction.
         """
+        if groups_train is None:
+            groups_train = kwargs.pop('batches_train', None)
+        if groups_test is None:
+            groups_test = kwargs.pop('batches_test', None)
         response = -1
         flag = True
-        while self.rep < (self.args.n_repeats - 1) and flag:
+        max_repeats = max(1, int(getattr(self.args, 'n_repeats', 1)))
+        while self.rep < max_repeats and flag:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train,
                                X_test=X_test, y_test=y_test, groups_test=groups_test,
                                cross_validation=cross_validation, cross_test=cross_test,
@@ -555,13 +572,27 @@ class TrainAE:
 
     def fit_predict(self, X_train, y_train, X_test=None, y_test=None, groups_train=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
         """
-        Fits the model (optionally transductively if X_test is provided) and returns predictions.
-        If y_test is provided, it can be used for transductive training or evaluation.
+        Fits the model and returns predictions.
+
+        ``batches_train``/``batches_test`` are accepted as aliases for
+        ``groups_train``/``groups_test`` for compatibility with benchmark
+        runners. ``y_test=None`` is supported for private-label leaderboards.
         """
+        if groups_train is None:
+            groups_train = kwargs.pop('batches_train', None)
+        if groups_test is None:
+            groups_test = kwargs.pop('batches_test', None)
         response = -1
-        while response == -1:
+        attempts = 0
+        max_repeats = max(1, int(getattr(self.args, 'n_repeats', 1)))
+        while response == -1 and attempts < max_repeats:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
             response = self._train(params)
+            attempts += 1
+        if response == -1:
+            raise RuntimeError("BERNN fit_predict failed to produce a trained model.")
+        if self.best_state_dicts is not None:
+            self.restore_best_model_state()
         if X_test is not None:
             return self.predict(X_test)
         else:
@@ -1199,7 +1230,7 @@ class TrainAE:
             
             # Use autocast for mixed precision training
             with self.autocast_context():
-                enc, rec, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
+                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling, mapping=mapping)
                 rec = rec['mean']
 
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
@@ -1332,7 +1363,7 @@ class TrainAE:
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             domain = domain.to(self.args.device).long()
-            enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
             enc.requires_grad_()
             domain_preds = ae.dann_discriminator(enc)
             bclassif_loss = celoss(domain_preds, domain.long().to(self.args.device))
@@ -1368,7 +1399,7 @@ class TrainAE:
                 ae.train()
                 for param in ae.parameters():
                     param.requires_grad = True
-            enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+            enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
             logits = ae.classifier(enc)
             classif_loss = celoss(logits, labels.long().to(self.args.device))
             if torch.isnan(classif_loss):
@@ -1392,7 +1423,7 @@ class TrainAE:
             data = data.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             with torch.no_grad():
-                enc, rec, kld = ae(data, to_rec, domain, sampling=sampling)
+                enc, rec, _, kld = ae(data, to_rec, domain, sampling=sampling)
             # with torch.enable_grad():
             enc.requires_grad_()
             domain_preds = ae.dann_discriminator(enc)
@@ -1616,7 +1647,7 @@ class TrainAE:
             if isinstance(domain, str):
                 domain = torch.Tensor([[int(y) for y in x.split("_")] for x in domain])
 
-            enc, rec, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
+            enc, rec, _, kld = ae(inputs, to_rec, domain, sampling=True, mapping=mapping)
             rec = rec['mean']
             reverse = ReverseLayerF.apply(enc, 1)
             if self.args.dloss == 'DANN':
@@ -1637,8 +1668,8 @@ class TrainAE:
             elif self.args.dloss == 'inverseTriplet':
                 pos_batch_sample, neg_batch_sample = neg_batch_sample.to(self.args.device).float(), pos_batch_sample.to(
                     self.args.device).float()
-                pos_enc, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
-                neg_enc, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
+                pos_enc, _, _, _ = ae(pos_batch_sample, pos_batch_sample, domain, sampling=True)
+                neg_enc, _, _, _ = ae(neg_batch_sample, neg_batch_sample, domain, sampling=True)
                 dloss = triplet_loss(enc, pos_enc, neg_enc)
                 # domain = domain.argmax(1)
 
@@ -1898,7 +1929,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        import mlflow
+        from bernn.utils.mlflow_compat import mlflow
         mlflow.create_experiment(
             args.exp_id,
             # artifact_location=Path.cwd().joinpath("mlruns").as_uri(),

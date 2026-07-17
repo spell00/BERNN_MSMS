@@ -1,5 +1,5 @@
 import numpy as np
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 from scipy.spatial.distance import cdist, pdist
 from scipy.stats import norm
 from statistics import NormalDist

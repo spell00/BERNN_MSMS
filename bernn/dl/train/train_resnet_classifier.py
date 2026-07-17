@@ -34,7 +34,7 @@ from .dataset import get_images_loaders, get_images_loaders_no_pool
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, \
     add_to_mlflow
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
 

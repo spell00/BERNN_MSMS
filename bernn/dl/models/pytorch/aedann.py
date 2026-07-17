@@ -953,7 +953,8 @@ class AutoEncoder2(nn.Module):
         # reverse = ReverseLayerF.apply(enc, alpha)
         # b_preds = self.classifier(reverse)
         # rec[-1] = torch.clamp(rec[-1], min=0, max=1)
-        return [enc, rec, kl]
+        zinb_loss = torch.zeros(1, device=enc.device)
+        return [enc, rec, zinb_loss, kl]
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool,
                               weight_threshold: float = 0) -> dict:
@@ -1064,7 +1065,8 @@ class AutoEncoder3(nn.Module):
                  mapper: bool, variational: bool, layers: dict,
                  dropout: float, n_layers: int, prune_threshold: float,
                  conditional: bool = True, add_noise: bool = False, tied_weights: int = 0,
-                 update_grid: bool = False, device: str = 'cpu', is_sigmoid: bool = False) -> None:
+                 update_grid: bool = False, device: str = 'cpu', is_sigmoid: bool = False,
+                 n_meta: int = 0, n_emb: int = 0, zinb: bool = False, **kwargs) -> None:
         """
         TODO MAKE DESCRIPTION
         """
@@ -1143,7 +1145,8 @@ class AutoEncoder3(nn.Module):
 
         if self.is_sigmoid:
             rec['mean'] = torch.sigmoid(rec['mean'])
-        return [enc, rec, kl]
+        zinb_loss = torch.zeros(1, device=enc.device)
+        return [enc, rec, zinb_loss, kl]
 
     def prune_model_paperwise(self, is_classification: bool, is_dann: bool,
                               weight_threshold: float = 0) -> dict:

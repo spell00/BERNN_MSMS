@@ -406,6 +406,10 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         tied_weights: int = 0,
         device: str = 'cuda',
         is_sigmoid: bool = False,
+        n_meta: int = 0,
+        n_emb: int = 0,
+        zinb: bool = False,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.add_noise = add_noise
@@ -609,6 +613,10 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         update_grid: bool = False,
         device: str = 'cuda',
         is_sigmoid: bool = False,
+        n_meta: int = 0,
+        n_emb: int = 0,
+        zinb: bool = False,
+        **kwargs,
     ) -> None:
         super().__init__()
         self.add_noise = add_noise
@@ -688,7 +696,8 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         if self.is_sigmoid:
             rec['mean'] = torch.sigmoid(rec['mean'])
 
-        return [enc, rec, kl]
+        zinb_loss = torch.zeros(1, device=enc.device)
+        return [enc, rec, zinb_loss, kl]
 
     # Utilities reused from aedann AutoEncoder3
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
@@ -840,7 +849,8 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
             if isinstance(rec['mean'], torch.Tensor):
                 rec['mean'] = torch.sigmoid(rec['mean'])
 
-        return [enc, rec, kl]
+        zinb_loss = torch.zeros(1, device=enc.device)
+        return [enc, rec, zinb_loss, kl]
 
     def predict_proba(self, inputs: torch.Tensor) -> np.ndarray:
         self.eval()

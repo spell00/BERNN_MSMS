@@ -1,5 +1,13 @@
 #!/usr/bin/python3
 
+# Allow direct execution from the repository root, e.g.
+# ``python bernn/dl/train/train_ae_classifier_holdout.py``.
+import sys
+from pathlib import Path
+_repo_root = Path(__file__).resolve().parents[3]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 import os
 import traceback
 import matplotlib
@@ -24,7 +32,7 @@ from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_po
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_mlflow
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
@@ -424,10 +432,10 @@ class TrainAEClassifierHoldout(TrainAE):
 
                 early_stop_counter = 0
                 best_vals = values
-                if self.rep > 1:
+                if self.rep > 0:
                     self.ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth', weights_only=True))
                     print("\n\nNO WARMUP\n\n")
-                if self.rep == 1:
+                if self.rep == 0:
                     for epoch in range(0, self.args.warmup):
                         no_error, self.ae, warmup = self.warmup_loop(optimizer_ae, None, self.ae, celoss, loaders['all'],
                                                                 triplet_loss, mseloss, True, epoch,
@@ -779,15 +787,6 @@ if __name__ == "__main__":
     X = df.drop(['labels', 'batches', 'group', 'batch'], axis=1, errors='ignore')
 
     from sklearn.model_selection import train_test_split
-    # if groups is not None:
-    #     X_train, X_test, y_train, y_test, g_train, g_test = train_test_split(
-    #         X, y, groups, test_size=0.2, random_state=41, stratify=y
-    #     )
-    # else:
-    #     X_train, X_test, y_train, y_test = train_test_split(
-    #         X, y, test_size=0.2, random_state=41, stratify=y
-    #     )
-    #     g_train, g_test = None, None
     
     print("Data loaded and split for optimization.")
     # No need to call fit() here, ax_eval will call it for each trial.
@@ -837,7 +836,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[AX WARN] Trial failed: {e}")
             traceback.print_exc()
-            loss = 1e9
+            valid_mcc = -1e9
         # Ax optimize() (managed_loop) accepts scalar when objective_name is provided,
         # but explicit dict form is more robust; returning scalar is also fine. Choose one:
         return valid_mcc  # scalar OK because objective_name='mcc'

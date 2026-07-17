@@ -313,9 +313,9 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.5.7',
+    version='0.6.0',
     packages=find_packages(),
-    url='https://github.com/username/BERNN_MSMS',  # Replace with actual repo URL
+    url='https://github.com/spell00/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
     author='Simon Pelletier',
     author_email='',  # Add your email if you want

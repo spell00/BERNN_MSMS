@@ -39,7 +39,7 @@ from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, g
     add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
 from bernn.dl.models.pytorch.utils.losses import get_losses
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
 

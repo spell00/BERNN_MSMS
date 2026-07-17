@@ -7,7 +7,7 @@ import tensorflow as tf
 from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
 from bernn.dl.models.pytorch.utils.metrics import rKBET, rLISI
 import numpy as np
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import pandas as pd
 import matplotlib
 import shap

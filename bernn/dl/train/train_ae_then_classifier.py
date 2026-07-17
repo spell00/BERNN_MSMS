@@ -37,7 +37,7 @@ from bernn.utils.utils import scale_data, to_csv
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, to_categorical, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_mlflow
 from bernn.dl.models.pytorch.utils.loggings import make_data
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
 

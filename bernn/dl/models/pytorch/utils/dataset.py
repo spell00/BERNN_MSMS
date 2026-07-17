@@ -52,8 +52,8 @@ def read_csv(path):
 
 
 class MSDataset3(Dataset):
-    def __init__(self, data, names=None, labels=None, batches=None, sets=None, transform=None, crop_size=-1,
-                 add_noise=False, random_recs=False, triplet_dloss=False):
+    def __init__(self, data, *args, names=None, labels=None, batches=None, sets=None, transform=None, crop_size=-1,
+                 add_noise=False, random_recs=False, triplet_dloss=False, meta=None):
         """
 
         Args:
@@ -68,6 +68,26 @@ class MSDataset3(Dataset):
             random_recs: Whether to sample random reconstructions
             triplet_dloss: Whether to use triplet loss of the domain
         """
+        # Backward compatibility:
+        #   MSDataset3(data, names, labels, batches, sets, ...)
+        # Newer tests/callers may pass metadata as a second positional argument:
+        #   MSDataset3(data, meta, names=..., labels=..., batches=..., sets=...)
+        if args:
+            if len(args) == 1 and names is not None:
+                meta = args[0]
+            else:
+                positional = list(args)
+                if names is None and positional:
+                    names = positional.pop(0)
+                if labels is None and positional:
+                    labels = positional.pop(0)
+                if batches is None and positional:
+                    batches = positional.pop(0)
+                if sets is None and positional:
+                    sets = positional.pop(0)
+                if positional:
+                    raise TypeError(f"Too many positional arguments for MSDataset3: {len(args)}")
+        self.meta = meta
         self.random_recs = random_recs
         try:
             self.samples = data.to_numpy()

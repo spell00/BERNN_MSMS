@@ -22,7 +22,7 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score
 from bernn.utils.utils import plot_confusion_matrix
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 
 np.random.seed(42)
 

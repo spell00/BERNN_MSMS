@@ -1,5 +1,13 @@
 #!/usr/bin/python3
 
+# Allow direct execution from the repository root, e.g.
+# ``python bernn/dl/train/train_ae_classifier_holdout.py``.
+import sys
+from pathlib import Path
+_repo_root = Path(__file__).resolve().parents[3]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 import os
 import matplotlib
 
@@ -36,7 +44,7 @@ from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_po
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
     log_traces, get_best_values, add_to_logger, add_to_mlflow
-import mlflow
+from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
 from bernn.dl.train.train_ae import TrainAE
