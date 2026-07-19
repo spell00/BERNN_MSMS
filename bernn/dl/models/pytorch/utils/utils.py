@@ -9,7 +9,10 @@ import torch
 from bernn.utils.mlflow_compat import mlflow, MLFLOW_AVAILABLE
 import sklearn
 import numpy as np
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except ImportError:  # TensorFlow is optional for lightweight/Python 3.13 installs.
+    tf = None
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score, PrecisionRecallDisplay
 from sklearn.preprocessing import label_binarize, OneHotEncoder
@@ -18,6 +21,15 @@ from skopt import gp_minimize
 
 # Local imports
 from .....ml.train.params_gp import *
+
+
+def _tf_make_ndarray(tensor_proto):
+    if tf is None:
+        raise ImportError(
+            "TensorFlow is required to decode TensorBoard tensors. "
+            "Install BERNN with a TensorFlow-enabled extra to use this helper."
+        )
+    return tf.make_ndarray(tensor_proto)
 
 
 def get_optimizer(model, learning_rate, weight_decay, optimizer_type, momentum=0.9):
@@ -629,7 +641,7 @@ def get_best_loss_from_tb(event_acc):
     # for name in event_acc.summary_metadata.keys():
     #     if name not in ['_hparams_/experiment', '_hparams_/session_start_info']:
     best_closs = event_acc.Tensors('valid/loss')
-    best_closs = tf.make_ndarray(best_closs[0].tensor_proto).item()
+    best_closs = _tf_make_ndarray(best_closs[0].tensor_proto).item()
 
     return best_closs
 
@@ -641,7 +653,7 @@ def get_best_acc_from_tb(event_acc):
     # for name in event_acc.summary_metadata.keys():
     #     if name not in ['_hparams_/experiment', '_hparams_/session_start_info']:
     best_closs = event_acc.Tensors('valid/acc')
-    best_closs = tf.make_ndarray(best_closs[0].tensor_proto).item()
+    best_closs = _tf_make_ndarray(best_closs[0].tensor_proto).item()
 
     return best_closs
 

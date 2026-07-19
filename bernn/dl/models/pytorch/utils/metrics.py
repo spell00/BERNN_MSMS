@@ -1,11 +1,25 @@
 # Libraries
 import numpy as np
-from tensorflow.keras import backend as K
+
+try:
+    from tensorflow.keras import backend as K
+except ImportError:  # TensorFlow is optional for lightweight/Python 3.13 installs.
+    K = None
+
+
+def _require_backend(backend):
+    if backend is None:
+        raise ImportError(
+            "TensorFlow is required for this metric/loss helper. "
+            "Install BERNN with a TensorFlow-enabled extra to use it."
+        )
+    return backend
 
 smooth = 1
 
 
 def jaccard_distance_loss(y_true, y_pred, smooth=100, backend=K):
+    backend = _require_backend(backend)
     y_true_f = backend.flatten(y_true)
     y_pred_f = backend.flatten(y_pred)
     intersection = backend.sum(backend.abs(y_true_f * y_pred_f))
@@ -15,6 +29,7 @@ def jaccard_distance_loss(y_true, y_pred, smooth=100, backend=K):
 
 
 def mean_length_error(y_true, y_pred, backend=K):
+    backend = _require_backend(backend)
     y_true_f = backend.sum(backend.round(backend.flatten(y_true)))
     y_pred_f = backend.sum(backend.round(backend.flatten(y_pred)))
     delta = (y_pred_f - y_true_f)
@@ -22,6 +37,7 @@ def mean_length_error(y_true, y_pred, backend=K):
 
 
 def dice_coef(y_true, y_pred, backend=K):
+    backend = _require_backend(backend)
     y_true_f = backend.flatten(y_true)
     y_pred_f = backend.flatten(y_pred)
     intersection = backend.sum(y_true_f * y_pred_f)
@@ -44,22 +60,23 @@ def batch_f1_score(batch_score, class_score):
 
 # matthews_correlation
 def matthews_correlation(y_true, y_pred):
-    y_pred_pos = K.round(K.clip(y_pred, 0, 1))
+    backend = _require_backend(K)
+    y_pred_pos = backend.round(backend.clip(y_pred, 0, 1))
     y_pred_neg = 1 - y_pred_pos
 
-    y_pos = K.round(K.clip(y_true, 0, 1))
+    y_pos = backend.round(backend.clip(y_true, 0, 1))
     y_neg = 1 - y_pos
 
-    tp = K.sum(y_pos * y_pred_pos)
-    tn = K.sum(y_neg * y_pred_neg)
+    tp = backend.sum(y_pos * y_pred_pos)
+    tn = backend.sum(y_neg * y_pred_neg)
 
-    fp = K.sum(y_neg * y_pred_pos)
-    fn = K.sum(y_pos * y_pred_neg)
+    fp = backend.sum(y_neg * y_pred_pos)
+    fn = backend.sum(y_pos * y_pred_neg)
 
     numerator = (tp * tn - fp * fn)
-    denominator = K.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+    denominator = backend.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
 
-    return numerator / (denominator + K.epsilon())
+    return numerator / (denominator + backend.epsilon())
 
 # Compute LISI for: labels, batches, plates
 def rLISI(data, meta_data, perplexity=5):

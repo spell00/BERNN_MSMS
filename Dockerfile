@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu20.04
+FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04
 
 # Build argument for Python version
 ARG PYTHON_VERSION=3.11
@@ -16,7 +16,7 @@ RUN apt-get update && \
         libfontconfig1-dev \
         libfreetype6-dev \
         libpng-dev \
-        libtiff5-dev \
+        libtiff-dev \
         libjpeg-dev \
         libharfbuzz-dev \
         libfribidi-dev \
@@ -26,38 +26,31 @@ RUN apt-get update && \
         r-base-dev \
         r-cran-devtools \
         python3-dev \
-        software-properties-common \
-        linux-modules-nvidia-525-generic && \
+        software-properties-common && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python version and upgrade pip
-RUN if [ "$PYTHON_VERSION" = "3.11" ]; then \
-        add-apt-repository ppa:deadsnakes/ppa && \
-        apt-get update && \
-        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils && \
-        ln -sf /usr/bin/python3.11 /usr/bin/python && \
-        ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-        python3.11 get-pip.py && \
-        python3.11 -m pip install --upgrade pip setuptools wheel && \
-        rm get-pip.py; \
+# Install requested Python version and upgrade pip.
+# Deadsnakes supplies non-default Python versions on the Ubuntu 24.04 CUDA base image.
+RUN add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    if [ "$PYTHON_VERSION" = "3.11" ]; then \
+        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils; \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
-        add-apt-repository ppa:deadsnakes/ppa && \
-        apt-get update && \
-        apt-get install -y --no-install-recommends python3.12 python3.12-dev && \
-        ln -sf /usr/bin/python3.12 /usr/bin/python && \
-        ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
-        curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-        python3.12 get-pip.py && \
-        python3.12 -m pip install --upgrade pip setuptools wheel && \
-        rm get-pip.py; \
+        apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-venv; \
+    elif [ "$PYTHON_VERSION" = "3.13" ]; then \
+        apt-get install -y --no-install-recommends python3.13 python3.13-dev python3.13-venv; \
     else \
-        apt-get update && \
-        apt-get install -y --no-install-recommends python3 python3-dev python3-distutils && \
-        python3 -m pip install --upgrade pip setuptools wheel; \
-    fi
+        apt-get install -y --no-install-recommends python3 python3-dev python3-distutils; \
+    fi && \
+    ln -sf /usr/bin/python$PYTHON_VERSION /usr/bin/python && \
+    ln -sf /usr/bin/python$PYTHON_VERSION /usr/bin/python3 && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python get-pip.py && \
+    python -m pip install --upgrade pip setuptools wheel && \
+    rm get-pip.py && \
+    rm -rf /var/lib/apt/lists/*
 
 # Add your files
 ADD mlflow_eval_runs.py ./
@@ -91,8 +84,8 @@ RUN echo "Installing for Python $PYTHON_VERSION" && \
         echo "Installing Python 3.12 specific packages..." && \
         pip install .[py312-plus]; \
     elif [ "$PYTHON_VERSION" = "3.13" ]; then \
-        echo "Installing Python 3.13 specific packages..." && \
-        pip install .[py313-plus]; \
+        echo "Installing Python 3.13 minimal ML packages..." && \
+        pip install .[python313-ml-minimal]; \
     else \
         echo "Installing default packages..." && \
         pip install .; \
