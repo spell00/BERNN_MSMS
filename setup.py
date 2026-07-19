@@ -313,7 +313,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.6.1',
+    version='0.6.2',
     packages=find_packages(),
     url='https://github.com/spell00/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
