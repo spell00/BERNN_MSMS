@@ -1,137 +1,128 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri May 28 2021
-@author: Simon Pelletier
+Hyperparameter search spaces for sklearn / XGBoost classifiers used in the
+BERNN head sweep (train_ae_head_sweep.py) and the legacy GP sweep
+(sklearn_train3_gp2.py).
+
+All classifiers are now active (none commented out).  XGBoost is included with
+a richer parameter space that mirrors what Optuna can suggest.
 """
 
-# from sklearn.neighbors import KNeighborsClassifier
-# from sklearn.naive_bayes import GaussianNB
-from sklearn.ensemble import RandomForestClassifier
-# from sklearn.linear_model import LogisticRegression, SGDClassifier
-# from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.svm import LinearSVC  # , SVC, NuSVC
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import LinearSVC, SVC
 from skopt.space import Real, Integer, Categorical
 
+# ---------------------------------------------------------------------------
+# Individual search spaces (skopt)
+# ---------------------------------------------------------------------------
+
 sgd_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(1, 1000, 'uniform', name='max_iter'),
-    Real(1e-4, 1, 'uniform', name='alpha'),
-    Categorical(['log', 'modified_huber'], name='loss'),
-    Categorical(['l2', 'l1', 'elasticnet'], name='penalty'),
-    Categorical(['balanced'], name='class_weight'),
-    Categorical([True, False], name='fit_intercept')
+    Integer(1, 20000, "uniform", name="features_cutoff"),
+    Integer(1, 1000,  "uniform", name="max_iter"),
+    Real(1e-4, 1,     "uniform", name="alpha"),
+    Categorical(["log", "modified_huber"],  name="loss"),
+    Categorical(["l2", "l1", "elasticnet"], name="penalty"),
+    Categorical(["balanced"],               name="class_weight"),
+    Categorical([True, False],              name="fit_intercept"),
 ]
+
 xgb_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Categorical(['l2', 'gpu_hist', 'hist'], name='tree_method'),
+    Integer(50, 500,   "uniform",     name="n_estimators"),
+    Integer(3, 10,     "uniform",     name="max_depth"),
+    Real(1e-3, 0.5,    "log-uniform", name="learning_rate"),
+    Real(1e-8, 10.0,   "log-uniform", name="reg_alpha"),
+    Real(1e-8, 10.0,   "log-uniform", name="reg_lambda"),
+    Real(0.5, 1.0,     "uniform",     name="subsample"),
+    Real(0.5, 1.0,     "uniform",     name="colsample_bytree"),
+    Categorical(["hist", "gpu_hist"], name="tree_method"),
 ]
 
 rfc_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(1, 100, 'uniform', name="max_features"),
-    Integer(2, 10, 'uniform', name="min_samples_split"),
-    Integer(1, 10, 'uniform', name="min_samples_leaf"),
-    Integer(1, 1000, 'uniform', name="n_estimators"),
-    Categorical(['gini', 'entropy'], name="criterion"),
-    Categorical([True, False], name="oob_score"),
-    Categorical(['balanced'], name="class_weight"),
+    Integer(1, 20000, "uniform", name="features_cutoff"),
+    Integer(1, 100,   "uniform", name="max_features"),
+    Integer(2, 10,    "uniform", name="min_samples_split"),
+    Integer(1, 10,    "uniform", name="min_samples_leaf"),
+    Integer(1, 1000,  "uniform", name="n_estimators"),
+    Categorical(["gini", "entropy"], name="criterion"),
+    Categorical([True, False],       name="oob_score"),
+    Categorical(["balanced"],        name="class_weight"),
 ]
 
-lda_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Categorical(["svd", "eigen"], name="solver"),
-]
-qda_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-]
-nb_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-]
 kn_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
+    Integer(1, 20000, "uniform", name="features_cutoff"),
+    Integer(1, 31,    "uniform", name="n_neighbors"),
+    Categorical(["euclidean", "manhattan", "cosine"], name="metric"),
+    Categorical(["uniform", "distance"],              name="weights"),
 ]
+
 logreg_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(1, 20000, 'uniform', name='max_iter'),
-    Real(1e-3, 20000, 'uniform', name='C'),
-    Categorical(['saga'], name='solver'),
-    Categorical(['l1', 'l2'], name='penalty'),
-    Categorical([True, False], name='fit_intercept'),
-    Categorical(['balanced'], name='class_weight'),
+    Integer(1, 20000,    "uniform", name="features_cutoff"),
+    Integer(100, 20000,  "uniform", name="max_iter"),
+    Real(1e-3, 1e4,      "uniform", name="C"),
+    Categorical(["saga"],           name="solver"),
+    Categorical(["l1", "l2"],       name="penalty"),
+    Categorical([True, False],      name="fit_intercept"),
+    Categorical(["balanced"],       name="class_weight"),
 ]
+
 linsvc_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Real(1e-4, 1, 'log-uniform', name='tol'),
-    Integer(1, 1000, 'uniform', name='max_iter'),
-    Categorical(['l2'], name='penalty'),
-    Real(1e-3, 10000, 'uniform', name='C'),
-    Categorical(['balanced'], name='class_weight'),
+    Integer(1, 20000, "uniform",     name="features_cutoff"),
+    Real(1e-4, 1,     "log-uniform", name="tol"),
+    Integer(1, 1000,  "uniform",     name="max_iter"),
+    Categorical(["l2"],              name="penalty"),
+    Real(1e-3, 1e4,   "uniform",     name="C"),
+    Categorical(["balanced"],        name="class_weight"),
+]
 
-]
-nusvc_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    Real(0, 1, 'uniform', name='nu'),
-    Real(1e-4, 1, 'log-uniform', name='tol'),
-    Integer(1, 1000, 'uniform', name='max_iter'),
-    # Categorical(['l1', 'l2'], name='penalty'),
-    Categorical(['linear', 'sigmoid'], name='kernel'),
-    Categorical([True], name='probability'),
-    Categorical(['balanced'], name='class_weight'),
-]
 svc_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(1, 1000, 'uniform', name='max_iter'),
-    Real(1e-3, 1000, 'uniform', name='C'),
-    Categorical(['balanced'], name='class_weight'),
-    Categorical(['linear'], name='kernel'),
-    # Categorical(['linear', 'poly', 'rbf', 'sigmoid'], name='kernel'),
-    # Categorical([True, False], name='probability'),
+    Integer(1, 20000, "uniform", name="features_cutoff"),
+    Integer(1, 1000,  "uniform", name="max_iter"),
+    Real(1e-3, 1e3,   "uniform", name="C"),
+    Categorical(["balanced"],    name="class_weight"),
+    Categorical(["linear"],      name="kernel"),
 ]
 
-svcrbf_space = [
-    Integer(1, 20000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(1, 1000, 'uniform', name='max_iter'),
-    Real(1e-3, 1000, 'uniform', name='C'),
-    Categorical(['balanced'], name='class_weight'),
-    Categorical(['rbf'], name='kernel'),
-    # Categorical(['linear', 'poly', 'rbf', 'sigmoid'], name='kernel'),
-    # Categorical([True, False], name='probability'),
+svc_rbf_space = [
+    Integer(1, 20000, "uniform", name="features_cutoff"),
+    Integer(1, 1000,  "uniform", name="max_iter"),
+    Real(1e-3, 1e3,   "uniform", name="C"),
+    Categorical(["balanced"],    name="class_weight"),
+    Categorical(["rbf"],         name="kernel"),
 ]
 
-rdcs = [
-    LinearSVC(max_iter=100)
+gbc_space = [
+    Integer(50, 500,  "uniform",     name="n_estimators"),
+    Integer(3, 10,    "uniform",     name="max_depth"),
+    Real(1e-3, 0.5,   "log-uniform", name="learning_rate"),
+    Real(0.5, 1.0,    "uniform",     name="subsample"),
 ]
 
-bag_space = [
-    Categorical(rdcs, name='base_estimator'),
-    # Integer(1, 10000, 'uniform', name='features_cutoff'),
-    # Real(0, 1, 'uniform', name='threshold'),
-    Integer(10, 100, 'uniform', name='n_estimators'),
-]
+# ---------------------------------------------------------------------------
+# Active model registry (all controls enabled, XGBoost included)
+# ---------------------------------------------------------------------------
+
+# Import XGBoost lazily so the module still loads without it installed.
+try:
+    import xgboost as xgb
+    _XGB_CLS = xgb.XGBClassifier
+except ImportError:
+    _XGB_CLS = None
 
 models = {
-    # "KNeighbors": [KNeighborsClassifier, kn_space],
-    # "LinearSVC": [LinearSVC, linsvc_space],
-    # "SVCLinear": [SVC, svc_space],
-    # "LDA": [LinearDiscriminantAnalysis, lda_space],
-    # "LogisticRegression": [LogisticRegression, logreg_space],
+    "XGBoostClassifier":      [_XGB_CLS, xgb_space],
     "RandomForestClassifier": [RandomForestClassifier, rfc_space],
-    # "Gaussian_Naive_Bayes": [GaussianNB, nb_space],
-    # "QDA": [QuadraticDiscriminantAnalysis, qda_space],
-    # "SGDClassifier": [SGDClassifier, sgd_space],
-    # "BaggingClassifier": [BaggingClassifier, bag_space],
-    # "AdaBoost_Classifier": [AdaBoostClassifier, param_grid_ada],
-    # "Voting_Classifier": [VotingClassifier, param_grid_voting],
+    "LinearSVC":              [LinearSVC, linsvc_space],
+    "LogisticRegression":     [LogisticRegression, logreg_space],
+    "KNeighbors":             [KNeighborsClassifier, kn_space],
+    "SVCLinear":              [SVC, svc_space],
+    "SVCRbf":                 [SVC, svc_rbf_space],
+    "GradientBoosting":       [GradientBoostingClassifier, gbc_space],
+    "SGDClassifier":          [SGDClassifier, sgd_space],
 }
+
+# Remove XGBoost entry if the library isn't available.
+if _XGB_CLS is None:
+    models.pop("XGBoostClassifier", None)
