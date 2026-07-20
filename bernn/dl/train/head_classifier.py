@@ -291,11 +291,29 @@ def fit_and_score_head(
     else:
         head = _make_head(head_type, head_params)
 
+    # XGBoost requires integer-encoded labels; encode internally and decode preds.
+    le: Optional[LabelEncoder] = None
+    if head_type == "xgboost":
+        le = LabelEncoder()
+        y_train_fit = le.fit_transform(y_train)
+        y_valid_eval = le.transform(y_valid)
+    else:
+        y_train_fit = y_train
+        y_valid_eval = y_valid
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
-        head.fit(X_train, y_train)
-        train_preds = head.predict(X_train)
-        valid_preds = head.predict(X_valid)
+        head.fit(X_train, y_train_fit)
+        train_preds_raw = head.predict(X_train)
+        valid_preds_raw = head.predict(X_valid)
+
+    # Decode XGBoost integer predictions back to original label space for MCC.
+    if le is not None:
+        train_preds = le.inverse_transform(train_preds_raw.astype(int))
+        valid_preds = le.inverse_transform(valid_preds_raw.astype(int))
+    else:
+        train_preds = train_preds_raw
+        valid_preds = valid_preds_raw
 
     train_mcc = float(matthews_corrcoef(y_train, train_preds))
     valid_mcc = float(matthews_corrcoef(y_valid, valid_preds))
@@ -329,8 +347,19 @@ def cv_score_head(
     head_params = head_params or {}
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
+    # Guard: not enough samples per class for the requested n_splits.
+    try:
+        splits = list(skf.split(X, y))
+    except ValueError:
+        return {
+            "mean_valid_mcc": float("nan"),
+            "std_valid_mcc": float("nan"),
+            "mean_train_mcc": float("nan"),
+            "fold_valid_mccs": [],
+        }
+
     valid_mccs, train_mccs = [], []
-    for fold_train_idx, fold_valid_idx in skf.split(X, y):
+    for fold_train_idx, fold_valid_idx in splits:
         X_tr, y_tr = X[fold_train_idx], y[fold_train_idx]
         X_vl, y_vl = X[fold_valid_idx], y[fold_valid_idx]
 
