@@ -26,42 +26,64 @@ update_grid=1
 use_l1=1
 prune_network=0
 
+gpu_count=${GPU_COUNT:-1}
+cpu_threads=${CPU_THREADS:-1}
+device_mode=${DEVICE_MODE:-cuda}
+
 i=0
 for variational in 1 0
 do
 	for kan in 1
 	do
-		for dloss in inverseTriplet DANN revTriplet normae no 
+		for class_triplet in 0 1
+		do
+		for dloss in inverseTriplet DANN revTriplet normae no
 		do
 			current_jobs=$((current_jobs + 1))
-		  	cuda=$((i%1)) # Divide by the number of gpus available
+			if [ "$device_mode" = "cpu" ]; then
+				device=cpu
+			else
+				cuda=$((i%gpu_count))
+				device=cuda:$cuda
+			fi
 			cmd=(
-				"$python_bin" bernn/dl/train/train_ae_then_classifier_holdout.py --early_stop=$early_stop --n_epochs=$n_epochs
-			--kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup  --tied_weights=0 --bdisc=1 \
-			--rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 \
-			--groupkfold=$groupkfold --device=cuda:$cuda --dataset=$dataset --n_trials=$n_trials \
-			--n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
-			--update_grid=$update_grid --use_l1=$use_l1 --prune_network=$prune_network \
-			--log_mlflow=$log_mlflow --log_tb=$log_tb
+				env
+				PYTHONPATH=$PWD
+				OMP_NUM_THREADS=$cpu_threads
+				MKL_NUM_THREADS=$cpu_threads
+				OPENBLAS_NUM_THREADS=$cpu_threads
+				"$python_bin" -m bernn.dl.train.train_ae_then_classifier_holdout \
+					--early_stop=$early_stop --n_epochs=$n_epochs \
+					--kan=$kan --variational=$variational \
+					--train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
+					--rec_loss=l1 --dloss=$dloss --class_triplet=$class_triplet \
+					--csv_file=$csv_file --remove_zeros=0 \
+					--groupkfold=$groupkfold --device=$device --dataset=$dataset \
+					--n_trials=$n_trials --n_repeats=$n_repeats \
+					--exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
+					--update_grid=$update_grid --use_l1=$use_l1 \
+					--prune_network=$prune_network \
+					--log_mlflow=$log_mlflow --log_tb=$log_tb
 			)
 			if [ "$dry_run" = "1" ]; then
 				printf '%s\n' "${cmd[*]}"
-			current_jobs=$((current_jobs - 1))
+				current_jobs=$((current_jobs - 1))
 			else
 				"${cmd[@]}" &
 			fi
-		i=$((i+1))
+			i=$((i+1))
 			if [ "$dry_run" != "1" ] && [ $current_jobs -ge $max_jobs ]; then
 				wait -n || true
-			current_jobs=$((current_jobs - 1))
+				current_jobs=$((current_jobs - 1))
 			fi
 			if [ "$sleep_seconds" -gt 0 ]; then
 				sleep "$sleep_seconds"
 			fi
-    	done
+		done
+		done  # class_triplet
 	done
 done
 
-	if [ "$dry_run" != "1" ]; then
-		wait
-	fi
+if [ "$dry_run" != "1" ]; then
+	wait
+fi

@@ -68,6 +68,8 @@ do
             do
                 for kan in 0
                 do
+                    for class_triplet in 0 1
+                    do
                     for dloss in inverseTriplet DANN revTriplet normae no
                     do
                         current_jobs=$((current_jobs + 1))
@@ -90,7 +92,7 @@ do
                             TF_NUM_INTEROP_THREADS=1
                             "$python_bin" -m bernn.dl.train.train_ae_classifier_holdout --early_stop=$early_stop --n_epochs=$n_epochs \
                             --kan=$kan --variational=$variational --train_after_warmup=$train_after_warmup --tied_weights=0 --bdisc=1 \
-                            --rec_loss=l1 --dloss=$dloss --csv_file=$csv_file --remove_zeros=0 \
+                            --rec_loss=l1 --dloss=$dloss --class_triplet=$class_triplet --csv_file=$csv_file --remove_zeros=0 \
                             --groupkfold=$groupkfold --device=$device --dataset=$dataset --n_trials=$n_trials \
                             --n_repeats=$n_repeats --exp_id=$exp_id --path=$path --pool=0 --log_metrics=1 \
                             --best_features_file=$best_features_file --update_grid=$update_grid --use_l1=$use_l1 \
@@ -117,6 +119,7 @@ do
                             sleep "$sleep_seconds"
                         fi
                     done
+                    done  # class_triplet
                 done
             done
         done
