@@ -30,7 +30,14 @@ import warnings
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-from sklearn.metrics import matthews_corrcoef
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+)
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 
@@ -362,7 +369,28 @@ def cv_score_head(
             "fold_valid_mccs": [],
         }
 
+    def _preds(head, X_eval):
+        raw = head.predict(X_eval)
+        le = getattr(head, "_bernn_label_encoder", None)
+        if le is not None:
+            return le.inverse_transform(np.asarray(raw).astype(int))
+        return raw
+
+    def _row(y_true, y_pred):
+        return {
+            "mcc": float(matthews_corrcoef(y_true, y_pred)),
+            "accuracy": float(accuracy_score(y_true, y_pred)),
+            "balanced_accuracy": float(balanced_accuracy_score(y_true, y_pred)),
+            "precision_macro": float(precision_score(y_true, y_pred, average="macro", zero_division=0)),
+            "precision_weighted": float(precision_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "recall_macro": float(recall_score(y_true, y_pred, average="macro", zero_division=0)),
+            "recall_weighted": float(recall_score(y_true, y_pred, average="weighted", zero_division=0)),
+            "f1_macro": float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
+            "f1_weighted": float(f1_score(y_true, y_pred, average="weighted", zero_division=0)),
+        }
+
     valid_mccs, train_mccs = [], []
+    valid_rows, train_rows = [], []
     for fold_train_idx, fold_valid_idx in splits:
         X_tr, y_tr = X[fold_train_idx], y[fold_train_idx]
         X_vl, y_vl = X[fold_valid_idx], y[fold_valid_idx]
@@ -371,11 +399,15 @@ def cv_score_head(
         if len(np.unique(y_tr)) < 2:
             continue
 
-        _, tr_mcc, vl_mcc = fit_and_score_head(
+        head, tr_mcc, vl_mcc = fit_and_score_head(
             X_tr, y_tr, X_vl, y_vl, head_type, head_params
         )
+        train_preds = _preds(head, X_tr)
+        valid_preds = _preds(head, X_vl)
         valid_mccs.append(vl_mcc)
         train_mccs.append(tr_mcc)
+        train_rows.append(_row(y_tr, train_preds))
+        valid_rows.append(_row(y_vl, valid_preds))
 
     if not valid_mccs:
         return {
@@ -385,12 +417,20 @@ def cv_score_head(
             "fold_valid_mccs": [],
         }
 
-    return {
+    result = {
         "mean_valid_mcc": float(np.mean(valid_mccs)),
         "std_valid_mcc": float(np.std(valid_mccs)),
         "mean_train_mcc": float(np.mean(train_mccs)),
         "fold_valid_mccs": valid_mccs,
     }
+    for prefix, rows in (("valid", valid_rows), ("train", train_rows)):
+        keys = {k for row in rows for k in row}
+        for key in keys:
+            vals = [row[key] for row in rows if key in row]
+            if vals:
+                result[f"mean_{prefix}_{key}"] = float(np.mean(vals))
+                result[f"std_{prefix}_{key}"] = float(np.std(vals))
+    return result
 
 
 def sweep_all_heads(

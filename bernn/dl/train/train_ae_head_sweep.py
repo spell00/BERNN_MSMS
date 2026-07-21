@@ -717,11 +717,10 @@ class AEHeadSweepTrainer:
         if len(X_train) == 0 or len(X_valid) == 0:
             return float("-inf")
 
-        # One public validation metric: fit the chosen head on train embeddings
-        # and score the held-out validation split. CV on train embeddings remains
-        # a diagnostic only; it is not the Optuna objective.
+        # Metric contract: public valid_* metrics are cross-validation metrics.
+        # Single held-out validation metrics are logged as holdout_valid_*.
         try:
-            fitted_head, train_mcc, valid_mcc = fit_and_score_head(
+            fitted_head, train_mcc, holdout_valid_mcc = fit_and_score_head(
                 X_train, y_train, X_valid, y_valid, head_type, head_params
             )
             train_preds = _predict_with_optional_label_decoder(fitted_head, X_train)
@@ -736,17 +735,18 @@ class AEHeadSweepTrainer:
                 test_mcc = float("nan")
             split_metrics = {}
             split_metrics.update(_classification_metrics("train", y_train, train_preds))
-            split_metrics.update(_classification_metrics("valid", y_valid, valid_preds))
+            split_metrics.update(_classification_metrics("holdout_valid", y_valid, valid_preds))
             split_metrics.update(test_metrics)
             # Preserve these exact primary names even if sklearn metric helpers
-            # were unavailable for some reason.
+            # were unavailable for some reason. valid_mcc is filled from CV below.
             split_metrics["train_mcc"] = float(train_mcc)
-            split_metrics["valid_mcc"] = float(valid_mcc)
+            split_metrics["holdout_valid_mcc"] = float(holdout_valid_mcc)
             split_metrics["test_mcc"] = float(test_mcc)
         except Exception as exc:
             trial.set_user_attr("head_error", str(exc))
             return float("-inf")
 
+        cv_metrics = {}
         try:
             cv_result = cv_score_head(
                 X_train, y_train,
@@ -755,14 +755,30 @@ class AEHeadSweepTrainer:
                 n_splits=self.n_cv,
                 random_state=42,
             )
-            head_cv_train_mcc = cv_result["mean_valid_mcc"]
+            valid_mcc = float(cv_result.get("mean_valid_mcc", float("nan")))
+            head_cv_train_mcc = float(cv_result.get("mean_train_mcc", float("nan")))
+            for _k, _v in cv_result.items():
+                if _k.startswith("mean_valid_"):
+                    cv_metrics[_k.replace("mean_valid_", "valid_")] = float(_v)
+                elif _k.startswith("std_valid_"):
+                    cv_metrics[_k.replace("std_valid_", "valid_") + "_std"] = float(_v)
+                elif _k.startswith("mean_train_"):
+                    cv_metrics[_k.replace("mean_train_", "cv_train_")] = float(_v)
+                elif _k.startswith("std_train_"):
+                    cv_metrics[_k.replace("std_train_", "cv_train_") + "_std"] = float(_v)
+            cv_metrics["valid_mcc"] = valid_mcc
+            cv_metrics["cv_mcc_mean"] = valid_mcc
+            cv_metrics["cv_mcc_std"] = float(cv_result.get("std_valid_mcc", float("nan")))
+            cv_metrics["cv_n_folds_ok"] = float(len(cv_result.get("fold_valid_mccs", [])))
         except Exception:
+            valid_mcc = float("nan")
             head_cv_train_mcc = float("nan")
 
         batch_metrics = _embedding_batch_effect_metrics(
             (X_train, b_train), (X_valid, b_valid), (X_test, b_test)
         )
 
+        split_metrics.update(cv_metrics)
         for _k, _v in split_metrics.items():
             trial.set_user_attr(_k, _v)
         trial.set_user_attr("head_cv_train_mcc", head_cv_train_mcc)
