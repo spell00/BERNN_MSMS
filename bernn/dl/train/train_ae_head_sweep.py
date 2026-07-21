@@ -133,7 +133,7 @@ def _suggest_ae_params(trial: "optuna.Trial", args) -> Dict[str, Any]:
     p["nu"]        = trial.suggest_float("nu",       1e-4, 1e2,  log=False)
     p["dropout"]   = trial.suggest_float("dropout",  0.0,  0.5)
     p["smoothing"] = trial.suggest_float("smoothing", 0.0, 0.2)
-    p["margin"]    = trial.suggest_float("margin",   0.0,  10.0)
+    p["margin"]    = trial.suggest_float("margin",   1e-4, 10.0)
     p["warmup"]    = trial.suggest_int("warmup",     1,    100)
     p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard", "binarize"])
     p["ncols"]     = trial.suggest_int("ncols",      20,   10000)
@@ -263,7 +263,7 @@ class AEHeadSweepTrainer:
         if dloss == "revTriplet":
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+            triplet_loss = nn.TripletMarginLoss(max(margin, 1e-6), p=2, swap=False)
         return sceloss, celoss, mseloss, triplet_loss
 
     # ------------------------------------------------------------------
@@ -348,7 +348,7 @@ class AEHeadSweepTrainer:
                 if getattr(args, "class_triplet", False) and pos_to_rec is not None:
                     loss = loss + getattr(args, "class_triplet_w", 1.0) * compute_class_triplet(
                         ae, enc, pos_to_rec, neg_to_rec, domain, args.device,
-                        margin=params.get("margin", 1.0), mapping=False,
+                        margin=max(float(params.get("margin", 1.0)), 1e-6), mapping=False,
                     )
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(ae.parameters(), 1.0)
