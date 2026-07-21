@@ -321,7 +321,9 @@ class AEHeadSweepTrainer:
                 if enc.abs().sum() == 0:
                     continue
 
-                rec_loss_val = mseloss(rec_val, to_rec)
+                # BCEWithLogitsLoss needs target in [0,1]; clamp when binarize
+                _rec_target = to_rec.clamp(0.0, 1.0) if params.get("scaler") == "binarize" else to_rec
+                rec_loss_val = mseloss(rec_val, _rec_target)
 
                 gamma  = params.get("gamma", 0.0)
                 d_loss = torch.tensor(0.0, device=args.device)
@@ -482,6 +484,15 @@ class AEHeadSweepTrainer:
             loaders = get_loaders_no_pool(data, False, _samples_weights, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
+        # Guard: catch poisoned CUDA context from a previous device-side assert
+        if torch.cuda.is_available() and str(getattr(args, "device", "")).startswith("cuda"):
+            try:
+                torch.zeros(1, device=args.device)
+            except RuntimeError as _cuda_guard_err:
+                if "device-side assert" in str(_cuda_guard_err) or "CUDA error" in str(_cuda_guard_err):
+                    trial.set_user_attr("ae_error", f"CUDA context poisoned, skipping trial")
+                    return float("-inf")
+
         # -- optional W&B run per trial --
         _wandb_run = None
         if _HAS_WANDB and getattr(args, "log_wandb", False):
