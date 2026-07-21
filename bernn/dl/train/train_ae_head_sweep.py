@@ -460,10 +460,26 @@ class AEHeadSweepTrainer:
 
         dloss = getattr(args, "dloss", "inverseTriplet")
         bs = getattr(args, "bs", 32)
+
+        # Build class-balanced sample weights (train) + uniform (valid/test).
+        # get_loaders_no_pool uses samples_weights[split] directly for
+        # WeightedRandomSampler — passing None crashes with NoneType subscript.
+        _samples_weights: dict = {}
+        for _g in ("train", "valid", "test"):
+            if _g not in data.get("cats", {}):
+                continue
+            _cats_g = np.asarray(data["cats"][_g])
+            if _g == "train" and len(_cats_g):
+                _cls, _cnt = np.unique(_cats_g, return_counts=True)
+                _w = {int(c): 1.0 / max(int(n), 1) for c, n in zip(_cls, _cnt)}
+                _samples_weights[_g] = [_w[int(c)] for c in _cats_g]
+            else:
+                _samples_weights[_g] = [1.0] * len(_cats_g)
+
         try:
-            loaders = get_loaders(data, False, None, dloss, None, None, bs, args.device)
+            loaders = get_loaders(data, False, _samples_weights, dloss, None, None, bs, args.device)
         except Exception:
-            loaders = get_loaders_no_pool(data, False, None, dloss, None, None, bs, args.device)
+            loaders = get_loaders_no_pool(data, False, _samples_weights, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
         # -- optional W&B run per trial --
