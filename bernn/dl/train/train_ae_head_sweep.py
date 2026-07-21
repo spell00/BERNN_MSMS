@@ -130,7 +130,12 @@ def _suggest_ae_params(trial: "optuna.Trial", args) -> Dict[str, Any]:
     p["margin"]    = trial.suggest_float("margin",   0.0,  10.0)
     p["warmup"]    = trial.suggest_int("warmup",     1,    100)
     p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard", "binarize"])
-    p["ncols"]     = trial.suggest_int("ncols",      20,   10000)
+    # Cap ncols at the actual feature count when it is known on args.
+    # Suggesting ncols > n_features causes out-of-bounds CUDA kernel asserts
+    # that poison the entire CUDA context for all subsequent trials.
+    _n_feat = int(getattr(args, "n_features", 0) or 0)
+    _ncols_max = max(20, _n_feat) if _n_feat > 0 else 10000
+    p["ncols"]     = trial.suggest_int("ncols",      20,   _ncols_max)
     p["gamma"]     = 0.0
     p["beta"]      = 0.0
     if args.dloss in ["revTriplet", "revDANN", "DANN", "inverseTriplet", "normae"]:
@@ -394,7 +399,11 @@ class AEHeadSweepTrainer:
 
         # Apply scaler to data
         self.args.scaler = ae_params.get("scaler", "standard")
-        self.args.ncols  = ae_params.get("ncols", -1)
+        # Clamp ncols to actual feature count — prevents out-of-bounds CUDA asserts
+        # that would poison the context for all subsequent trials.
+        _actual_n_feat = self.data["inputs"]["train"].shape[1]
+        _raw_ncols = ae_params.get("ncols", -1)
+        self.args.ncols  = min(_raw_ncols, _actual_n_feat) if _raw_ncols > 0 else -1
 
         import copy as _copy
         from bernn.utils.utils import scale_data
