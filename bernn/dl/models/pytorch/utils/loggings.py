@@ -1371,9 +1371,12 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
     except:
         print("\n\n\nProblem with plotting LISI\n\n\n")
 
-    train_enc = torch.Tensor(np.concatenate(lists['train']['encoded_values']))
-    valid_enc = torch.Tensor(np.concatenate(lists['valid']['encoded_values']))
-    test_enc = torch.Tensor(np.concatenate(lists['test']['encoded_values']))
+    # ROC/PR use model.predict_proba, which runs the raw input through the
+    # encoder and classifier. Pass the raw (scaled) inputs, NOT the encoded
+    # values — feeding encodings back in double-encodes and shape-mismatches.
+    train_enc = torch.Tensor(np.concatenate(lists['train']['inputs']))
+    valid_enc = torch.Tensor(np.concatenate(lists['valid']['inputs']))
+    test_enc = torch.Tensor(np.concatenate(lists['test']['inputs']))
     try:
         save_roc_curve(model,
                        train_enc.to(device),
@@ -1390,8 +1393,8 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                        np.concatenate(lists['test']['classes']),
                        unique_labels, name='./roc_test', binary=bout, epoch=epoch,
                        acc=values['test']['acc'][-1], logger=logger, mlops=mlops)
-    except:
-        print("\n\n\nProblem with ROC curves\n\n\n")
+    except Exception as e:
+        print(f"Problem with ROC curves: {e!r}")
 
     try:
         save_precision_recall_curve(model,
@@ -1409,8 +1412,8 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
                                     np.concatenate(lists['test']['classes']),
                                     unique_labels, name='./prc_test', binary=bout, epoch=epoch,
                                     acc=values['test']['acc'][-1], logger=logger, mlops=mlops)
-    except:
-        print("\n\n\nProblem with precision/recall curves\n\n\n")
+    except Exception as e:
+        print(f"Problem with precision/recall curves: {e!r}")
 
     return metrics
 

@@ -450,7 +450,7 @@ def save_precision_recall_curve(model, x_test, y_test, unique_labels, name, bina
                     mlflow.log_figure(fig, name)
         # setup plot details
         colors = cycle(["navy", "turquoise", "darkorange", "cornflowerblue", "teal"])
-        viridis = cm.get_cmap('viridis', 256)
+        viridis = plt.get_cmap('viridis', 256)
         _, ax = plt.subplots(figsize=(7, 8))
 
         f_scores = np.linspace(0.2, 0.8, num=4)

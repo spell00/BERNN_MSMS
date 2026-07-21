@@ -30,7 +30,7 @@ patsy>=0.5.3
 umap-learn>=0.5.3
 shapely>=2.0.0
 numba>=0.57.1
-rpy2>=3.6.0
+rpy2>=3.5,<3.6  # 3.6.x needs R>=4.5 (R_existsVarInFrame); pin to 3.5.x for R 4.3.x
 openpyxl>=3.1.0,<3.2
 xgboost>=1.7.0
 torch-geometric
