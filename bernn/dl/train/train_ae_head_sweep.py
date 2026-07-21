@@ -135,7 +135,9 @@ def _suggest_ae_params(trial: "optuna.Trial", args) -> Dict[str, Any]:
     p["smoothing"] = trial.suggest_float("smoothing", 0.0, 0.2)
     p["margin"]    = trial.suggest_float("margin",   1e-4, 10.0)
     p["warmup"]    = trial.suggest_int("warmup",     1,    100)
-    p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard", "binarize"])
+    # Note: binarize excluded — BCEWithLogitsLoss on unbinarized decoder outputs
+        # causes device-side CUDA asserts that poison the context for the whole study.
+        p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard"])
     p["ncols"]     = trial.suggest_int("ncols",      20,   10000)
     p["gamma"]     = 0.0
     p["beta"]      = 0.0
@@ -484,14 +486,14 @@ class AEHeadSweepTrainer:
             loaders = get_loaders_no_pool(data, False, _samples_weights, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
-        # Guard: catch poisoned CUDA context from a previous device-side assert
+        # Guard: flush the CUDA queue with synchronize() to surface any pending
+        # async device-side assert from a previous trial before we allocate.
         if torch.cuda.is_available() and str(getattr(args, "device", "")).startswith("cuda"):
             try:
-                torch.zeros(1, device=args.device)
+                torch.cuda.synchronize(args.device)
             except RuntimeError as _cuda_guard_err:
-                if "device-side assert" in str(_cuda_guard_err) or "CUDA error" in str(_cuda_guard_err):
-                    trial.set_user_attr("ae_error", f"CUDA context poisoned, skipping trial")
-                    return float("-inf")
+                trial.set_user_attr("ae_error", f"CUDA context poisoned: {_cuda_guard_err}")
+                return float("-inf")
 
         # -- optional W&B run per trial --
         _wandb_run = None
