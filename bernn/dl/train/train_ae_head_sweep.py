@@ -142,20 +142,58 @@ def _predict_with_optional_label_decoder(head, X: np.ndarray) -> np.ndarray:
     return np.asarray(preds)
 
 
+def _classification_metrics(prefix: str, y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    """Compute broad classification metrics for one split."""
+    out: Dict[str, float] = {}
+    try:
+        from sklearn.metrics import (
+            accuracy_score,
+            balanced_accuracy_score,
+            f1_score,
+            matthews_corrcoef,
+            precision_score,
+            recall_score,
+        )
+        out[f"{prefix}_mcc"] = float(matthews_corrcoef(y_true, y_pred))
+        out[f"{prefix}_accuracy"] = float(accuracy_score(y_true, y_pred))
+        out[f"{prefix}_balanced_accuracy"] = float(balanced_accuracy_score(y_true, y_pred))
+        out[f"{prefix}_precision_macro"] = float(precision_score(y_true, y_pred, average="macro", zero_division=0))
+        out[f"{prefix}_precision_weighted"] = float(precision_score(y_true, y_pred, average="weighted", zero_division=0))
+        out[f"{prefix}_recall_macro"] = float(recall_score(y_true, y_pred, average="macro", zero_division=0))
+        out[f"{prefix}_recall_weighted"] = float(recall_score(y_true, y_pred, average="weighted", zero_division=0))
+        out[f"{prefix}_f1_macro"] = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
+        out[f"{prefix}_f1_weighted"] = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
+    except Exception:
+        pass
+    return out
+
+
 def _embedding_batch_effect_metrics(*splits) -> Dict[str, float]:
     """Batch-effect metrics on frozen embeddings; lower is better."""
     metrics = {
         "batch_silhouette": 1.0,
         "batch_centroid_dispersion": 1.0,
         "batch_nbe": 1.0,
+        "batch_entropy": 0.0,
+        "batch_entropy_loss": 1.0,
         "batch_nmi": 1.0,
+        "batch_ari": 1.0,
         "batch_nri": 1.0,
+        "batch_ami": 1.0,
+        "batch_lisi": 1.0,
+        "batch_ilisi": 1.0,
         "batch_metric_samples": 0.0,
     }
     try:
         from sklearn.cluster import KMeans
         from sklearn.decomposition import PCA
-        from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+        from sklearn.metrics import (
+            adjusted_mutual_info_score,
+            adjusted_rand_score,
+            normalized_mutual_info_score,
+            silhouette_score,
+        )
+        from sklearn.neighbors import NearestNeighbors
 
         xs, bs = [], []
         for X, batches in splits:
@@ -202,7 +240,27 @@ def _embedding_batch_effect_metrics(*splits) -> Dict[str, float]:
             _, batch_codes = np.unique(batches_all, return_inverse=True)
             metrics["batch_nmi"] = float(np.clip(normalized_mutual_info_score(batch_codes, cluster_labels), 0.0, 1.0))
             ari = float(adjusted_rand_score(batch_codes, cluster_labels))
+            ami = float(adjusted_mutual_info_score(batch_codes, cluster_labels))
+            metrics["batch_ari"] = ari
             metrics["batch_nri"] = float(np.clip(max(0.0, ari), 0.0, 1.0))
+            metrics["batch_ami"] = float(np.clip(max(0.0, ami), 0.0, 1.0))
+
+            try:
+                k = min(30, max(2, len(values) - 1))
+                nn = NearestNeighbors(n_neighbors=k + 1).fit(values)
+                neigh = nn.kneighbors(values, return_distance=False)[:, 1:]
+                inv_scores = []
+                for row in neigh:
+                    neighbor_batches = batch_codes[row]
+                    cts = np.bincount(neighbor_batches, minlength=len(unique_batches)).astype(float)
+                    probs = cts / max(cts.sum(), 1.0)
+                    inv_scores.append(1.0 / max(float(np.sum(probs ** 2)), 1e-12))
+                if inv_scores:
+                    ilisi = float(np.mean(inv_scores))
+                    metrics["batch_ilisi"] = ilisi
+                    metrics["batch_lisi"] = ilisi
+            except Exception:
+                pass
 
             denom = np.log(max(len(unique_batches), 2))
             entropies, weights = [], []
@@ -220,7 +278,9 @@ def _embedding_batch_effect_metrics(*splits) -> Dict[str, float]:
                     weights.append(float(len(cluster_batches)))
                 if entropies and np.sum(weights) > 0:
                     mean_entropy = float(np.average(entropies, weights=np.asarray(weights, dtype=float)))
+                    metrics["batch_entropy"] = float(np.clip(mean_entropy, 0.0, 1.0))
                     metrics["batch_nbe"] = float(np.clip(1.0 - mean_entropy, 0.0, 1.0))
+                    metrics["batch_entropy_loss"] = metrics["batch_nbe"]
     except Exception:
         pass
     return metrics
@@ -490,6 +550,7 @@ class AEHeadSweepTrainer:
                     all_labels_val.extend(labels if isinstance(labels, list) else labels.tolist())
 
             valid_mcc = float("-inf")
+            ae_epoch_metrics = {}
             if len(np.unique(all_labels_val)) > 1 and all_preds:
                 try:
                     preds_enc  = np.array(all_preds, dtype=int)
@@ -500,7 +561,8 @@ class AEHeadSweepTrainer:
                         labels_enc = le.transform(labels_arr)
                     else:
                         labels_enc = labels_arr.astype(int)
-                    valid_mcc = float(matthews_corrcoef(labels_enc, preds_enc))
+                    ae_epoch_metrics = _classification_metrics("valid", labels_enc, preds_enc)
+                    valid_mcc = ae_epoch_metrics.get("valid_mcc", float("-inf"))
                 except Exception as _exc:
                     valid_mcc = float("-inf")
 
@@ -516,21 +578,26 @@ class AEHeadSweepTrainer:
             # ── W&B per-epoch ──────────────────────────────────────────────
             if wandb_run is not None:
                 try:
-                    wandb_run.log({
+                    payload = {
                         "epoch":        epoch,
                         "ae/rec_loss":  epoch_rec,
                         "ae/d_loss":    epoch_d,
                         "ae/c_loss":    epoch_c,
                         "ae/valid_mcc": valid_mcc,
                         "ae/best_mcc":  best_valid_mcc,
-                    })
+                    }
+                    for key, value in ae_epoch_metrics.items():
+                        payload[f"ae/{key}"] = value
+                    wandb_run.log(payload)
                 except Exception:
                     pass
 
-            epoch_metrics.append({
+            epoch_row = {
                 "epoch": epoch, "rec": epoch_rec, "d": epoch_d,
                 "c": epoch_c, "valid_mcc": valid_mcc,
-            })
+            }
+            epoch_row.update(ae_epoch_metrics)
+            epoch_metrics.append(epoch_row)
 
             if valid_mcc > best_valid_mcc:
                 best_valid_mcc     = valid_mcc
@@ -657,12 +724,25 @@ class AEHeadSweepTrainer:
             fitted_head, train_mcc, valid_mcc = fit_and_score_head(
                 X_train, y_train, X_valid, y_valid, head_type, head_params
             )
+            train_preds = _predict_with_optional_label_decoder(fitted_head, X_train)
+            valid_preds = _predict_with_optional_label_decoder(fitted_head, X_valid)
             if len(X_test):
-                from sklearn.metrics import matthews_corrcoef as _mcc
                 test_preds = _predict_with_optional_label_decoder(fitted_head, X_test)
-                test_mcc = float(_mcc(y_test, test_preds))
+                test_metrics = _classification_metrics("test", y_test, test_preds)
+                test_mcc = float(test_metrics.get("test_mcc", float("nan")))
             else:
+                test_preds = np.empty((0,))
+                test_metrics = {"test_mcc": float("nan")}
                 test_mcc = float("nan")
+            split_metrics = {}
+            split_metrics.update(_classification_metrics("train", y_train, train_preds))
+            split_metrics.update(_classification_metrics("valid", y_valid, valid_preds))
+            split_metrics.update(test_metrics)
+            # Preserve these exact primary names even if sklearn metric helpers
+            # were unavailable for some reason.
+            split_metrics["train_mcc"] = float(train_mcc)
+            split_metrics["valid_mcc"] = float(valid_mcc)
+            split_metrics["test_mcc"] = float(test_mcc)
         except Exception as exc:
             trial.set_user_attr("head_error", str(exc))
             return float("-inf")
@@ -683,11 +763,14 @@ class AEHeadSweepTrainer:
             (X_train, b_train), (X_valid, b_valid), (X_test, b_test)
         )
 
-        trial.set_user_attr("valid_mcc", valid_mcc)
-        trial.set_user_attr("test_mcc", test_mcc)
-        trial.set_user_attr("train_mcc", train_mcc)
+        for _k, _v in split_metrics.items():
+            trial.set_user_attr(_k, _v)
         trial.set_user_attr("head_cv_train_mcc", head_cv_train_mcc)
         trial.set_user_attr("ae_classifier_mcc", _ae_mcc)
+        try:
+            trial.set_user_attr("epoch_metrics_json", json.dumps(_epoch_metrics))
+        except Exception:
+            pass
         for _k, _v in batch_metrics.items():
             trial.set_user_attr(_k, _v)
         trial.set_user_attr("head_type", head_type)
@@ -703,9 +786,8 @@ class AEHeadSweepTrainer:
             try:
                 with mlflow.start_run(nested=True):
                     mlflow.log_params({**ae_params, "head_type": head_type, **head_params})
-                    mlflow.log_metric("valid_mcc", valid_mcc)
-                    mlflow.log_metric("test_mcc", test_mcc)
-                    mlflow.log_metric("train_mcc", train_mcc)
+                    for _k, _v in split_metrics.items():
+                        mlflow.log_metric(_k, _v)
                     mlflow.log_metric("head_cv_train_mcc", head_cv_train_mcc)
                     mlflow.log_metric("ae_classifier_mcc", _ae_mcc)
                     for _k, _v in batch_metrics.items():
@@ -717,9 +799,7 @@ class AEHeadSweepTrainer:
         if _wandb_run is not None:
             try:
                 _wandb_run.log({
-                    "trial/valid_mcc": valid_mcc,
-                    "trial/test_mcc": test_mcc,
-                    "trial/train_mcc": train_mcc,
+                    **{f"trial/{_k}": _v for _k, _v in split_metrics.items()},
                     "trial/head_cv_train_mcc": head_cv_train_mcc,
                     "trial/ae_classifier_mcc": _ae_mcc,
                     "trial/head_type": head_type,
@@ -738,9 +818,7 @@ class AEHeadSweepTrainer:
             _row = {
                 "trial":        trial.number,
                 "timestamp":    datetime.now().isoformat(timespec="seconds"),
-                "valid_mcc":    valid_mcc,
-                "test_mcc":     test_mcc,
-                "train_mcc":    train_mcc,
+                **split_metrics,
                 "head_cv_train_mcc": head_cv_train_mcc,
                 "ae_classifier_mcc": _ae_mcc,
                 **batch_metrics,
