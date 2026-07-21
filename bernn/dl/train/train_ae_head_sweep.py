@@ -135,9 +135,9 @@ def _suggest_ae_params(trial: "optuna.Trial", args) -> Dict[str, Any]:
     p["smoothing"] = trial.suggest_float("smoothing", 0.0, 0.2)
     p["margin"]    = trial.suggest_float("margin",   1e-4, 10.0)
     p["warmup"]    = trial.suggest_int("warmup",     1,    100)
-    # Note: binarize excluded — BCEWithLogitsLoss on unbinarized decoder outputs
-        # causes device-side CUDA asserts that poison the context for the whole study.
-        p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard"])
+    # binarize excluded: BCEWithLogitsLoss on unbinarized decoder outputs
+    # causes device-side CUDA asserts that poison the context for the whole study.
+    p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard"])
     p["ncols"]     = trial.suggest_int("ncols",      20,   10000)
     p["gamma"]     = 0.0
     p["beta"]      = 0.0
