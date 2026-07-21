@@ -75,6 +75,12 @@ from bernn.dl.train.head_classifier import (
     sweep_all_heads,
 )
 from bernn.utils.mlflow_compat import mlflow
+
+try:
+    import wandb as _wandb
+    _HAS_WANDB = True
+except ImportError:
+    _HAS_WANDB = False
 from bernn.utils.data_getters import load_data_for_args
 
 try:
@@ -261,30 +267,45 @@ class AEHeadSweepTrainer:
         return sceloss, celoss, mseloss, triplet_loss
 
     # ------------------------------------------------------------------
-    def _train_ae(self, ae, params, loaders):
-        """Run the warmup + classification training loop. Returns best_mcc."""
-        from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_traces
+    def _train_ae(self, ae, params, loaders, trial_num=None, wandb_run=None):
+        """Train the AE encoder. Returns (best_valid_mcc, epoch_metrics_list).
 
-        args = self.args
+        Fixes
+        -----
+        * Per-epoch stdout: rec / d / c loss + valid_mcc each epoch.
+        * Label-encoding bug: batch labels may be int-encoded already; handle
+          both string and integer labels when computing MCC.
+        * W&B per-epoch logging when wandb_run is provided.
+        """
+        from bernn.dl.models.pytorch.utils.utils import get_optimizer
+        from sklearn.metrics import matthews_corrcoef
+        from sklearn.preprocessing import LabelEncoder as LE
+
+        args       = self.args
         nu, lr, wd = params["nu"], params["lr"], params["wd"]
-        optimizer_type = "adam"
-        optimizer_ae = get_optimizer(ae, lr, wd, optimizer_type)
-        optimizer_c  = get_optimizer(ae.classifier, nu * lr, wd, optimizer_type)
+        optimizer_ae = get_optimizer(ae, lr, wd, "adam")
+        optimizer_c  = get_optimizer(ae.classifier, nu * lr, wd, "adam")
 
         sceloss, celoss, mseloss, triplet_loss = self._get_losses(ae, params)
-        dloss = getattr(args, "dloss", "inverseTriplet")
-
-        import torch.nn as nn
-        best_valid_mcc = float("-inf")
-        early_stop_counter = 0
+        dloss      = getattr(args, "dloss", "inverseTriplet")
+        n_epochs   = getattr(args, "n_epochs", 200)
         early_stop = getattr(args, "early_stop", 30)
 
-        for epoch in range(getattr(args, "n_epochs", 200)):
-            # ---- TRAIN ----
+        # Label encoder — handles both string and int-encoded batch labels
+        le = LE().fit(self.unique_labels)
+
+        best_valid_mcc     = float("-inf")
+        early_stop_counter = 0
+        epoch_metrics      = []
+        tag = f"[trial {trial_num}]" if trial_num is not None else "[AE]"
+
+        for epoch in range(n_epochs):
+            # ── TRAIN ──────────────────────────────────────────────────────
             ae.train()
+            epoch_rec, epoch_d, epoch_c, n_batches = 0.0, 0.0, 0.0, 0
             for batch in loaders.get("train", []):
-                inputs, _names, labels, domain, to_rec, not_to_rec, \
-                    pos_to_rec, neg_to_rec, pos_batch, neg_batch, _ = batch[:11] if len(batch) >= 11 else (*batch, *([None]*max(0, 11-len(batch))))
+                raw = batch[:11] if len(batch) >= 11 else (*batch, *([None] * max(0, 11 - len(batch))))
+                inputs, _names, labels, domain, to_rec, _not_rec,                     pos_to_rec, neg_to_rec, pos_batch, neg_batch, _ = raw
                 if inputs is None:
                     break
                 inputs = inputs.to(args.device).float()
@@ -292,26 +313,25 @@ class AEHeadSweepTrainer:
 
                 optimizer_ae.zero_grad()
                 optimizer_c.zero_grad()
-                enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True)
-                rec_val = rec["mean"] if isinstance(rec, dict) else rec
+
+                enc, rec, _zinb, _kld = ae(inputs, to_rec, domain, sampling=True)
+                _rec_mean = rec["mean"] if isinstance(rec, dict) else rec
+                rec_val   = _rec_mean[-1] if isinstance(_rec_mean, (list, tuple)) else _rec_mean
 
                 if enc.abs().sum() == 0:
                     continue
 
-                # Reconstruction loss
                 rec_loss_val = mseloss(rec_val, to_rec)
 
-                # Domain alignment
-                gamma = params.get("gamma", 0.0)
+                gamma  = params.get("gamma", 0.0)
                 d_loss = torch.tensor(0.0, device=args.device)
                 if gamma > 0 and dloss != "no":
-                    reverse = ReverseLayerF.apply(enc, gamma)
                     if dloss in ["revTriplet", "inverseTriplet"]:
                         if pos_batch is not None and neg_batch is not None:
-                            pos_batch = pos_batch.to(args.device).float()
-                            neg_batch = neg_batch.to(args.device).float()
-                            pos_enc, _, _, _ = ae(pos_batch, pos_batch, domain, sampling=True)
-                            neg_enc, _, _, _ = ae(neg_batch, neg_batch, domain, sampling=True)
+                            pb = pos_batch.to(args.device).float()
+                            nb = neg_batch.to(args.device).float()
+                            pos_enc, _, _, _ = ae(pb, pb, domain, sampling=True)
+                            neg_enc, _, _, _ = ae(nb, nb, domain, sampling=True)
                             if dloss == "revTriplet":
                                 d_loss = triplet_loss(
                                     ReverseLayerF.apply(enc, 1),
@@ -321,13 +341,10 @@ class AEHeadSweepTrainer:
                             else:
                                 d_loss = triplet_loss(enc, pos_enc, neg_enc)
 
-                # Classifier loss
-                cats = to_categorical(labels, len(self.unique_labels)).to(args.device)
-                preds = ae.classifier(enc)
-                c_loss = sceloss(preds, cats.argmax(1))
+                cats    = to_categorical(labels, len(self.unique_labels)).to(args.device)
+                c_loss  = sceloss(ae.classifier(enc), cats.argmax(1))
 
                 loss = rec_loss_val + gamma * d_loss + c_loss
-                # Additive class-based triplet loss on embeddings
                 if getattr(args, "class_triplet", False) and pos_to_rec is not None:
                     loss = loss + getattr(args, "class_triplet_w", 1.0) * compute_class_triplet(
                         ae, enc, pos_to_rec, neg_to_rec, domain, args.device,
@@ -338,7 +355,17 @@ class AEHeadSweepTrainer:
                 optimizer_ae.step()
                 optimizer_c.step()
 
-            # ---- VALID ----
+                epoch_rec += float(rec_loss_val.item())
+                epoch_d   += float(d_loss.item()) if hasattr(d_loss, "item") else float(d_loss)
+                epoch_c   += float(c_loss.item())
+                n_batches += 1
+
+            if n_batches:
+                epoch_rec /= n_batches
+                epoch_d   /= n_batches
+                epoch_c   /= n_batches
+
+            # ── VALID ──────────────────────────────────────────────────────
             ae.eval()
             all_preds, all_labels_val = [], []
             with torch.no_grad():
@@ -347,31 +374,63 @@ class AEHeadSweepTrainer:
                     inputs = inputs.to(args.device).float()
                     to_rec = to_rec.to(args.device).float() if to_rec is not None else inputs
                     enc, _, _, _ = ae(inputs, to_rec, domain, sampling=False)
-                    preds = ae.classifier(enc).argmax(1).cpu().numpy()
-                    all_preds.extend(preds)
+                    p = ae.classifier(enc).argmax(1).cpu().numpy()
+                    all_preds.extend(p.tolist())
                     all_labels_val.extend(labels if isinstance(labels, list) else labels.tolist())
 
+            valid_mcc = float("-inf")
             if len(np.unique(all_labels_val)) > 1 and all_preds:
-                from sklearn.preprocessing import LabelEncoder as LE
-                le = LE().fit(self.unique_labels)
                 try:
-                    preds_enc  = np.array(all_preds)
-                    labels_enc = le.transform(all_labels_val)
-                    from sklearn.metrics import matthews_corrcoef
-                    valid_mcc = matthews_corrcoef(labels_enc, preds_enc)
-                except Exception:
+                    preds_enc  = np.array(all_preds, dtype=int)
+                    labels_arr = np.array(all_labels_val)
+                    # Batch labels may be raw strings OR already int-encoded —
+                    # use LabelEncoder only when they're strings.
+                    if labels_arr.dtype.kind in ("U", "S", "O"):
+                        labels_enc = le.transform(labels_arr)
+                    else:
+                        labels_enc = labels_arr.astype(int)
+                    valid_mcc = float(matthews_corrcoef(labels_enc, preds_enc))
+                except Exception as _exc:
                     valid_mcc = float("-inf")
 
-                if valid_mcc > best_valid_mcc:
-                    best_valid_mcc = valid_mcc
-                    early_stop_counter = 0
-                else:
-                    early_stop_counter += 1
-                    if early_stop_counter >= early_stop:
-                        break
+            # ── Print epoch ────────────────────────────────────────────────
+            print(
+                f"{tag} epoch={epoch+1:4d}/{n_epochs}  "
+                f"rec={epoch_rec:.4f}  d={epoch_d:.4f}  c={epoch_c:.4f}  "
+                f"valid_mcc={valid_mcc:+.4f}  best={best_valid_mcc:+.4f}  "
+                f"es={early_stop_counter}/{early_stop}",
+                flush=True,
+            )
 
-        return best_valid_mcc
+            # ── W&B per-epoch ──────────────────────────────────────────────
+            if wandb_run is not None:
+                try:
+                    wandb_run.log({
+                        "epoch":        epoch,
+                        "ae/rec_loss":  epoch_rec,
+                        "ae/d_loss":    epoch_d,
+                        "ae/c_loss":    epoch_c,
+                        "ae/valid_mcc": valid_mcc,
+                        "ae/best_mcc":  best_valid_mcc,
+                    })
+                except Exception:
+                    pass
 
+            epoch_metrics.append({
+                "epoch": epoch, "rec": epoch_rec, "d": epoch_d,
+                "c": epoch_c, "valid_mcc": valid_mcc,
+            })
+
+            if valid_mcc > best_valid_mcc:
+                best_valid_mcc     = valid_mcc
+                early_stop_counter = 0
+            else:
+                early_stop_counter += 1
+                if early_stop_counter >= early_stop:
+                    print(f"{tag} early stop at epoch {epoch+1} (patience={early_stop})", flush=True)
+                    break
+
+        return best_valid_mcc, epoch_metrics
     # ------------------------------------------------------------------
     def objective(self, trial: "optuna.Trial") -> float:
         """Optuna objective: suggest AE params + head, train AE, fit head, return cv MCC."""
@@ -407,10 +466,34 @@ class AEHeadSweepTrainer:
             loaders = get_loaders_no_pool(data, False, None, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
+        # -- optional W&B run per trial --
+        _wandb_run = None
+        if _HAS_WANDB and getattr(args, "log_wandb", False):
+            try:
+                _wandb_run = _wandb.init(
+                    project=getattr(args, "wandb_project", "bernn_head_sweep"),
+                    entity=getattr(args, "wandb_entity", None) or None,
+                    name=f"{args.exp_id}_trial{trial.number}",
+                    group=args.exp_id,
+                    config={**ae_params, "head_type": head_type, **head_params,
+                            "dloss": getattr(args, "dloss", ""),
+                            "class_triplet": getattr(args, "class_triplet", False)},
+                    reinit=True,
+                )
+            except Exception:
+                _wandb_run = None
+
         try:
-            _ae_mcc = self._train_ae(ae, ae_params, loaders)
+            _ae_mcc, _epoch_metrics = self._train_ae(
+                ae, ae_params, loaders,
+                trial_num=trial.number,
+                wandb_run=_wandb_run,
+            )
         except Exception as exc:
             trial.set_user_attr("ae_error", str(exc))
+            if _wandb_run is not None:
+                try: _wandb_run.finish(exit_code=1)
+                except Exception: pass
             return float("-inf")
 
         # Step 2: freeze encoder, extract embeddings
@@ -470,6 +553,47 @@ class AEHeadSweepTrainer:
             except Exception:
                 pass
 
+        # W&B: final trial metrics then close run
+        if _wandb_run is not None:
+            try:
+                _wandb_run.log({
+                    "trial/cv_mcc":    cv_mcc,
+                    "trial/held_mcc":  held_valid_mcc,
+                    "trial/ae_mcc":    _ae_mcc,
+                    "trial/head_type": head_type,
+                })
+                _wandb_run.finish()
+            except Exception:
+                pass
+
+        # Per-trial CSV run log
+        try:
+            import csv as _csv
+            _log_dir  = getattr(args, "run_log_dir", "logs/head_sweep")
+            os.makedirs(_log_dir, exist_ok=True)
+            _csv_path = os.path.join(_log_dir, f"{args.exp_id}_trial_log.csv")
+            _row = {
+                "trial":        trial.number,
+                "timestamp":    datetime.now().isoformat(timespec="seconds"),
+                "cv_mcc":       cv_mcc,
+                "held_mcc":     held_valid_mcc,
+                "ae_mcc":       _ae_mcc,
+                "head_type":    head_type,
+                "dloss":        getattr(args, "dloss", ""),
+                "class_triplet": int(getattr(args, "class_triplet", False)),
+                "variational":  int(getattr(args, "variational", False)),
+                **{k: v for k, v in ae_params.items()},
+                **{f"head_{k}": v for k, v in head_params.items()},
+            }
+            _write_header = not os.path.exists(_csv_path)
+            with open(_csv_path, "a", newline="") as _f:
+                _w = _csv.DictWriter(_f, fieldnames=list(_row.keys()))
+                if _write_header:
+                    _w.writeheader()
+                _w.writerow(_row)
+        except Exception:
+            pass
+
         # Free GPU memory
         del ae
         gc.collect()
@@ -499,11 +623,34 @@ class AEHeadSweepTrainer:
             load_if_exists=True,
         )
 
+        _sweep_label = (study_name or f"bernn_{getattr(self.args, 'exp_id', '?')}")[:30]
+
+        def _trial_cb(study_cb, trial_cb):
+            if trial_cb.state.name not in ("COMPLETE", "PRUNED"):
+                return
+            cv    = trial_cb.value if trial_cb.value is not None else float("nan")
+            head  = trial_cb.user_attrs.get("head_type", "?")
+            held  = trial_cb.user_attrs.get("held_valid_mcc", float("nan"))
+            ae_m  = trial_cb.user_attrs.get("ae_valid_mcc", float("-inf"))
+            try:
+                best = study_cb.best_value
+            except Exception:
+                best = float("nan")
+            ae_str   = f"{ae_m:+.3f}" if ae_m not in (float("-inf"), float("inf")) else "-inf"
+            held_str = f"{held:.3f}" if held == held else "nan"  # nan check
+            print(
+                f"[{_sweep_label}] trial {trial_cb.number+1:4d}/{n_trials}  "
+                f"cv_mcc={cv:7.4f}  head={head:<22s}"
+                f"held={held_str}  ae={ae_str}  best={best:.4f}",
+                flush=True,
+            )
+
         study.optimize(
             self.objective,
             n_trials=n_trials,
             gc_after_trial=True,
             catch=(Exception,),
+            callbacks=[_trial_cb],
         )
         return study
 
@@ -580,6 +727,14 @@ if __name__ == "__main__":
     parser.add_argument("--study_name",     type=str, default=None)
     # Logging
     parser.add_argument("--log_mlflow",     type=int, default=0)
+    parser.add_argument("--log_wandb",      type=int, default=0,
+                        help="Enable Weights & Biases logging (0/1)")
+    parser.add_argument("--wandb_project",  type=str, default="bernn_head_sweep",
+                        help="W&B project name")
+    parser.add_argument("--wandb_entity",   type=str, default="",
+                        help="W&B entity/team (leave empty for default)")
+    parser.add_argument("--run_log_dir",    type=str, default="logs/head_sweep",
+                        help="Directory for per-trial CSV log files")
 
     args = parser.parse_args()
     args.variational  = bool(args.variational)
