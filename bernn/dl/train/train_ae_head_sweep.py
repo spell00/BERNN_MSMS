@@ -257,7 +257,10 @@ class AEHeadSweepTrainer:
         celoss  = nn.CrossEntropyLoss()
         mseloss = nn.MSELoss() if rec_loss == "mse" else nn.L1Loss()
         if scale == "binarize":
-            mseloss = nn.BCELoss()
+            # BCELoss requires inputs in [0,1] but the AE decoder output is
+            # unbounded logits — BCEWithLogitsLoss applies sigmoid internally
+            # and is numerically stable with any real-valued input.
+            mseloss = nn.BCEWithLogitsLoss()
         margin = params.get("margin", 1.0)
         if dloss == "revTriplet":
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
