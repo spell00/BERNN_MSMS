@@ -293,7 +293,11 @@ class AEHeadSweepTrainer:
                 optimizer_ae.zero_grad()
                 optimizer_c.zero_grad()
                 enc, rec, zinb_loss, kld = ae(inputs, to_rec, domain, sampling=True)
-                rec_val = rec["mean"] if isinstance(rec, dict) else rec
+                # rec["mean"] is a list of layer activations; [-1] is the
+                # actual reconstruction (same convention as train_ae_classifier.py:597
+                # and train_ae_then_classifier_holdout.py:644).
+                _rec_mean = rec["mean"] if isinstance(rec, dict) else rec
+                rec_val = _rec_mean[-1] if isinstance(_rec_mean, (list, tuple)) else _rec_mean
 
                 if enc.abs().sum() == 0:
                     continue
