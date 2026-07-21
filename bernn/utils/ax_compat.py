@@ -6,8 +6,16 @@ implemented on top of `ax.api.client.Client`.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
+# Ax logs a WARNING at import time when sqlalchemy>=2.0 is present ("Ax currently
+# requires a sqlalchemy version below 2.0 ... Disabling SQL storage"). bernn does
+# not use Ax's SQL storage, so this is harmless noise. Ax resets its own logger
+# level during import, so suppressing it after the fact is too late — instead
+# disable WARNING-and-below logging just for the duration of the ax import.
+_prev_disable_level = logging.root.manager.disable
+logging.disable(logging.WARNING)
 try:
     from ax.api.client import Client
     from ax.api.configs import ChoiceParameterConfig, RangeParameterConfig
@@ -52,6 +60,8 @@ except Exception:
             mean = float(raw)
         values = ({objective_name: {"mean": mean, "sem": 0.0}},)
         return parameterization, values, None, None
+finally:
+    logging.disable(_prev_disable_level)
 
 
 if AX_AVAILABLE:

@@ -265,7 +265,10 @@ class AEHeadSweepTrainer:
         if dloss == "revTriplet":
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
-            triplet_loss = nn.TripletMarginLoss(0, p=2, swap=False)
+            # torch>=2 requires margin > 0 (older versions tolerated 0). A tiny
+            # epsilon preserves the intended near-zero-margin behaviour for
+            # inverseTriplet: loss = relu(d_ap - d_an + eps).
+            triplet_loss = nn.TripletMarginLoss(1e-7, p=2, swap=False)
         return sceloss, celoss, mseloss, triplet_loss
 
     # ------------------------------------------------------------------
@@ -417,10 +420,27 @@ class AEHeadSweepTrainer:
 
         dloss = getattr(args, "dloss", "inverseTriplet")
         bs = getattr(args, "bs", 32)
+
+        # get_loaders / get_loaders_no_pool build a WeightedRandomSampler from
+        # samples_weights['<split>'], so None crashes with a TypeError. Build a
+        # class-balanced weight dict (train = inverse class frequency, valid/test
+        # = uniform), matching the convention in train_ae_classifier.py.
+        samples_weights = {}
+        for g in ("train", "valid", "test"):
+            if g not in data["cats"]:
+                continue
+            cats_g = np.asarray(data["cats"][g])
+            if g == "train":
+                classes, counts = np.unique(cats_g, return_counts=True)
+                w = {c: 1.0 / n for c, n in zip(classes, counts)}
+                samples_weights[g] = [w[c] for c in cats_g]
+            else:
+                samples_weights[g] = [1.0] * len(cats_g)
+
         try:
-            loaders = get_loaders(data, False, None, dloss, None, None, bs, args.device)
+            loaders = get_loaders(data, False, samples_weights, dloss, None, None, bs, args.device)
         except Exception:
-            loaders = get_loaders_no_pool(data, False, None, dloss, None, None, bs, args.device)
+            loaders = get_loaders_no_pool(data, False, samples_weights, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
         try:

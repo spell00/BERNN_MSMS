@@ -313,7 +313,7 @@ special_requirements = [
 
 setup(
     name='bernn',
-    version='0.6.6',
+    version='0.6.7',
     packages=find_packages(),
     url='https://github.com/spell00/BERNN_MSMS',  # Replace with actual repo URL
     license='MIT',  # Choose appropriate license
@@ -324,7 +324,7 @@ setup(
     long_description_content_type="text/markdown",
     # Avoid emitting License-File metadata for broader tool compatibility
     license_files=[],
-    python_requires='>=3.11',
+    python_requires='>=3.10',
     install_requires=minimal_requirements,
     extras_require={
         # Basic installs
