@@ -55,3 +55,4 @@ statsmodels
 pytest
 pytest-cov
 build
+optuna

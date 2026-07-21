@@ -47,6 +47,12 @@ class TrainingConfig:
     # Loss and regularization
     rec_loss: str = 'l1'
     classif_loss: str = 'ce'
+    # Class-based triplet loss on the embeddings (supervised metric learning):
+    # anchor = sample, positive = same-class sample, negative = different-class
+    # sample. Additive and combinable with any batch-effect dloss (e.g.
+    # inverseTriplet/DANN). Weighted by ``class_triplet_w``.
+    class_triplet: bool = False
+    class_triplet_w: float = 1.0
     threshold: float = 0.0
     kan: bool = False
     use_l1: bool = True
@@ -61,6 +67,7 @@ class TrainingConfig:
     scaler: str = 'standard'  # Set during training
 
     # Experiment tracking
+    dataset: str = 'custom'  # Dataset name; used in best-model log paths
     exp_id: str = 'bernn_training'
     model_name: str = 'ae_then_classifier_holdout'  # Set during training
 

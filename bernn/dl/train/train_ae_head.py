@@ -24,6 +24,7 @@ Two-stage Optuna sweep (train_ae_head_sweep.py):
 
 from __future__ import annotations
 
+import copy
 import os
 import uuid
 import warnings
@@ -46,6 +47,7 @@ from bernn.dl.train.head_classifier import (
 from bernn.dl.models.pytorch.utils.utils import (
     get_optimizer,
     get_empty_traces,
+    get_empty_dicts,
 )
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 
@@ -158,13 +160,12 @@ class TrainAEHead(TrainAE):
         args = self.args
         start = datetime.now()
 
-        # ---- 1. Build AE (no classifier needed but AutoEncoder2 carries one;
-        #         we simply never call it or backprop through it) ----
-        from bernn.dl.models.pytorch.aedann import AutoEncoder2 as AutoEncoder
-        from bernn.dl.models.pytorch.aedann import ReverseLayerF
+        from bernn.dl.models.pytorch.aedann import ReverseLayerF  # noqa: F401 (used by warmup_loop)
+        from bernn.utils.utils import scale_data
 
+        scale = params.get("scaler", "standard")
         sceloss, celoss, mseloss, triplet_loss = self.get_losses(
-            params.get("scaler", "standard"),
+            scale,
             params.get("smoothing", 0.0),
             params.get("margin", 1.0),
             args.dloss,
@@ -175,11 +176,15 @@ class TrainAEHead(TrainAE):
         lr       = params.get("lr",    1e-3)
         wd       = params.get("wd",    1e-5)
 
-        # load data + make loaders
+        # ---- 1. Prepare data: scale with the swept scaler, then make loaders ----
         self.make_samples_weights()
+        data = copy.deepcopy(self.data)
+        data, self.scaler = scale_data(scale, data, args.device)
+        for g in list(data["inputs"].keys()):
+            data["inputs"][g] = data["inputs"][g].round(4)
         try:
             loaders = get_loaders(
-                self.data,
+                data,
                 getattr(args, "random_recs", 0),
                 self.samples_weights,
                 args.dloss,
@@ -188,7 +193,7 @@ class TrainAEHead(TrainAE):
             )
         except Exception:
             loaders = get_loaders_no_pool(
-                self.data,
+                data,
                 getattr(args, "random_recs", 0),
                 self.samples_weights,
                 args.dloss,
@@ -196,10 +201,39 @@ class TrainAEHead(TrainAE):
                 bs=args.bs,
             )
 
-        # Build fresh AE per rep
-        self.load_autoencoder()  # sets self.ae via the parent class
-        ae = self.ae
+        # ---- 2. Build a fresh AutoEncoder (AutoEncoder3 / KANAutoEncoder3) ----
+        # load_autoencoder() returns the AE *class*; instantiate it like the
+        # AE-then-classifier holdout trainer, honoring the swept architecture.
+        layers = {
+            k: int(v) for k, v in sorted(
+                ((k, v) for k, v in params.items() if k.startswith("layer")),
+                key=lambda kv: int(kv[0].replace("layer", "")),
+            )
+        }
+        ae_cls = self.load_autoencoder()
+        ae = ae_cls(
+            data["inputs"]["all"].shape[1],
+            is_sigmoid=getattr(args, "use_sigmoid", False),
+            n_batches=self.n_batches,
+            nb_classes=self.n_cats,
+            mapper=args.use_mapping,
+            layers=layers,
+            n_layers=args.n_layers,
+            dropout=params.get("dropout", 0.0),
+            variational=args.variational,
+            conditional=False,
+            add_noise=0,
+            tied_weights=args.tied_weights,
+            prune_threshold=params.get("prune_threshold", 0),
+            device=args.device,
+            update_grid=args.update_grid,
+        ).to(args.device)
+        self.ae = ae
+        ae.mapper.to(args.device)
+        ae.dec.to(args.device)
         optimizer_ae = get_optimizer(ae, lr, wd, "adam")
+        # Batch-discriminator optimizer (used when args.bdisc is set)
+        optimizer_b = get_optimizer(ae.dann_discriminator, 1e-2, 0, "adam")
 
         # Freeze the classifier layers — we never train them
         if hasattr(ae, "classifier"):
@@ -211,23 +245,30 @@ class TrainAEHead(TrainAE):
         early_stop_counter = 0
         early_stop = getattr(args, "early_stop", 30)
 
+        # State expected by warmup_loop across epochs
+        self.best_loss        = float("inf")
+        self.warmup_counter   = 0
+        self.warmup_b_counter = 0
+        self.warmup_disc_b    = False
+        values = get_empty_dicts()[0]
+
         self.complete_log_path = f"logs/ae_head/{str(uuid.uuid4())}"
         os.makedirs(self.complete_log_path, exist_ok=True)
         print(f"See results using: tensorboard --logdir={self.complete_log_path} --port=6006")
 
-        # ---- 2. Per-epoch training loop ----
+        # ---- 3. Per-epoch training loop ----
         for epoch in range(args.n_epochs):
             if early_stop_counter >= early_stop:
                 print(f"  Early stop at epoch {epoch}")
                 break
 
-            # --- 2a. AE + domain alignment (warmup_loop pattern, no classifier) ---
+            # --- 3a. AE + domain alignment (warmup_loop pattern, no classifier) ---
             self.warmup_loop(
                 optimizer_ae, None, ae, celoss,
                 loaders.get("all", loaders.get("train")),
                 triplet_loss, mseloss,
                 warmup=True, epoch=epoch,
-                optimizer_b=None, values={}, loggers={},
+                optimizer_b=optimizer_b, values=values, loggers={},
                 loaders=loaders, run=None,
                 mapping=getattr(args, "use_mapping", True),
             )
@@ -306,6 +347,7 @@ def _ae_head_params_stage1(trial, args) -> Dict[str, Any]:
     p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard"])
     p["layer1"]    = trial.suggest_int("layer1", 32, 512, log=True)
     p["n_layers"]  = trial.suggest_int("n_layers", 1, 3)
+    p["warmup"]    = 0  # no warmup phase in the AE-head trainer
     p["gamma"]     = 0.0
     p["beta"]      = 0.0
     if getattr(args, "dloss", "inverseTriplet") in {
@@ -334,6 +376,7 @@ def _ae_head_params_stage2(trial, args, head_type: str) -> Dict[str, Any]:
     p["scaler"]    = trial.suggest_categorical("scaler", ["robust", "standard"])
     p["layer1"]    = trial.suggest_int("layer1", 32, 512, log=True)
     p["n_layers"]  = trial.suggest_int("n_layers", 1, 3)
+    p["warmup"]    = 0  # no warmup phase in the AE-head trainer
     p["gamma"]     = 0.0
     p["beta"]      = 0.0
     if getattr(args, "dloss", "inverseTriplet") in {
@@ -479,8 +522,17 @@ if __name__ == "__main__":
     parser.add_argument("--remove_zeros",   type=int, default=1)
     parser.add_argument("--groupkfold",     type=int, default=1)
     parser.add_argument("--log1p",          type=int, default=1)
+    parser.add_argument("--pool",           type=int, default=0,
+                        help="Use pooled/QC samples (custom get_data pool branch)")
+    parser.add_argument("--zinb",           type=int, default=0,
+                        help="ZINB reconstruction (used by amide/mice getters)")
     parser.add_argument("--dloss",          type=str, default="inverseTriplet")
+    parser.add_argument("--class_triplet",  type=int, default=0,
+                        help="Add a class-based triplet loss on embeddings (combinable with dloss)")
+    parser.add_argument("--class_triplet_w", type=float, default=1.0,
+                        help="Weight of the class-based triplet loss")
     parser.add_argument("--variational",    type=int, default=0)
+    parser.add_argument("--rec_loss",       type=str, default="l1", choices=["mse", "l1"])
     parser.add_argument("--n_epochs",       type=int, default=200)
     parser.add_argument("--early_stop",     type=int, default=30)
     parser.add_argument("--bs",             type=int, default=32)
@@ -490,41 +542,58 @@ if __name__ == "__main__":
     parser.add_argument("--exp_id",         type=str, default="ae_head_sweep")
     parser.add_argument("--storage",        type=str, default=None)
     parser.add_argument("--study_name",     type=str, default=None)
+    # Accepted for CLI-parity with train_ae_then_classifier_holdout.py
+    parser.add_argument("--train_after_warmup", type=int, default=0)
+    parser.add_argument("--bdisc",          type=int, default=1)
+    parser.add_argument("--use_mapping",    type=int, default=1)
+    parser.add_argument("--kan",            type=int, default=0)
+    parser.add_argument("--n_repeats",      type=int, default=1,
+                        help="Accepted for CLI-parity; each trial fits/scores a head per epoch")
 
     args = parser.parse_args()
     args.variational  = bool(args.variational)
     args.groupkfold   = bool(args.groupkfold)
     args.log1p        = bool(args.log1p)
     args.remove_zeros = bool(args.remove_zeros)
-    args.use_mapping  = True
-    args.kan          = False
+    args.pool         = bool(args.pool)
+    args.zinb         = bool(args.zinb)
+    args.use_mapping  = bool(args.use_mapping)
+    args.kan          = bool(args.kan)
+    args.bdisc        = bool(args.bdisc)
+    args.class_triplet = bool(args.class_triplet)
+    args.train_after_warmup = bool(args.train_after_warmup)
     args.use_l1       = False
     args.prune_network = False
     args.tied_weights  = False
     args.n_layers      = 1
     args.layer1        = 256
     args.n_agg         = 1
-    args.bdisc         = True
     args.update_grid   = False
     args.warmup        = 0  # no warmup phase
+
+    # Fill any remaining trainer-expected attributes (scheduler, clip_val,
+    # early_warmup_stop, classif_loss, use_sigmoid, random_recs, ...) from the
+    # TrainingConfig defaults, without clobbering the CLI/data-loader fields.
+    from bernn.config.training_config import TrainingConfig
+    _cfg_defaults = TrainingConfig()
+    for _f in TrainingConfig.__dataclass_fields__.values():
+        if not hasattr(args, _f.name):
+            setattr(args, _f.name, getattr(_cfg_defaults, _f.name))
 
     if not torch.cuda.is_available() or args.device.startswith("cpu"):
         args.device = "cpu"
 
-    from bernn.utils.data_getters import get_data
-    data, unique_labels, unique_batches = get_data(
-        path=args.path, dataset=args.dataset, csv_file=args.csv_file,
-        features_to_keep=args.features_to_keep, bad_batches=args.bad_batches,
-        remove_zeros=args.remove_zeros, groupkfold=args.groupkfold, log1p=args.log1p,
-    )
+    from bernn.utils.data_getters import load_data_for_args
+    data, unique_labels, unique_batches = load_data_for_args(args.path, args)
 
     trainer = TrainAEHead(
-        args, args.path,
+        args,
         fix_thres=-1, load_tb=False, log_metrics=False, keep_models=False,
         log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False,
         groupkfold=args.groupkfold, pools=True,
     )
-    trainer.data          = data
+    trainer.path           = args.path
+    trainer.data           = data
     trainer.unique_labels  = unique_labels
     trainer.unique_batches = unique_batches
 

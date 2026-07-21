@@ -686,6 +686,10 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')
+    parser.add_argument('--class_triplet', type=int, default=0,
+                        help='Add a class-based triplet loss on embeddings (combinable with dloss)')
+    parser.add_argument('--class_triplet_w', type=float, default=1.0,
+                        help='Weight of the class-based triplet loss')
     parser.add_argument('--csv_file', type=str, default='matrix.csv')
     parser.add_argument('--best_features_file', type=str, default='')  # best_unique_genes.tsv
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15

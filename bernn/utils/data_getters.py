@@ -1039,6 +1039,35 @@ def get_bacteria_images_ms2(path, args, seed=42):
     return data, unique_labels, unique_batches
 
 
+def load_data_for_args(path, args, seed=42):
+    """Dispatch to the correct dataset getter based on ``args.dataset``.
+
+    Mirrors the dispatch already used across the training entrypoints
+    (``train_ae_then_classifier.py``, ``train_aecnn_classifier_holdout.py``):
+    dedicated getters for alzheimer/amide/mice, and the generic custom-CSV
+    ``get_data`` loader for everything else (e.g. ``custom``, ``prostate``).
+
+    All getters take the ``args`` object positionally and read their options
+    off it (``args.csv_file``, ``args.remove_zeros``, ``args.groupkfold``,
+    ``args.log1p``, ``args.pool`` ...), so callers must build an ``args``-like
+    namespace rather than passing loose keyword arguments.
+
+    Returns:
+        data, unique_labels, unique_batches
+    """
+    dataset = getattr(args, 'dataset', 'custom')
+    if dataset == 'alzheimer':
+        return get_alzheimer(path, args, seed=seed)
+    elif dataset == 'amide':
+        return get_amide(path, args, seed=seed)
+    elif dataset == 'mice':
+        return get_mice(path, args, seed=seed)
+    elif dataset == 'dummy':
+        return get_dummy(args, seed=seed)
+    else:
+        return get_data(path, args, seed=seed)
+
+
 def get_dummy(args, seed=42):
     """
     Generate a small synthetic dataset with the expected structure.

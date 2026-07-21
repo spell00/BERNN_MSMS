@@ -123,6 +123,7 @@ if AX_AVAILABLE:
                         raw_data={objective_name: (mean, sem)},
                     )
                 except Exception as exc:
+                    print(f"[ax_compat] Trial {trial_index} failed: {exc!r}")
                     client.mark_trial_failed(trial_index=trial_index, failed_reason=str(exc))
 
         best_parameters, best_metrics, _trial_index, _arm_name = client.get_best_parameterization(

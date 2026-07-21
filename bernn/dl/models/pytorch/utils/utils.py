@@ -23,6 +23,49 @@ from skopt import gp_minimize
 from .....ml.train.params_gp import *
 
 
+def compute_class_triplet(ae, enc, pos_to_rec, neg_to_rec, domain, device,
+                          margin=1.0, mapping=True):
+    """Class-based triplet loss on the AE embeddings (supervised metric learning).
+
+    Pulls same-class embeddings together and pushes different-class embeddings
+    apart:
+
+        anchor   = ``enc``        (embeddings of the current samples)
+        positive = encode(``pos_to_rec``)   (a same-class sample)
+        negative = encode(``neg_to_rec``)   (a different-class sample)
+
+    ``pos_to_rec`` / ``neg_to_rec`` are produced for every sample by the dataset
+    ``__getitem__`` (same-class / different-class draws), so this works in every
+    trainer without any change to the data pipeline. It is additive and
+    combinable with any batch-effect ``dloss`` (e.g. inverseTriplet / DANN).
+
+    Args:
+        ae: the autoencoder (its forward returns ``(enc, rec, zinb, kld)``).
+        enc: embeddings of the current batch (the triplet anchor).
+        pos_to_rec: same-class sample tensor from the loader.
+        neg_to_rec: different-class sample tensor from the loader.
+        domain: batch/domain tensor passed to the AE forward.
+        device: torch device string.
+        margin: TripletMarginLoss margin.
+        mapping: whether to use batch mapping in the AE forward (dense AEs).
+
+    Returns:
+        Scalar triplet loss tensor (requires grad).
+    """
+    import torch.nn as nn
+    triplet = nn.TripletMarginLoss(margin, p=2, swap=True)
+    pos = pos_to_rec.to(device).float()
+    neg = neg_to_rec.to(device).float()
+    try:
+        pos_enc = ae(pos, pos, domain, sampling=True, mapping=mapping)[0]
+        neg_enc = ae(neg, neg, domain, sampling=True, mapping=mapping)[0]
+    except TypeError:
+        # CNN / ResNet AE variants whose forward has no ``mapping`` kwarg.
+        pos_enc = ae(pos, pos, domain, sampling=True)[0]
+        neg_enc = ae(neg, neg, domain, sampling=True)[0]
+    return triplet(enc, pos_enc, neg_enc)
+
+
 def _tf_make_ndarray(tensor_proto):
     if tf is None:
         raise ImportError(
@@ -106,7 +149,7 @@ def plot_confusion_matrix(cm, class_names, acc):
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title(f"Confusion matrix (Acc: {np.round(np.mean(acc), 2)})")
     plt.colorbar()
-    plt.grid(b=None)
+    plt.grid(visible=None)
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=45)
     plt.yticks(tick_marks, class_names)

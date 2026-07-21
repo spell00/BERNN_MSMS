@@ -22,7 +22,7 @@ from ..models.pytorch.utils.loggings import log_metrics, \
 from bernn.utils.mlflow_compat import mlflow
 from bernn.utils.utils import to_csv
 from ..models.pytorch.utils.utils import to_categorical, get_empty_traces, \
-    log_traces, add_to_mlflow
+    log_traces, add_to_mlflow, compute_class_triplet
 from ..models.pytorch.utils.loggings import make_data
 import warnings
 from bernn.utils.data_getters import get_alzheimer, get_amide, get_mice, get_data, get_dummy
@@ -429,14 +429,24 @@ class TrainAE:
             batch_map = {b: i for i, b in enumerate(self.unique_batches)}
             self.data['batches']['train'] = np.array([batch_map[b] for b in self.data['batches']['train']])
             self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
-            # Assign test directly
+            # Assign test
             if not isinstance(groups_test, np.ndarray):
                 groups_test = np.array(groups_test)
             if not isinstance(X_test, pd.DataFrame):
                 X_test = pd.DataFrame(X_test)
             self.data['inputs']['test'] = X_test
             self.data['labels']['test'] = y_test
-            self.data['batches']['test'] = groups_test
+            # Map test batches through the same batch_map so every split uses
+            # consistent integer batch ids. Leaving test as raw values mixed
+            # str/int in data['batches']['all'] and broke np.unique in scale_data.
+            # Batches present only in test get new indices appended.
+            mapped_test = []
+            for b in groups_test:
+                if b not in batch_map:
+                    batch_map[b] = len(batch_map)
+                mapped_test.append(batch_map[b])
+            self.data['batches']['test'] = np.array(mapped_test)
+            self.unique_batches = np.array(list(batch_map.keys()))
         # If only valid is provided (not supported)
         elif X_valid is not None and y_valid is not None:
             raise ValueError("Cannot provide only valid set without test set. Please provide test set or use only train/valid split.")
@@ -650,10 +660,15 @@ class TrainAE:
         self.seed = 0
         self.combinations = []
         self._knn_ready = False
-        # Optionally clear best model tracking if you want each fit to be independent
+        # Clear best-model tracking so each fit/trial is independent. This is
+        # required because Ax trials reuse the same trainer but build models of
+        # different widths (layer1 is searched); without resetting, a trial that
+        # fails to beat the previous best valid MCC would try to restore the
+        # prior trial's differently-shaped state_dict and raise a size mismatch.
         self.best_mcc = -1
-        # self.best_checkpoint_path = None
-        # self.best_model_state = None
+        self.best_valid_mcc = float("-inf")
+        self.best_state_dicts = None
+        self.best_epoch = None
 
     def _train(self, params=None):
         """
@@ -1480,10 +1495,14 @@ class TrainAE:
             mseloss = nn.L1Loss()
         if scale == "binarize":
             mseloss = nn.BCELoss()
-        if dloss == 'revTriplet' or dloss == 'inverseTriplet':
+        # Build a triplet loss for the batch-effect dloss, or for the additive
+        # class-based triplet loss (which reuses the same margin).
+        if dloss in ('revTriplet', 'inverseTriplet') or getattr(self.args, 'class_triplet', False):
             triplet_loss = nn.TripletMarginLoss(margin, p=2, swap=True)
         else:
             triplet_loss = None
+        # Remember the margin so loops that only have class_triplet can rebuild it.
+        self.class_triplet_margin = margin
 
         return sceloss, celoss, mseloss, triplet_loss
 
@@ -1713,6 +1732,13 @@ class TrainAE:
             else:
                 l1_loss = torch.zeros(1).to(self.args.device)[0]
             loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + l1_loss
+            # Additive class-based triplet loss (combinable with any batch dloss)
+            if getattr(self.args, 'class_triplet', False):
+                ct_loss = compute_class_triplet(
+                    ae, enc, pos_to_rec, neg_to_rec, domain, self.args.device,
+                    margin=getattr(self, 'class_triplet_margin', 1.0), mapping=mapping,
+                )
+                loss = loss + getattr(self.args, 'class_triplet_w', 1.0) * ct_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
                 return 0, ae, warmup
@@ -1911,6 +1937,10 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')
+    parser.add_argument('--class_triplet', type=int, default=0,
+                        help='Add a class-based triplet loss on embeddings (combinable with dloss)')
+    parser.add_argument('--class_triplet_w', type=float, default=1.0,
+                        help='Weight of the class-based triplet loss')
     parser.add_argument('--knn_n_neighbors', type=int, default=5, help='Number of neighbors for persistent KNN (triplet mode)')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv')
     parser.add_argument('--bad_batches', type=str, default='')  # 0;23;22;21;20;19;18;17;16;15

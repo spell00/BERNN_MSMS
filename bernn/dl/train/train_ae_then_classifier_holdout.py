@@ -43,7 +43,7 @@ from bernn.dl.models.pytorch.utils.utils import LogConfusionMatrix
 from bernn.dl.models.pytorch.utils.dataset import get_loaders, get_loaders_no_pool
 from bernn.utils.utils import scale_data
 from bernn.dl.models.pytorch.utils.utils import get_optimizer, get_empty_dicts, get_empty_traces, \
-    log_traces, get_best_values, add_to_logger, add_to_mlflow
+    log_traces, get_best_values, add_to_logger, add_to_mlflow, compute_class_triplet
 from bernn.utils.mlflow_compat import mlflow
 import warnings
 from datetime import datetime
@@ -109,6 +109,14 @@ def log_num_neurons(logger, n_neurons, init_n_neurons, mlops='mlflow', step=None
         step: Optional integer step/epoch for time-series logging.
     """
     metrics_to_log = {}
+
+    # Some model variants return scalar neuron counts (e.g. the non-KAN stubs
+    # return int 0) rather than the per-layer dicts this telemetry expects.
+    # Normalize to dicts so logging degrades gracefully instead of crashing.
+    if not isinstance(n_neurons, dict):
+        n_neurons = {"total": n_neurons}
+    if not isinstance(init_n_neurons, dict):
+        init_n_neurons = {"total": init_n_neurons}
 
     for key, count in n_neurons.items():
         if key in ["total", "total_neurons", "total_remaining"]:
@@ -395,7 +403,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
         scale = params['scaler']
         gamma = params['gamma']
         beta = params['beta']
-        zeta = params['zeta']
+        zeta = params.get('zeta', 0)  # zinb weight; not in the Ax search space
         wd = params['wd']
         nu = params['nu']
         lr = params['lr']
@@ -604,11 +612,15 @@ class TrainAEThenClassifierHoldout(TrainAE):
             values, best_values, _, best_traces = get_empty_dicts()
 
             best_vals = values
-            if self.rep > 1:  # or warmup_counter == 100:
+            # rep starts at 0 and is reset to 0 per Ax trial via _reset_counts(),
+            # so the warmup phase must run on rep 0 (the first/only repeat). The
+            # old `== 1` / `> 1` guards were dead code and silently skipped warmup
+            # (and therefore the class-triplet loss, which is applied only here).
+            if self.rep > 0:  # or warmup_counter == 100:
                 ae.load_state_dict(torch.load(f'{self.complete_log_path}/warmup.pth'))
                 print(f"\n\nNO WARMUP\n\n")
             # while new_combinations:
-            if self.rep == 1:
+            if self.rep == 0:
                 for epoch in range(0, self.args.warmup):
                     lists, traces = get_empty_traces()
                     ae.train()
@@ -702,8 +714,14 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             except:
                                 pass
                             if warmup or self.args.train_after_warmup and not warmup_disc_b:
-                                # (rec_loss + gamma * dloss + beta * kld.mean()).backward()
-                                (rec_loss + gamma * dloss + beta * kld.mean() + zeta * zinb_loss + l1_loss).backward()
+                                ae_loss = rec_loss + gamma * dloss + beta * kld.mean() + zeta * zinb_loss + l1_loss
+                                # Additive class-based triplet loss on embeddings
+                                if getattr(self.args, 'class_triplet', False):
+                                    ae_loss = ae_loss + getattr(self.args, 'class_triplet_w', 1.0) * compute_class_triplet(
+                                        ae, enc, pos_to_rec, neg_to_rec, domain, self.args.device,
+                                        margin=margin, mapping=getattr(self.args, 'use_mapping', True),
+                                    )
+                                ae_loss.backward()
                                 nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
                                 optimizer_ae.step()
                             # self.prune_neurons(ae, threshold=params['prune_threshold'])
@@ -811,14 +829,13 @@ class TrainAEThenClassifierHoldout(TrainAE):
                         mlflow.end_run()
                     return best_loss
 
-                # Below is the loop for all sets
+                # Below is the loop for all sets (evaluation/metrics only; the
+                # classifier was already trained above via train_classifier).
                 with torch.no_grad():
                     for group in list(data['inputs'].keys()):
                         if group in ['all', 'all_pool']:
                             continue
                         closs, lists, traces = self.loop(group, optimizer_c, ae, sceloss, loaders[group], lists, traces, nu=0)
-                    closs, _, _ = self.loop('train', optimizer_ae, ae, sceloss,
-                                            loaders['train'], lists, traces, nu=nu)
 
                 traces = self.get_mccs(lists, traces)
                 values = log_traces(traces, values)
@@ -831,14 +848,14 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     add_to_mlflow(values, epoch)
                 if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
                         values['valid']['mcc']) > self.args.n_agg:
-                    print(f"Best Classification Mcc Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]}"
-                          f"Mcc: {values['test']['mcc'][-1]}"
-                          f"Classification train loss: {values['train']['closs'][-1]},"
-                          f" valid loss: {values['valid']['closs'][-1]},"
-                          f" test loss: {values['test']['closs'][-1]}")
+                    print(f"[Best valid MCC] Epoch {epoch} | "
+                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                          f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
                     best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
                     torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}.pth')
+                    self._save_best_model_state(epoch, best_mcc)
                     best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
                     best_vals = values.copy()
                     best_vals['rec_loss'] = best_loss
@@ -847,23 +864,21 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     early_stop_counter = 0
 
                 if values['valid']['acc'][-1] > best_acc:
-                    print(f"Best Classification Acc Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]}"
-                          f"Mcc: {values['test']['mcc'][-1]}"
-                          f"Classification train loss: {values['train']['closs'][-1]},"
-                          f" valid loss: {values['valid']['closs'][-1]},"
-                          f" test loss: {values['test']['closs'][-1]}")
+                    print(f"[Best valid acc] Epoch {epoch} | "
+                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                          f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
 
                     best_acc = values['valid']['acc'][-1]
                     early_stop_counter = 0
 
                 if values['valid']['closs'][-1] < best_closs:
-                    print(f"Best Classification Loss Epoch {epoch}, "
-                          f"Acc: {values['test']['acc'][-1]} "
-                          f"Mcc: {values['test']['mcc'][-1]} "
-                          f"Classification train loss: {values['train']['closs'][-1]}, "
-                          f"valid loss: {values['valid']['closs'][-1]}, "
-                          f"test loss: {values['test']['closs'][-1]}")
+                    print(f"[Best valid loss] Epoch {epoch} | "
+                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                          f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
                     best_closs = values['valid']['closs'][-1]
                     early_stop_counter = 0
                 else:
@@ -909,7 +924,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                                           mapping=False)  # -1
             best_closses += [best_closs]
             self.log_rep(best_lists, best_vals, best_values, traces, metrics, run, loggers, ae,
-                         shap_ae if self.use_shap else None, h, epoch)
+                         shap_ae if self.use_shap else None, self.rep, epoch)
             self.ae = ae
             del ae, shap_ae
 
@@ -988,6 +1003,10 @@ if __name__ == "__main__":
     parser.add_argument('--bdisc', type=int, default=1)
     parser.add_argument('--n_repeats', type=int, default=5)
     parser.add_argument('--dloss', type=str, default='inverseTriplet')  # one of revDANN, DANN, inverseTriplet, revTriplet
+    parser.add_argument('--class_triplet', type=int, default=0,
+                        help='Add a class-based triplet loss on embeddings (combinable with dloss)')
+    parser.add_argument('--class_triplet_w', type=float, default=1.0,
+                        help='Weight of the class-based triplet loss')
     parser.add_argument('--csv_file', type=str, default='unique_genes.csv', help='')
     parser.add_argument('--bad_batches', type=str, default='', help='0;23;22;21;20;19;18;17;16;15')
     parser.add_argument('--remove_zeros', type=int, default=0)
@@ -1054,20 +1073,29 @@ if __name__ == "__main__":
     print(f"Loading data from {csv_path}...")
     df = pd.read_csv(csv_path, index_col=0)
     
-    # Improved heuristic to find labels and groups
+    # Improved heuristic to find labels and groups (accept singular/plural names)
     y = None
-    if 'labels' in df.columns:
-        y = df['labels'].values
-    elif 'group' in df.columns:
-        y = df['group'].values
-        
+    for label_col in ('labels', 'label', 'group'):
+        if label_col in df.columns:
+            y = df[label_col].values
+            break
+    if y is None:
+        raise ValueError(
+            f"Could not find a label column in {csv_path}. "
+            f"Expected one of: 'labels', 'label', 'group'. Found columns: {list(df.columns[:5])}..."
+        )
+
     groups = None
-    if 'batches' in df.columns:
-        groups = df['batches'].values
-    elif 'batch' in df.columns:
-        groups = df['batch'].values
-        
-    X = df.drop(['labels', 'batches', 'group', 'batch'], axis=1, errors='ignore')
+    for batch_col in ('batches', 'batch'):
+        if batch_col in df.columns:
+            groups = df[batch_col].values
+            break
+
+    X = df.drop(['labels', 'label', 'batches', 'batch', 'group'], axis=1, errors='ignore')
+    # Fill missing intensities with 0 (mirrors get_data's .fillna(0)). Without
+    # this, per-batch scalers hit all-NaN feature columns and emit NaN, which
+    # then propagates to NaN encodings and aborts training.
+    X = X.fillna(0)
 
     from sklearn.model_selection import train_test_split
     if groups is not None:
@@ -1094,7 +1122,8 @@ if __name__ == "__main__":
         # {"name": "wd_b", "type": "range", "bounds": [1e-8, 1e-5], "log_scale": True},
         {"name": "smoothing", "type": "range", "bounds": [0., 0.2]},
         {"name": "margin", "type": "range", "bounds": [0., 10.]},
-        {"name": "warmup", "type": "range", "bounds": [1, args.max_warmup]},
+        # warmup is added below: as a search range only when max_warmup > 1,
+        # otherwise as a fixed value (an invalid [1, 0] range crashes Ax).
         # {"name": "disc_b_warmup", "type": "range", "bounds": [1, 2]},
 
         {"name": "dropout", "type": "range", "bounds": [0.0, 0.5]},
@@ -1123,8 +1152,21 @@ if __name__ == "__main__":
     if train.config.prune_network:
         parameters += [{"name": "prune_threshold", "type": "range", "bounds": [1e-3, 3e-3], "log_scale": True}]
 
+    # warmup: only a searchable range when max_warmup > 1; otherwise fixed
+    # (avoids Ax's invalid [1, 0] range and guarantees params['warmup'] exists).
+    if args.max_warmup and args.max_warmup > 1:
+        parameters += [{"name": "warmup", "type": "range", "bounds": [1, int(args.max_warmup)]}]
+
     parameters = train.config.filter_optimizable_parameters(parameters)
     fixed_hparams = train.config.get_fixed_hyperparams()
+    if not (args.max_warmup and args.max_warmup > 1):
+        fixed_hparams['warmup'] = int(args.max_warmup) if args.max_warmup else 0
+        if fixed_hparams['warmup'] > 0 and getattr(args, 'class_triplet', 0):
+            print(f"[class_triplet] warmup fixed to {fixed_hparams['warmup']} "
+                  f"(class-triplet loss is applied during the warmup phase).")
+        elif getattr(args, 'class_triplet', 0):
+            print("[class_triplet] WARNING: --max_warmup=0 means no warmup phase, "
+                  "so the class-triplet loss will NOT be applied. Set --max_warmup>0.")
 
     def ax_eval(parameterization):
         trial_params = dict(parameterization)
@@ -1132,8 +1174,16 @@ if __name__ == "__main__":
             if key == 'n_layers' or key.startswith('layer'):
                 trial_params[key] = int(value)
         trial_params.update(fixed_hparams)
-        train.fit(X_train, y_train, groups_train=g_train, X_test=X_test, y_test=y_test, groups_test=g_test, params=trial_params)
-        return float(train.best_mcc)
+        try:
+            train.fit(X_train, y_train, groups_train=g_train, X_test=X_test, y_test=y_test, groups_test=g_test, params=trial_params)
+            mcc = float(train.best_mcc)
+        finally:
+            # Reset per-fit state (combinations, seed, rep, best_mcc) so each Ax
+            # trial is independent. Without this, self.combinations accumulates
+            # across trials (the train object is reused) and every trial after
+            # the first hits the groupkfold `return -1`, so no epoch ever runs.
+            train._reset_counts()
+        return mcc
 
     if not train.config.optimize_hyperparams or len(parameters) == 0:
         print("Hyperparameter optimization disabled or no free parameters; running a single training with fixed/default params.")

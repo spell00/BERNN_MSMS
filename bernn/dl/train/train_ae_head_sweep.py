@@ -65,6 +65,7 @@ from bernn.dl.models.pytorch.utils.utils import (
     get_empty_traces,
     get_optimizer,
     to_categorical,
+    compute_class_triplet,
 )
 from bernn.dl.train.head_classifier import (
     HEAD_TYPES,
@@ -74,7 +75,7 @@ from bernn.dl.train.head_classifier import (
     sweep_all_heads,
 )
 from bernn.utils.mlflow_compat import mlflow
-from bernn.utils.data_getters import get_data
+from bernn.utils.data_getters import load_data_for_args
 
 try:
     import xgboost  # noqa: F401
@@ -223,16 +224,21 @@ class AEHeadSweepTrainer:
         args = self.args
         n_features = self.data["inputs"]["train"].shape[1]
         ae = AutoEncoder(
-            n_features=n_features,
-            n_cats=len(self.unique_labels),
+            n_features,
             n_batches=len(self.unique_batches),
-            z_dim=layer2,
+            nb_classes=len(self.unique_labels),
+            mapper=getattr(args, "use_mapping", False),
+            variational=getattr(args, "variational", False),
             layer1=layer1,
             layer2=layer2,
-            variational=getattr(args, "variational", False),
-            nb=False,
-            add_noise=False,
+            dropout=0.0,
+            n_layers=2,
+            prune_threshold=0.0,
+            conditional=False,
+            add_noise=0,
             tied_weights=getattr(args, "tied_weights", False),
+            update_grid=False,
+            device=args.device,
         ).to(args.device)
         return ae
 
@@ -321,6 +327,12 @@ class AEHeadSweepTrainer:
                 c_loss = sceloss(preds, cats.argmax(1))
 
                 loss = rec_loss_val + gamma * d_loss + c_loss
+                # Additive class-based triplet loss on embeddings
+                if getattr(args, "class_triplet", False) and pos_to_rec is not None:
+                    loss = loss + getattr(args, "class_triplet_w", 1.0) * compute_class_triplet(
+                        ae, enc, pos_to_rec, neg_to_rec, domain, args.device,
+                        margin=params.get("margin", 1.0), mapping=False,
+                    )
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(ae.parameters(), 1.0)
                 optimizer_ae.step()
@@ -380,29 +392,19 @@ class AEHeadSweepTrainer:
         self.args.scaler = ae_params.get("scaler", "standard")
         self.args.ncols  = ae_params.get("ncols", -1)
 
+        import copy as _copy
+        from bernn.utils.utils import scale_data
+        data = _copy.deepcopy(self.data)
+        data, _ = scale_data(self.args.scaler, data, args.device)
+        for g in list(data["inputs"].keys()):
+            data["inputs"][g] = data["inputs"][g].round(4)
+
+        dloss = getattr(args, "dloss", "inverseTriplet")
+        bs = getattr(args, "bs", 32)
         try:
-            loaders = get_loaders(
-                data=self.data,
-                random_recs=False,
-                weighted_sampler=False,
-                is_transform=False,
-                samples_weights=None,
-                epoch=0,
-                unique_labels=self.unique_labels,
-                triplet_dloss=getattr(args, "dloss", "inverseTriplet"),
-                bs=getattr(args, "bs", 32),
-            )
+            loaders = get_loaders(data, False, None, dloss, None, None, bs, args.device)
         except Exception:
-            loaders = get_loaders_no_pool(
-                data=self.data,
-                random_recs=False,
-                weighted_sampler=False,
-                is_transform=False,
-                samples_weights=None,
-                unique_labels=self.unique_labels,
-                triplet_dloss=getattr(args, "dloss", "inverseTriplet"),
-                bs=getattr(args, "bs", 32),
-            )
+            loaders = get_loaders_no_pool(data, False, None, dloss, None, None, bs, args.device)
 
         # Step 1: train AE encoder
         try:
@@ -542,13 +544,26 @@ if __name__ == "__main__":
     parser.add_argument("--remove_zeros",   type=int, default=1)
     parser.add_argument("--groupkfold",     type=int, default=1)
     parser.add_argument("--log1p",          type=int, default=1)
+    parser.add_argument("--pool",           type=int, default=0,
+                        help="Use pooled/QC samples (custom get_data pool branch)")
+    parser.add_argument("--zinb",           type=int, default=0,
+                        help="ZINB reconstruction (used by amide/mice getters)")
     # Model
     parser.add_argument("--dloss",          type=str, default="inverseTriplet",
                         choices=["revDANN", "DANN", "inverseTriplet", "revTriplet", "normae", "no"])
+    parser.add_argument("--class_triplet",  type=int, default=0,
+                        help="Add a class-based triplet loss on embeddings (combinable with dloss)")
+    parser.add_argument("--class_triplet_w", type=float, default=1.0,
+                        help="Weight of the class-based triplet loss")
     parser.add_argument("--variational",    type=int, default=0)
     parser.add_argument("--tied_weights",   type=int, default=0)
     parser.add_argument("--rec_loss",       type=str, default="mse", choices=["mse", "l1"])
     parser.add_argument("--device",         type=str, default="cuda:0")
+    # Accepted for CLI-parity with train_ae_then_classifier_holdout.py
+    parser.add_argument("--train_after_warmup", type=int, default=0)
+    parser.add_argument("--bdisc",          type=int, default=1)
+    parser.add_argument("--use_mapping",    type=int, default=1)
+    parser.add_argument("--kan",            type=int, default=0)
     # Training
     parser.add_argument("--n_epochs",       type=int, default=200)
     parser.add_argument("--early_stop",     type=int, default=30)
@@ -557,6 +572,8 @@ if __name__ == "__main__":
                         help="Number of CV folds for head evaluation (same as Optuna sweep criterion)")
     # Sweep
     parser.add_argument("--n_trials",       type=int, default=100)
+    parser.add_argument("--n_repeats",      type=int, default=1,
+                        help="Accepted for CLI-parity; the sweep evaluates via n_cv folds")
     parser.add_argument("--exp_id",         type=str, default="bernn_head_sweep")
     parser.add_argument("--storage",        type=str, default=None,
                         help="Optuna storage URL, e.g. sqlite:///sweep.db")
@@ -570,21 +587,16 @@ if __name__ == "__main__":
     args.groupkfold   = bool(args.groupkfold)
     args.log1p        = bool(args.log1p)
     args.remove_zeros = bool(args.remove_zeros)
+    args.pool         = bool(args.pool)
+    args.zinb         = bool(args.zinb)
+    args.class_triplet = bool(args.class_triplet)
 
     if not torch.cuda.is_available() or args.device.startswith("cpu"):
         args.device = "cpu"
 
-    # Load data
-    data, unique_labels, unique_batches = get_data(
-        path=args.path,
-        dataset=args.dataset,
-        csv_file=args.csv_file,
-        features_to_keep=args.features_to_keep,
-        bad_batches=args.bad_batches,
-        remove_zeros=args.remove_zeros,
-        groupkfold=args.groupkfold,
-        log1p=args.log1p,
-    )
+    # Load data — getters read options off the args object and dispatch on
+    # args.dataset (alzheimer/amide/mice → dedicated; else generic custom CSV).
+    data, unique_labels, unique_batches = load_data_for_args(args.path, args)
 
     # Optional: create MLflow experiment
     if args.log_mlflow:
