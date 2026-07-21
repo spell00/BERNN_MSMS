@@ -105,18 +105,125 @@ def extract_embeddings(
     device: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return (embeddings, labels) for the entire loader, encoder frozen."""
+    X, y, _batches = extract_embeddings_labels_batches(ae, loader, device)
+    return X, y
+
+
+@torch.no_grad()
+def extract_embeddings_labels_batches(
+    ae: torch.nn.Module,
+    loader: torch.utils.data.DataLoader,
+    device: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (embeddings, labels, batches) for the entire loader."""
     ae.eval()
-    all_enc, all_labels = [], []
+    all_enc, all_labels, all_batches = [], [], []
     for batch in loader:
         inputs, _names, labels, domain, to_rec = batch[:5]
         inputs = inputs.to(device).float()
-        to_rec  = to_rec.to(device).float()
+        to_rec = to_rec.to(device).float()
         enc, _rec, _zinb, _kld = ae(inputs, to_rec, domain, sampling=False)
         all_enc.append(enc.float().cpu().numpy())
         all_labels.extend(labels if isinstance(labels, list) else labels.tolist())
+        if hasattr(domain, "detach"):
+            all_batches.extend(domain.detach().cpu().numpy().tolist())
+        else:
+            all_batches.extend(list(domain))
     if not all_enc:
-        return np.empty((0,)), np.empty((0,))
-    return np.concatenate(all_enc, axis=0), np.array(all_labels)
+        return np.empty((0,)), np.empty((0,)), np.empty((0,))
+    return np.concatenate(all_enc, axis=0), np.array(all_labels), np.array(all_batches)
+
+
+def _predict_with_optional_label_decoder(head, X: np.ndarray) -> np.ndarray:
+    preds = head.predict(X)
+    le = getattr(head, "_bernn_label_encoder", None)
+    if le is not None:
+        preds = le.inverse_transform(np.asarray(preds).astype(int))
+    return np.asarray(preds)
+
+
+def _embedding_batch_effect_metrics(*splits) -> Dict[str, float]:
+    """Batch-effect metrics on frozen embeddings; lower is better."""
+    metrics = {
+        "batch_silhouette": 1.0,
+        "batch_centroid_dispersion": 1.0,
+        "batch_nbe": 1.0,
+        "batch_nmi": 1.0,
+        "batch_nri": 1.0,
+        "batch_metric_samples": 0.0,
+    }
+    try:
+        from sklearn.cluster import KMeans
+        from sklearn.decomposition import PCA
+        from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+
+        xs, bs = [], []
+        for X, batches in splits:
+            if X is None or len(X) == 0:
+                continue
+            xs.append(np.asarray(X, dtype=float))
+            bs.append(np.asarray(batches).astype(str))
+        if not xs:
+            return metrics
+        X_all = np.nan_to_num(np.concatenate(xs, axis=0), nan=0.0, posinf=0.0, neginf=0.0)
+        batches_all = np.concatenate(bs, axis=0)
+        metrics["batch_metric_samples"] = float(len(X_all))
+        unique_batches = np.unique(batches_all)
+        if len(X_all) < 3 or len(unique_batches) < 2:
+            return metrics
+
+        n_components = min(20, X_all.shape[1], max(1, X_all.shape[0] - 1))
+        values = PCA(n_components=n_components).fit_transform(X_all) if X_all.shape[1] > n_components else X_all
+
+        _, counts = np.unique(batches_all, return_counts=True)
+        if counts.min() >= 2:
+            sil = float(silhouette_score(values, batches_all))
+            metrics["batch_silhouette"] = float(np.clip(sil, 0.0, 1.0))
+
+        centroids = []
+        for batch in sorted(unique_batches):
+            mask = batches_all == batch
+            centroids.append(values[mask].mean(axis=0))
+        if len(centroids) >= 2:
+            centroid_arr = np.vstack(centroids)
+            diffs = centroid_arr[:, None, :] - centroid_arr[None, :, :]
+            dists = np.sqrt(np.sum(diffs ** 2, axis=2))
+            tri = dists[np.triu_indices(len(centroids), k=1)]
+            if tri.size:
+                centroid_disp = float(np.mean(tri))
+                global_center = np.mean(values, axis=0)
+                sample_disp = float(np.mean(np.linalg.norm(values - global_center, axis=1)))
+                denom = centroid_disp + sample_disp
+                metrics["batch_centroid_dispersion"] = float(np.clip(centroid_disp / denom, 0.0, 1.0)) if denom > 0 else 0.0
+
+        n_clusters = min(max(2, len(unique_batches)), len(values))
+        if n_clusters >= 2:
+            cluster_labels = KMeans(n_clusters=n_clusters, random_state=42, n_init=10).fit_predict(values)
+            _, batch_codes = np.unique(batches_all, return_inverse=True)
+            metrics["batch_nmi"] = float(np.clip(normalized_mutual_info_score(batch_codes, cluster_labels), 0.0, 1.0))
+            ari = float(adjusted_rand_score(batch_codes, cluster_labels))
+            metrics["batch_nri"] = float(np.clip(max(0.0, ari), 0.0, 1.0))
+
+            denom = np.log(max(len(unique_batches), 2))
+            entropies, weights = [], []
+            if denom > 0:
+                for cluster_id in sorted(np.unique(cluster_labels)):
+                    mask = cluster_labels == cluster_id
+                    cluster_batches = batches_all[mask]
+                    if len(cluster_batches) == 0:
+                        continue
+                    _, cts = np.unique(cluster_batches, return_counts=True)
+                    probs = cts.astype(float) / float(cts.sum())
+                    probs = probs[probs > 0]
+                    entropy = -float(np.sum(probs * np.log(probs))) / float(denom)
+                    entropies.append(entropy)
+                    weights.append(float(len(cluster_batches)))
+                if entropies and np.sum(weights) > 0:
+                    mean_entropy = float(np.average(entropies, weights=np.asarray(weights, dtype=float)))
+                    metrics["batch_nbe"] = float(np.clip(1.0 - mean_entropy, 0.0, 1.0))
+    except Exception:
+        pass
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -533,8 +640,9 @@ class AEHeadSweepTrainer:
             param.requires_grad = False
 
         try:
-            X_train, y_train = extract_embeddings(ae, loaders["train"], args.device)
-            X_valid, y_valid = extract_embeddings(ae, loaders["valid"], args.device)
+            X_train, y_train, b_train = extract_embeddings_labels_batches(ae, loaders["train"], args.device)
+            X_valid, y_valid, b_valid = extract_embeddings_labels_batches(ae, loaders["valid"], args.device)
+            X_test, y_test, b_test = extract_embeddings_labels_batches(ae, loaders["test"], args.device)
         except Exception as exc:
             trial.set_user_attr("embed_error", str(exc))
             return float("-inf")
@@ -542,33 +650,52 @@ class AEHeadSweepTrainer:
         if len(X_train) == 0 or len(X_valid) == 0:
             return float("-inf")
 
-        # Step 3: cv=3 head evaluation on training embeddings
-        cv_result = cv_score_head(
-            X_train, y_train,
-            head_type=head_type,
-            head_params=head_params,
-            n_splits=self.n_cv,
-            random_state=42,
-        )
-        cv_mcc = cv_result["mean_valid_mcc"]
-
-        # Also compute held-out valid_mcc for logging
+        # One public validation metric: fit the chosen head on train embeddings
+        # and score the held-out validation split. CV on train embeddings remains
+        # a diagnostic only; it is not the Optuna objective.
         try:
-            _, _, held_valid_mcc = fit_and_score_head(
+            fitted_head, train_mcc, valid_mcc = fit_and_score_head(
                 X_train, y_train, X_valid, y_valid, head_type, head_params
             )
+            if len(X_test):
+                from sklearn.metrics import matthews_corrcoef as _mcc
+                test_preds = _predict_with_optional_label_decoder(fitted_head, X_test)
+                test_mcc = float(_mcc(y_test, test_preds))
+            else:
+                test_mcc = float("nan")
+        except Exception as exc:
+            trial.set_user_attr("head_error", str(exc))
+            return float("-inf")
+
+        try:
+            cv_result = cv_score_head(
+                X_train, y_train,
+                head_type=head_type,
+                head_params=head_params,
+                n_splits=self.n_cv,
+                random_state=42,
+            )
+            head_cv_train_mcc = cv_result["mean_valid_mcc"]
         except Exception:
-            held_valid_mcc = float("nan")
+            head_cv_train_mcc = float("nan")
 
-        trial.set_user_attr("cv_valid_mcc",     cv_mcc)
-        trial.set_user_attr("held_valid_mcc",   held_valid_mcc)
-        trial.set_user_attr("ae_valid_mcc",     _ae_mcc)
-        trial.set_user_attr("head_type",        head_type)
-        trial.set_user_attr("head_params",      json.dumps(head_params))
+        batch_metrics = _embedding_batch_effect_metrics(
+            (X_train, b_train), (X_valid, b_valid), (X_test, b_test)
+        )
 
-        if cv_mcc > self.best_valid_mcc:
-            self.best_valid_mcc  = cv_mcc
-            self.best_head_type  = head_type
+        trial.set_user_attr("valid_mcc", valid_mcc)
+        trial.set_user_attr("test_mcc", test_mcc)
+        trial.set_user_attr("train_mcc", train_mcc)
+        trial.set_user_attr("head_cv_train_mcc", head_cv_train_mcc)
+        trial.set_user_attr("ae_classifier_mcc", _ae_mcc)
+        for _k, _v in batch_metrics.items():
+            trial.set_user_attr(_k, _v)
+        trial.set_user_attr("head_type", head_type)
+        trial.set_user_attr("head_params", json.dumps(head_params))
+
+        if valid_mcc > self.best_valid_mcc:
+            self.best_valid_mcc = valid_mcc
+            self.best_head_type = head_type
             self.best_head_params = head_params
 
         # MLflow logging (optional)
@@ -576,9 +703,13 @@ class AEHeadSweepTrainer:
             try:
                 with mlflow.start_run(nested=True):
                     mlflow.log_params({**ae_params, "head_type": head_type, **head_params})
-                    mlflow.log_metric("cv_valid_mcc",   cv_mcc)
-                    mlflow.log_metric("held_valid_mcc", held_valid_mcc)
-                    mlflow.log_metric("ae_valid_mcc",   _ae_mcc)
+                    mlflow.log_metric("valid_mcc", valid_mcc)
+                    mlflow.log_metric("test_mcc", test_mcc)
+                    mlflow.log_metric("train_mcc", train_mcc)
+                    mlflow.log_metric("head_cv_train_mcc", head_cv_train_mcc)
+                    mlflow.log_metric("ae_classifier_mcc", _ae_mcc)
+                    for _k, _v in batch_metrics.items():
+                        mlflow.log_metric(_k, _v)
             except Exception:
                 pass
 
@@ -586,10 +717,13 @@ class AEHeadSweepTrainer:
         if _wandb_run is not None:
             try:
                 _wandb_run.log({
-                    "trial/cv_mcc":    cv_mcc,
-                    "trial/held_mcc":  held_valid_mcc,
-                    "trial/ae_mcc":    _ae_mcc,
+                    "trial/valid_mcc": valid_mcc,
+                    "trial/test_mcc": test_mcc,
+                    "trial/train_mcc": train_mcc,
+                    "trial/head_cv_train_mcc": head_cv_train_mcc,
+                    "trial/ae_classifier_mcc": _ae_mcc,
                     "trial/head_type": head_type,
+                    **{f"trial/{_k}": _v for _k, _v in batch_metrics.items()},
                 })
                 _wandb_run.finish()
             except Exception:
@@ -604,9 +738,12 @@ class AEHeadSweepTrainer:
             _row = {
                 "trial":        trial.number,
                 "timestamp":    datetime.now().isoformat(timespec="seconds"),
-                "cv_mcc":       cv_mcc,
-                "held_mcc":     held_valid_mcc,
-                "ae_mcc":       _ae_mcc,
+                "valid_mcc":    valid_mcc,
+                "test_mcc":     test_mcc,
+                "train_mcc":    train_mcc,
+                "head_cv_train_mcc": head_cv_train_mcc,
+                "ae_classifier_mcc": _ae_mcc,
+                **batch_metrics,
                 "head_type":    head_type,
                 "dloss":        getattr(args, "dloss", ""),
                 "class_triplet": int(getattr(args, "class_triplet", False)),
@@ -629,7 +766,7 @@ class AEHeadSweepTrainer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        return cv_mcc if not np.isnan(cv_mcc) else float("-inf")
+        return valid_mcc if not np.isnan(valid_mcc) else float("-inf")
 
     # ------------------------------------------------------------------
     def run_sweep(self, n_trials: int = 100, study_name: Optional[str] = None,
@@ -659,18 +796,18 @@ class AEHeadSweepTrainer:
                 return
             cv    = trial_cb.value if trial_cb.value is not None else float("nan")
             head  = trial_cb.user_attrs.get("head_type", "?")
-            held  = trial_cb.user_attrs.get("held_valid_mcc", float("nan"))
-            ae_m  = trial_cb.user_attrs.get("ae_valid_mcc", float("-inf"))
+            test_m = trial_cb.user_attrs.get("test_mcc", float("nan"))
+            ae_m = trial_cb.user_attrs.get("ae_classifier_mcc", float("-inf"))
             try:
                 best = study_cb.best_value
             except Exception:
                 best = float("nan")
             ae_str   = f"{ae_m:+.3f}" if ae_m not in (float("-inf"), float("inf")) else "-inf"
-            held_str = f"{held:.3f}" if held == held else "nan"  # nan check
+            test_str = f"{test_m:.3f}" if test_m == test_m else "nan"  # nan check
             print(
                 f"[{_sweep_label}] trial {trial_cb.number+1:4d}/{n_trials}  "
-                f"cv_mcc={cv:7.4f}  head={head:<22s}"
-                f"held={held_str}  ae={ae_str}  best={best:.4f}",
+                f"valid_mcc={cv:7.4f}  head={head:<22s}"
+                f"test={test_str}  ae_cls={ae_str}  best={best:.4f}",
                 flush=True,
             )
 
@@ -693,10 +830,10 @@ def print_study_summary(study: "optuna.Study") -> None:
     print("BERNN Head Sweep – Best trial")
     print("=" * 60)
     t = study.best_trial
-    print(f"  Trial #{t.number}  cv_valid_mcc = {t.value:.4f}")
+    print(f"  Trial #{t.number}  valid_mcc = {t.value:.4f}")
     print(f"  head_type     = {t.user_attrs.get('head_type', 'unknown')}")
-    print(f"  held_valid_mcc = {t.user_attrs.get('held_valid_mcc', 'n/a')}")
-    print(f"  ae_valid_mcc  = {t.user_attrs.get('ae_valid_mcc', 'n/a')}")
+    print(f"  test_mcc      = {t.user_attrs.get('test_mcc', 'n/a')}")
+    print(f"  ae_classifier_mcc = {t.user_attrs.get('ae_classifier_mcc', 'n/a')}")
     print("\nBest params:")
     for k, v in t.params.items():
         print(f"    {k}: {v}")
@@ -810,11 +947,11 @@ if __name__ == "__main__":
     out_path = f"logs/head_sweep/{args.exp_id}_best_params.json"
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     best = {
-        "best_cv_valid_mcc": study.best_value,
+        "best_valid_mcc": study.best_value,
         "best_params":       study.best_trial.params,
         "best_head_type":    study.best_trial.user_attrs.get("head_type"),
-        "held_valid_mcc":    study.best_trial.user_attrs.get("held_valid_mcc"),
-        "ae_valid_mcc":      study.best_trial.user_attrs.get("ae_valid_mcc"),
+        "test_mcc":          study.best_trial.user_attrs.get("test_mcc"),
+        "ae_classifier_mcc": study.best_trial.user_attrs.get("ae_classifier_mcc"),
     }
     with open(out_path, "w") as f:
         json.dump(best, f, indent=2)

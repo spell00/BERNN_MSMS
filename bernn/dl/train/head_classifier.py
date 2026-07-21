@@ -304,6 +304,10 @@ def fit_and_score_head(
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         head.fit(X_train, y_train_fit)
+        if le is not None:
+            # Keep the encoder on the fitted head so callers that evaluate extra
+            # splits can decode XGBoost predictions consistently.
+            setattr(head, "_bernn_label_encoder", le)
         train_preds_raw = head.predict(X_train)
         valid_preds_raw = head.predict(X_valid)
 
