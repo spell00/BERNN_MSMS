@@ -528,6 +528,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     )
                     if valid_mcc_improved:
                         print(f"Best Classification Epoch {epoch} (best valid MCC), "
+                            f"Train MCC: {values['train']['mcc'][-1]}, "
                             f"Valid Acc: {values['valid']['acc'][-1]}, "
                             f"Valid MCC: {values['valid']['mcc'][-1]}, "
                             f"Classification train loss: {values['train']['closs'][-1]}, "
@@ -546,6 +547,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                     if values['valid']['acc'][-1] > best_acc:
                         print(f"Best Valid-Acc Diagnostic Epoch {epoch}, "
+                              f"Train MCC: {values['train']['mcc'][-1]}, "
                               f"Valid Acc: {values['valid']['acc'][-1]}, "
                               f"Valid MCC: {values['valid']['mcc'][-1]}, "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
@@ -556,6 +558,7 @@ class TrainAEClassifierHoldout(TrainAE):
 
                     if values['valid']['closs'][-1] < best_closs:
                         print(f"Lowest Valid-Loss Diagnostic Epoch {epoch}, "
+                              f"Train MCC: {values['train']['mcc'][-1]}, "
                               f"Valid Acc: {values['valid']['acc'][-1]}, "
                               f"Valid MCC: {values['valid']['mcc'][-1]}, "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
