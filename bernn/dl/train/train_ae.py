@@ -645,6 +645,20 @@ class TrainAE:
                 "BERNN fit finished but no model state was saved. "
                 "This likely means no training epoch completed."
             )
+        if X_valid is not None and y_valid is not None:
+            try:
+                valid_preds = self.predict(
+                    X_valid,
+                    groups_test=groups_valid,
+                    batches_test=groups_valid,
+                )
+                restored_valid_mcc = float(MCC(pd.Series(y_valid).astype(str), pd.Series(valid_preds).astype(str)))
+                self.best_mcc = restored_valid_mcc
+                self.best_valid_mcc = restored_valid_mcc
+                self.best_mcc_valid = restored_valid_mcc
+                print(f"[bernn] Restored-model valid MCC = {restored_valid_mcc:.4f}")
+            except Exception as exc:
+                print(f"[bernn] Warning: could not recompute restored-model valid MCC: {exc}")
         return self
 
     def fit_predict(self, X_train, y_train, *args, groups_train=None, params=None,
@@ -925,7 +939,7 @@ class TrainAE:
                 mapped.append(batch)
         return np.asarray(mapped)
 
-    def _prepare_prediction_matrix(self, X, groups_test=None, batches_test=None, groups=None):
+    def _prepare_prediction_matrix(self, X, groups_test=None, batches_test=None, groups=None, return_batch_ids=False):
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
         X = X.copy()
@@ -934,13 +948,13 @@ class TrainAE:
 
         scale = getattr(self.args, "scaler", None)
         scaler = getattr(self, "scaler", None)
+        batch_ids = self._prediction_batch_ids(
+            len(X), groups_test=groups_test, batches_test=batches_test, groups=groups
+        )
         if scale == "binarize":
             X[X > 0] = 1
             X[X <= 0] = 0
         elif isinstance(scaler, dict):
-            batch_ids = self._prediction_batch_ids(
-                len(X), groups_test=groups_test, batches_test=batches_test, groups=groups
-            )
             if batch_ids is None:
                 raise ValueError(
                     f"BERNN.predict requires groups_test/batches_test when using scaler='{scale}'."
@@ -956,7 +970,31 @@ class TrainAE:
         elif scaler is not None:
             X = pd.DataFrame(scaler.transform(X), columns=X.columns, index=X.index)
 
-        return X.round(4)
+        X = X.round(4)
+        if return_batch_ids:
+            return X, batch_ids
+        return X
+
+    def _predict_logits_from_batch(self, data, batch_ids=None):
+        if batch_ids is not None:
+            domains = torch.as_tensor(batch_ids, dtype=torch.long, device=data.device)
+            try:
+                enc, _, _, _ = self.ae(
+                    data,
+                    data,
+                    domains,
+                    sampling=False,
+                    mapping=getattr(self.args, "use_mapping", True),
+                )
+                return self.ae.classifier(enc)
+            except TypeError:
+                pass
+        if hasattr(self.ae, "predict_proba"):
+            probs = self.ae.predict_proba(data)
+            return torch.as_tensor(probs, dtype=torch.float32, device=data.device)
+        preds = self.ae.predict(data)
+        preds = torch.as_tensor(preds, dtype=torch.long, device=data.device)
+        return torch.nn.functional.one_hot(preds, num_classes=self.n_cats).float()
 
     def predict(self, X, groups_test=None, batches_test=None, groups=None):
         """
@@ -975,13 +1013,16 @@ class TrainAE:
         self.ae.enc.eval()
         self.ae.classifier.eval()
 
-        X = self._prepare_prediction_matrix(
-            X, groups_test=groups_test, batches_test=batches_test, groups=groups
+        X, batch_ids = self._prepare_prediction_matrix(
+            X, groups_test=groups_test, batches_test=batches_test, groups=groups, return_batch_ids=True
         )
 
         from torch.utils.data import DataLoader, TensorDataset
         device = getattr(self.args, 'device', 'cpu')
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        tensors = [torch.tensor(X.values, dtype=torch.float32)]
+        if batch_ids is not None:
+            tensors.append(torch.tensor(batch_ids, dtype=torch.long))
+        dataset = TensorDataset(*tensors)
         loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
 
         from tqdm import tqdm
@@ -989,7 +1030,9 @@ class TrainAE:
         with torch.no_grad():
             for batch in tqdm(loader, desc="Predicting", leave=False):
                 data = batch[0].to(device)
-                preds = np.asarray(self.ae.predict(data)).reshape(-1)
+                batch_domains = batch[1].to(device) if len(batch) > 1 else None
+                logits = self._predict_logits_from_batch(data, batch_domains)
+                preds = logits.argmax(1).detach().cpu().numpy()
                 preds_list.append(np.asarray(preds).reshape(-1))
 
         preds_numeric = np.concatenate(preds_list, axis=0).astype(np.int64)
@@ -1011,13 +1054,16 @@ class TrainAE:
 
         self.ae.eval()
 
-        X = self._prepare_prediction_matrix(
-            X, groups_test=groups_test, batches_test=batches_test, groups=groups
+        X, batch_ids = self._prepare_prediction_matrix(
+            X, groups_test=groups_test, batches_test=batches_test, groups=groups, return_batch_ids=True
         )
 
         from torch.utils.data import DataLoader, TensorDataset
         device = getattr(self.args, 'device', 'cpu')
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        tensors = [torch.tensor(X.values, dtype=torch.float32)]
+        if batch_ids is not None:
+            tensors.append(torch.tensor(batch_ids, dtype=torch.long))
+        dataset = TensorDataset(*tensors)
         loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
 
         from tqdm import tqdm
@@ -1025,7 +1071,12 @@ class TrainAE:
         with torch.no_grad():
             for batch in tqdm(loader, desc="Predicting probabilities", leave=False):
                 data = batch[0].to(device)
-                probs = np.asarray(self.ae.predict_proba(data))
+                batch_domains = batch[1].to(device) if len(batch) > 1 else None
+                if batch_domains is None and hasattr(self.ae, "predict_proba"):
+                    probs = np.asarray(self.ae.predict_proba(data))
+                else:
+                    logits = self._predict_logits_from_batch(data, batch_domains)
+                    probs = torch.nn.functional.softmax(logits, dim=1).detach().cpu().numpy()
                 proba_list.append(probs)
 
         probs = np.concatenate(proba_list, axis=0)

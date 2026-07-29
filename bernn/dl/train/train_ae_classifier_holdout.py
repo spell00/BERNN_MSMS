@@ -506,7 +506,7 @@ class TrainAEClassifierHoldout(TrainAE):
                             print(f"Problem with add_to_logger: {e}")
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
-                    valid_window = values['valid']['mcc'][-self.args.n_agg:]
+                    current_valid_mcc = values['valid']['mcc'][-1]
                     has_test_metrics = (
                         has_test_labels
                         and len(values['test']['mcc']) > 0
@@ -522,9 +522,8 @@ class TrainAEClassifierHoldout(TrainAE):
                     )
 
                     valid_mcc_improved = (
-                        len(valid_window) > 0
-                        and len(values['valid']['mcc']) >= self.args.n_agg
-                        and np.mean(valid_window) > best_mcc
+                        len(values['valid']['mcc']) > 0
+                        and current_valid_mcc > best_mcc
                     )
                     if valid_mcc_improved:
                         print(f"Best Classification Epoch {epoch} (best valid MCC), "
@@ -534,7 +533,7 @@ class TrainAEClassifierHoldout(TrainAE):
                             f"Classification train loss: {values['train']['closs'][-1]}, "
                             f"Valid loss: {values['valid']['closs'][-1]}"
                             f"{test_summary}")
-                        best_mcc = np.mean(valid_window)
+                        best_mcc = current_valid_mcc
                         torch.save(self.ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}_state.pth')
                         torch.save(self.ae, f'{self.complete_log_path}/model_{self.rep}.pth')
                         self._save_best_model_state(epoch, best_mcc)

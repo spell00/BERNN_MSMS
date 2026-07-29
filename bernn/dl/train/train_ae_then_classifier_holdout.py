@@ -862,8 +862,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     else ", Test metrics unavailable (no y_test)"
                 )
                 valid_mcc_improved = (
-                    np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc
-                    and len(values['valid']['mcc']) > self.args.n_agg
+                    len(values['valid']['mcc']) > 0
+                    and values['valid']['mcc'][-1] > best_mcc
                 )
                 if valid_mcc_improved:
                     print(f"Best Classification Epoch {epoch} (best valid MCC), "
@@ -873,7 +873,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                           f"Classification train loss: {values['train']['closs'][-1]:.3f}, "
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
                           f"{test_summary}")
-                    best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
+                    best_mcc = values['valid']['mcc'][-1]
                     torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}.pth')
                     self._save_best_model_state(epoch, best_mcc)
                     best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
