@@ -378,7 +378,7 @@ def test_prepare_data_numeric_train_string_test_labels(tmp_path):
 
 
 @pytest.mark.unit
-def test_holdout_fit_rejects_test_data_and_keeps_all_training_rows(tmp_path):
+def test_holdout_fit_accepts_external_validation_and_unlabeled_test(tmp_path):
     config = TrainingConfig(
         device="cpu",
         kan=False,
@@ -406,10 +406,37 @@ def test_holdout_fit_rejects_test_data_and_keeps_all_training_rows(tmp_path):
     y = pd.Series(["a", "b", "c"] * 4)
     groups = pd.Series(["batch0", "batch1"] * 6)
 
-    with pytest.raises(TypeError, match="does not accept holdout/test data"):
+    with pytest.raises(TypeError, match="requires external X_valid/y_valid"):
         trainer.fit(X, y, groups_train=groups, X_test=X.copy())
     with pytest.raises(TypeError, match="no longer accepts a test matrix"):
         trainer.fit_predict(X, y, X.copy(), groups_train=groups)
+
+    X_valid = pd.DataFrame(np.arange(8).reshape(4, 2), columns=["f0", "f1"])
+    y_valid = pd.Series(["a", "b", "c", "a"])
+    groups_valid = pd.Series(["valid0", "valid0", "valid1", "valid1"])
+    X_test = pd.DataFrame(np.arange(10).reshape(5, 2), columns=["f0", "f1"])
+    groups_test = pd.Series(["test0", "test0", "test1", "test1", "test1"])
+
+    trainer._prepare_data(
+        X=X,
+        y=y,
+        groups=groups,
+        X_valid=X_valid,
+        y_valid=y_valid,
+        groups_valid=groups_valid,
+        X_test=X_test,
+        groups_test=groups_test,
+        internal_validation=False,
+    )
+
+    assert trainer._no_internal_validation is True
+    assert len(trainer.data["inputs"]["train"]) == len(X)
+    assert len(trainer.data["inputs"]["valid"]) == len(X_valid)
+    assert len(trainer.data["inputs"]["test"]) == len(X_test)
+    assert set(trainer.data["labels"]["test"]) == {-1}
+    assert set(trainer.data["sets"]["train"]) == {"train"}
+    assert set(trainer.data["sets"]["valid"]) == {"valid"}
+    assert set(trainer.data["sets"]["test"]) == {"test"}
 
     trainer._prepare_data(X=X, y=y, groups=groups, internal_validation=False)
 

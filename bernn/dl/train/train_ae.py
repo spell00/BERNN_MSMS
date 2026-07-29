@@ -409,17 +409,52 @@ class TrainAE:
             self.data['labels']['test'] = y.copy()
             self.data['batches']['test'] = mapped_groups.copy()
             self.unique_batches = np.array(list(batch_map.keys()))
-        # If both valid and test are provided, assign directly
-        elif X_valid is not None and y_valid is not None and X_test is not None and y_test is not None:
+        # If external validation is provided, use it for monitor/early stopping.
+        # X_test may be unlabeled (hidden benchmark); use sentinel labels in that case.
+        elif X_valid is not None and y_valid is not None:
+            if not isinstance(X_valid, pd.DataFrame):
+                X_valid = pd.DataFrame(X_valid)
+            if groups_valid is None:
+                groups_valid = np.zeros(len(X_valid))
+            if not isinstance(groups_valid, np.ndarray):
+                groups_valid = np.array(groups_valid)
+            assert len(X_valid) == len(y_valid) == len(groups_valid), (
+                "X_valid, y_valid, groups_valid must have same length"
+            )
+
+            if X_test is None:
+                X_test = pd.DataFrame(columns=X.columns)
+                y_test_for_data = np.array([], dtype=int)
+                groups_test = np.array([])
+            else:
+                if not isinstance(X_test, pd.DataFrame):
+                    X_test = pd.DataFrame(X_test)
+                if groups_test is None:
+                    groups_test = np.zeros(len(X_test))
+                if not isinstance(groups_test, np.ndarray):
+                    groups_test = np.array(groups_test)
+                assert len(X_test) == len(groups_test), "X_test and groups_test must have same length"
+                if y_test is None:
+                    y_test_for_data = np.full(len(X_test), -1, dtype=int)
+                else:
+                    y_test_for_data = y_test
+                    assert len(X_test) == len(y_test_for_data), "X_test and y_test must have same length"
+
+            batch_values = [groups, groups_valid]
+            if len(groups_test) > 0:
+                batch_values.append(groups_test)
+            batch_map = {b: i for i, b in enumerate(np.unique(np.concatenate(batch_values)))}
+
             self.data['inputs']['train'] = X
             self.data['labels']['train'] = y
-            self.data['batches']['train'] = groups
+            self.data['batches']['train'] = np.array([batch_map[b] for b in groups])
             self.data['inputs']['valid'] = X_valid
             self.data['labels']['valid'] = y_valid
-            self.data['batches']['valid'] = groups_valid if groups_valid is not None else np.zeros(len(X_valid))
+            self.data['batches']['valid'] = np.array([batch_map[b] for b in groups_valid])
             self.data['inputs']['test'] = X_test
-            self.data['labels']['test'] = y_test
-            self.data['batches']['test'] = groups_test if groups_test is not None else np.zeros(len(X_test))
+            self.data['labels']['test'] = y_test_for_data
+            self.data['batches']['test'] = np.array([batch_map[b] for b in groups_test])
+            self.unique_batches = np.array(list(batch_map.keys()))
         # If only test is provided, assign test, split for valid
         elif X_test is not None and y_test is not None:
             # Split X into train/valid
@@ -467,9 +502,6 @@ class TrainAE:
                 mapped_test.append(batch_map[b])
             self.data['batches']['test'] = np.array(mapped_test)
             self.unique_batches = np.array(list(batch_map.keys()))
-        # If only valid is provided (not supported)
-        elif X_valid is not None and y_valid is not None:
-            raise ValueError("Cannot provide only valid set without test set. Please provide test set or use only train/valid split.")
         # If neither valid nor test is provided, split into train/valid/test
         else:
             n_splits = max(3, int(getattr(self.args, 'n_repeats', 3)))
@@ -559,32 +591,40 @@ class TrainAE:
         print('Data loaded')
         # self.make_samples_weights()
 
-    def fit(self, X_train, y_train, *, groups_train=None, params=None,
+    def fit(self, X_train, y_train, *, X_valid=None, y_valid=None, groups_valid=None,
+            X_test=None, y_test=None, groups_test=None, groups_train=None, params=None,
             cross_validation=False, cross_test=False, val_size=0.2,
             internal_validation=False, **kwargs):
         """Fit BERNN on the provided training rows, sklearn-style.
 
-        X_test and y_test are intentionally not accepted by fit. Call
-        predict(X_new) after fitting, just like sklearn estimators. Set
-        internal_validation=True only for legacy BERNN experiments that
+        External validation data can be provided with X_valid/y_valid/groups_valid
+        and is used by BERNN's monitor/early-stopping path. X_test can be provided
+        for test-set monitoring; y_test may be omitted for hidden/unlabeled test
+        matrices, in which case test labels use the sentinel ``-1`` internally.
+        Set internal_validation=True only for legacy BERNN experiments that
         intentionally want BERNN to split the training data internally.
         """
-        forbidden = {'X_test', 'y_test', 'groups_test', 'batches_test'} & set(kwargs)
-        if forbidden:
-            raise TypeError(
-                "BERNN.fit does not accept holdout/test data. "
-                "Use fit(X_train, y_train, groups_train=...) then predict(X_new). "
-                f"Unexpected arguments: {sorted(forbidden)}"
-            )
         if groups_train is None:
             groups_train = kwargs.pop('batches_train', None)
+        if groups_valid is None:
+            groups_valid = kwargs.pop('batches_valid', None)
+        if groups_test is None:
+            groups_test = kwargs.pop('batches_test', None)
         if kwargs:
             raise TypeError(f"Unexpected BERNN.fit arguments: {sorted(kwargs)}")
+        if (X_valid is None) != (y_valid is None):
+            raise TypeError("BERNN.fit requires X_valid and y_valid to be provided together.")
+        if X_test is not None and y_test is None and (X_valid is None or y_valid is None):
+            raise TypeError(
+                "BERNN.fit requires external X_valid/y_valid when X_test is provided without y_test."
+            )
         response = -1
         flag = True
         max_repeats = max(1, int(getattr(self.args, 'n_repeats', 1)))
         while self.rep < max_repeats and flag:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train,
+                               X_valid=X_valid, y_valid=y_valid, groups_valid=groups_valid,
+                               X_test=X_test, y_test=y_test, groups_test=groups_test,
                                cross_validation=cross_validation, cross_test=cross_test,
                                val_size=val_size, internal_validation=internal_validation)
             response = self._train(params)
