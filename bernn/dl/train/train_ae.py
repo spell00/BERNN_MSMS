@@ -311,7 +311,8 @@ class TrainAE:
 
     def _prepare_data(self, X, y=None, groups=None, X_valid=None, y_valid=None,
                       groups_valid=None, X_test=None, y_test=None, groups_test=None,
-                      cross_validation=False, cross_test=False, val_size=0.2):
+                      cross_validation=False, cross_test=False, val_size=0.2,
+                      internal_validation=False):
         """
         Internal method to prepare the in-memory data dictionary (self.data) from inputs.
 
@@ -389,8 +390,27 @@ class TrainAE:
         # If only test is missing, split once for valid, leave test empty
         # If only valid is missing, raise error
 
+        self._no_internal_validation = not internal_validation
+
+        # Sklearn-style fit: train on every provided row. BERNN's legacy trainer
+        # expects valid/test loaders for logging/checkpoint bookkeeping, so use
+        # train-resubstitution monitors instead of splitting or accepting
+        # external evaluation rows during fit.
+        if not internal_validation and X_valid is None and y_valid is None and X_test is None and y_test is None:
+            batch_map = {b: i for i, b in enumerate(self.unique_batches)}
+            mapped_groups = np.array([batch_map[b] for b in groups])
+            self.data['inputs']['train'] = X
+            self.data['labels']['train'] = y
+            self.data['batches']['train'] = mapped_groups
+            self.data['inputs']['valid'] = X.copy()
+            self.data['labels']['valid'] = y.copy()
+            self.data['batches']['valid'] = mapped_groups.copy()
+            self.data['inputs']['test'] = X.copy()
+            self.data['labels']['test'] = y.copy()
+            self.data['batches']['test'] = mapped_groups.copy()
+            self.unique_batches = np.array(list(batch_map.keys()))
         # If both valid and test are provided, assign directly
-        if X_valid is not None and y_valid is not None and X_test is not None and y_test is not None:
+        elif X_valid is not None and y_valid is not None and X_test is not None and y_test is not None:
             self.data['inputs']['train'] = X
             self.data['labels']['train'] = y
             self.data['batches']['train'] = groups
@@ -539,30 +559,34 @@ class TrainAE:
         print('Data loaded')
         # self.make_samples_weights()
 
-    # TODO SHOULD REMOVE CROSS VALIDATION AND CROSS TEST TO MAKE IT MORE LIKE SKLEARN... or could it be used
-    def fit(self, X_train, y_train, groups_train=None, X_test=None, y_test=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
-        """
-        Standard supervised/unsupervised training.
+    def fit(self, X_train, y_train, *, groups_train=None, params=None,
+            cross_validation=False, cross_test=False, val_size=0.2,
+            internal_validation=False, **kwargs):
+        """Fit BERNN on the provided training rows, sklearn-style.
 
-        Compatibility notes:
-        - ``batches_train``/``batches_test`` are accepted as aliases for
-          ``groups_train``/``groups_test``. This matches leaderboard runners
-          that use batch terminology directly.
-        - ``y_test`` may be ``None``; test labels are never required for
-          holdout prediction.
+        X_test and y_test are intentionally not accepted by fit. Call
+        predict(X_new) after fitting, just like sklearn estimators. Set
+        internal_validation=True only for legacy BERNN experiments that
+        intentionally want BERNN to split the training data internally.
         """
+        forbidden = {'X_test', 'y_test', 'groups_test', 'batches_test'} & set(kwargs)
+        if forbidden:
+            raise TypeError(
+                "BERNN.fit does not accept holdout/test data. "
+                "Use fit(X_train, y_train, groups_train=...) then predict(X_new). "
+                f"Unexpected arguments: {sorted(forbidden)}"
+            )
         if groups_train is None:
             groups_train = kwargs.pop('batches_train', None)
-        if groups_test is None:
-            groups_test = kwargs.pop('batches_test', None)
+        if kwargs:
+            raise TypeError(f"Unexpected BERNN.fit arguments: {sorted(kwargs)}")
         response = -1
         flag = True
         max_repeats = max(1, int(getattr(self.args, 'n_repeats', 1)))
         while self.rep < max_repeats and flag:
             self._prepare_data(X=X_train, y=y_train, groups=groups_train,
-                               X_test=X_test, y_test=y_test, groups_test=groups_test,
                                cross_validation=cross_validation, cross_test=cross_test,
-                               val_size=val_size)
+                               val_size=val_size, internal_validation=internal_validation)
             response = self._train(params)
             if response == -1 and self.seed > self.args.n_repeats * 100:
                 print("Warning: multiple training attempts failed, stopping early.")
@@ -575,38 +599,29 @@ class TrainAE:
             self.restore_best_model_state()
         else:
             raise RuntimeError(
-                "BERNN fit finished but no best model state was saved. "
-                "This likely means no valid validation epoch completed."
+                "BERNN fit finished but no model state was saved. "
+                "This likely means no training epoch completed."
             )
         return self
 
-    def fit_predict(self, X_train, y_train, X_test=None, y_test=None, groups_train=None, groups_test=None, params=None, cross_validation=False, cross_test=False, val_size=0.2, **kwargs):
-        """
-        Fits the model and returns predictions.
+    def fit_predict(self, X_train, y_train, *args, groups_train=None, params=None,
+                    cross_validation=False, cross_test=False, val_size=0.2,
+                    internal_validation=False, **kwargs):
+        """Fit on X_train/y_train and return in-sample predictions.
 
-        ``batches_train``/``batches_test`` are accepted as aliases for
-        ``groups_train``/``groups_test`` for compatibility with benchmark
-        runners. ``y_test=None`` is supported for private-label leaderboards.
+        This method deliberately does not accept X_test/y_test. For holdout
+        prediction use fit(...); predict(X_test).
         """
-        if groups_train is None:
-            groups_train = kwargs.pop('batches_train', None)
-        if groups_test is None:
-            groups_test = kwargs.pop('batches_test', None)
-        response = -1
-        attempts = 0
-        max_repeats = max(1, int(getattr(self.args, 'n_repeats', 1)))
-        while response == -1 and attempts < max_repeats:
-            self._prepare_data(X=X_train, y=y_train, groups=groups_train, X_test=X_test, y_test=y_test, groups_test=groups_test, cross_validation=cross_validation, cross_test=cross_test, val_size=val_size)
-            response = self._train(params)
-            attempts += 1
-        if response == -1:
-            raise RuntimeError("BERNN fit_predict failed to produce a trained model.")
-        if self.best_state_dicts is not None:
-            self.restore_best_model_state()
-        if X_test is not None:
-            return self.predict(X_test)
-        else:
-            return self.predict(X_train)
+        if args:
+            raise TypeError(
+                "BERNN.fit_predict no longer accepts a test matrix. "
+                "Use fit(X_train, y_train, groups_train=...) then predict(X_test)."
+            )
+        self.fit(X_train, y_train, groups_train=groups_train, params=params,
+                 cross_validation=cross_validation, cross_test=cross_test,
+                 val_size=val_size, internal_validation=internal_validation,
+                 **kwargs)
+        return self.predict(X_train)
 
     def fit_transform(self, *args, **kwargs):
         """Deprecated alias for fit_predict."""
@@ -1038,7 +1053,10 @@ class TrainAE:
             else:
                 inds_to_keep = np.array([i for i, x in enumerate(self.data['labels'][group]) if x in self.unique_labels], dtype=int)
             
-            print(f"[make_samples_weights] Group '{group}': {len(inds_to_keep)} samples to keep out of {len(self.data['labels'][group])}")
+            display_group = group
+            if getattr(self, '_no_internal_validation', False) and group in ['valid', 'test']:
+                display_group = f"{group} (train monitor; no internal holdout)"
+            print(f"[make_samples_weights] Group '{display_group}': {len(inds_to_keep)} samples to keep out of {len(self.data['labels'][group])}")
             if len(inds_to_keep) == 0:
                 if group == 'test':
                      continue # Test set might be empty if not provided

@@ -506,13 +506,13 @@ class TrainAEClassifierHoldout(TrainAE):
                     valid_window = values['valid']['mcc'][-self.args.n_agg:]
 
                     if len(valid_window) > 0 and len(values['valid']['mcc']) >= self.args.n_agg and np.mean(valid_window) > best_mcc:
-                        print(f"Best Classification Mcc Epoch {epoch}, "
+                        print(f"Best Classification Monitor Epoch {epoch}, "
                             f"Acc: {values['test']['acc'][-1]}"
-                            f"VALID Mcc: {values['valid']['mcc'][-1]}"
-                            f"TEST Mcc: {values['test']['mcc'][-1]}"
+                            f"MONITOR Mcc: {values['valid']['mcc'][-1]}"
+                            f"TRAIN-COPY Mcc: {values['test']['mcc'][-1]}"
                             f"Classification train loss: {values['train']['closs'][-1]},"
-                            f" valid loss: {values['valid']['closs'][-1]},"
-                            f" test loss: {values['test']['closs'][-1]}")
+                            f" monitor loss: {values['valid']['closs'][-1]},"
+                            f" train-copy loss: {values['test']['closs'][-1]}")
                         best_mcc = np.mean(valid_window)
                         torch.save(self.ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}_state.pth')
                         torch.save(self.ae, f'{self.complete_log_path}/model_{self.rep}.pth')
@@ -525,23 +525,23 @@ class TrainAEClassifierHoldout(TrainAE):
                         early_stop_counter = 0
 
                     if values['valid']['acc'][-1] > best_acc:
-                        print(f"Best Classification Acc Epoch {epoch}, "
+                        print(f"Best Classification Monitor-Acc Epoch {epoch}, "
                               f"Acc: {values['test']['acc'][-1]}"
                               f"Mcc: {values['test']['mcc'][-1]}"
                               f"Classification train loss: {values['train']['closs'][-1]},"
-                              f" valid loss: {values['valid']['closs'][-1]},"
-                              f" test loss: {values['test']['closs'][-1]}")
+                              f" monitor loss: {values['valid']['closs'][-1]},"
+                              f" train-copy loss: {values['test']['closs'][-1]}")
 
                         best_acc = values['valid']['acc'][-1]
                         early_stop_counter = 0
 
                     if values['valid']['closs'][-1] < best_closs:
-                        print(f"Best Classification Loss Epoch {epoch}, "
+                        print(f"Best Classification Monitor-Loss Epoch {epoch}, "
                               f"Acc: {values['test']['acc'][-1]} "
                               f"Mcc: {values['test']['mcc'][-1]} "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
-                              f"valid loss: {values['valid']['closs'][-1]}, "
-                              f"test loss: {values['test']['closs'][-1]}")
+                              f"monitor loss: {values['valid']['closs'][-1]}, "
+                              f"train-copy loss: {values['test']['closs'][-1]}")
                         best_closs = values['valid']['closs'][-1]
                         early_stop_counter = 0
                     else:
@@ -832,7 +832,7 @@ if __name__ == "__main__":
             param_clean = {k: (int(v) if (k == 'n_layers' or k.startswith('layer')) else float(v) if isinstance(v, (np.floating,)) else v)
                            for k, v in parameterization.items()}
             train.fit(
-                X, y, groups_train=groups, X_test=None, y_test=None, groups_test=None, params=param_clean,
+                X, y, groups_train=groups, params=param_clean,
                 cross_validation=bool(args.cross_validation), cross_test=bool(args.cross_test)
             )
             valid_mcc = float(train.best_mcc)

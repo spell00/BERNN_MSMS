@@ -848,10 +848,10 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     add_to_mlflow(values, epoch)
                 if np.mean(values['valid']['mcc'][-self.args.n_agg:]) > best_mcc and len(
                         values['valid']['mcc']) > self.args.n_agg:
-                    print(f"[Best valid MCC] Epoch {epoch} | "
-                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
-                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
-                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                    print(f"[Best monitor MCC] Epoch {epoch} | "
+                          f"monitor MCC: {values['valid']['mcc'][-1]:.3f}, train-copy MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"monitor acc: {values['valid']['acc'][-1]:.3f}, train-copy acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/monitor/train-copy: {values['train']['closs'][-1]:.3f}/"
                           f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
                     best_mcc = np.mean(values['valid']['mcc'][-self.args.n_agg:])
                     torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}.pth')
@@ -864,20 +864,20 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     early_stop_counter = 0
 
                 if values['valid']['acc'][-1] > best_acc:
-                    print(f"[Best valid acc] Epoch {epoch} | "
-                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
-                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
-                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                    print(f"[Best monitor acc] Epoch {epoch} | "
+                          f"monitor MCC: {values['valid']['mcc'][-1]:.3f}, train-copy MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"monitor acc: {values['valid']['acc'][-1]:.3f}, train-copy acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/monitor/train-copy: {values['train']['closs'][-1]:.3f}/"
                           f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
 
                     best_acc = values['valid']['acc'][-1]
                     early_stop_counter = 0
 
                 if values['valid']['closs'][-1] < best_closs:
-                    print(f"[Best valid loss] Epoch {epoch} | "
-                          f"valid MCC: {values['valid']['mcc'][-1]:.3f}, test MCC: {values['test']['mcc'][-1]:.3f} | "
-                          f"valid acc: {values['valid']['acc'][-1]:.3f}, test acc: {values['test']['acc'][-1]:.3f} | "
-                          f"loss train/valid/test: {values['train']['closs'][-1]:.3f}/"
+                    print(f"[Best monitor loss] Epoch {epoch} | "
+                          f"monitor MCC: {values['valid']['mcc'][-1]:.3f}, train-copy MCC: {values['test']['mcc'][-1]:.3f} | "
+                          f"monitor acc: {values['valid']['acc'][-1]:.3f}, train-copy acc: {values['test']['acc'][-1]:.3f} | "
+                          f"loss train/monitor/train-copy: {values['train']['closs'][-1]:.3f}/"
                           f"{values['valid']['closs'][-1]:.3f}/{values['test']['closs'][-1]:.3f}")
                     best_closs = values['valid']['closs'][-1]
                     early_stop_counter = 0
@@ -1175,7 +1175,7 @@ if __name__ == "__main__":
                 trial_params[key] = int(value)
         trial_params.update(fixed_hparams)
         try:
-            train.fit(X_train, y_train, groups_train=g_train, X_test=X_test, y_test=y_test, groups_test=g_test, params=trial_params)
+            train.fit(X_train, y_train, groups_train=g_train, params=trial_params)
             mcc = float(train.best_mcc)
         finally:
             # Reset per-fit state (combinations, seed, rep, best_mcc) so each Ax
@@ -1188,7 +1188,7 @@ if __name__ == "__main__":
     if not train.config.optimize_hyperparams or len(parameters) == 0:
         print("Hyperparameter optimization disabled or no free parameters; running a single training with fixed/default params.")
         single_params = fixed_hparams if len(fixed_hparams) > 0 else None
-        train.fit(X_train, y_train, groups_train=g_train, X_test=X_test, y_test=y_test, groups_test=g_test, params=single_params)
+        train.fit(X_train, y_train, groups_train=g_train, params=single_params)
         best_parameters = single_params or {}
         values = [{"mcc": float(train.best_mcc)}]
         experiment = None

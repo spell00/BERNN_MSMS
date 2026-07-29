@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from bernn.config.training_config import TrainingConfig
 from bernn.dl.models.pytorch.utils.dataset import get_loaders_no_pool
+from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
 from bernn.dl.train.train_ae_then_classifier_holdout import TrainAEThenClassifierHoldout
 from bernn.utils.data_getters import get_data
 
@@ -374,3 +375,85 @@ def test_prepare_data_numeric_train_string_test_labels(tmp_path):
     assert set(np.unique(trainer.data["labels"]["test"])) <= set(np.unique(trainer.data["labels"]["train"]))
 
 
+
+
+@pytest.mark.unit
+def test_holdout_fit_rejects_test_data_and_keeps_all_training_rows(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        n_epochs=1,
+        warmup=0,
+        n_repeats=1,
+        bs=4,
+        optimize_hyperparams=False,
+    )
+    trainer = TrainAEClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        log_dvclive=False,
+    )
+    X = pd.DataFrame(np.arange(24).reshape(12, 2), columns=["f0", "f1"])
+    y = pd.Series(["a", "b", "c"] * 4)
+    groups = pd.Series(["batch0", "batch1"] * 6)
+
+    with pytest.raises(TypeError, match="does not accept holdout/test data"):
+        trainer.fit(X, y, groups_train=groups, X_test=X.copy())
+    with pytest.raises(TypeError, match="no longer accepts a test matrix"):
+        trainer.fit_predict(X, y, X.copy(), groups_train=groups)
+
+    trainer._prepare_data(X=X, y=y, groups=groups, internal_validation=False)
+
+    assert trainer._no_internal_validation is True
+    assert len(trainer.data["inputs"]["train"]) == len(X)
+    assert len(trainer.data["inputs"]["valid"]) == len(X)
+    assert len(trainer.data["inputs"]["test"]) == len(X)
+    assert set(trainer.data["sets"]["train"]) == {"train"}
+    assert set(trainer.data["sets"]["valid"]) == {"valid"}
+    assert set(trainer.data["sets"]["test"]) == {"test"}
+
+
+@pytest.mark.unit
+def test_holdout_prepare_data_legacy_internal_validation_still_splits(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        n_epochs=1,
+        warmup=0,
+        n_repeats=3,
+        bs=4,
+        optimize_hyperparams=False,
+    )
+    trainer = TrainAEClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        log_dvclive=False,
+    )
+    X = pd.DataFrame(np.arange(90).reshape(30, 3))
+    y = pd.Series(["a", "b", "c"] * 10)
+    groups = pd.Series(["batch0"] * len(X))
+
+    trainer._prepare_data(X=X, y=y, groups=groups, internal_validation=True)
+
+    assert trainer._no_internal_validation is False
+    assert len(trainer.data["inputs"]["train"]) < len(X)
+    assert len(trainer.data["inputs"]["valid"]) > 0
+    assert len(trainer.data["inputs"]["test"]) > 0
