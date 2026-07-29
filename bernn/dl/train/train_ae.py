@@ -536,6 +536,9 @@ class TrainAE:
             self.data['batches']['valid'] = np.array([batch_map[b] for b in self.data['batches']['valid']])
             self.data['batches']['test'] = np.array([batch_map[b] for b in self.data['batches']['test']])
             
+        if 'batch_map' in locals():
+            self.batch_map_ = dict(batch_map)
+            self.inverse_batch_map_ = {v: k for k, v in self.batch_map_.items()}
 
         # Ensure all keys are set for downstream code
         for group in ['train', 'valid', 'test']:
@@ -893,7 +896,69 @@ class TrainAE:
                 
         return np.concatenate(encoded_list, axis=0)
 
-    def predict(self, X):
+    def _prediction_batch_ids(self, n_rows, groups_test=None, batches_test=None, groups=None):
+        raw_groups = groups_test
+        if raw_groups is None:
+            raw_groups = batches_test
+        if raw_groups is None:
+            raw_groups = groups
+        if raw_groups is None:
+            return None
+        raw_groups = np.asarray(raw_groups)
+        if len(raw_groups) != n_rows:
+            raise ValueError(
+                f"Prediction batch ids length ({len(raw_groups)}) does not match X rows ({n_rows})."
+            )
+        batch_map = getattr(self, "batch_map_", None)
+        if batch_map is None:
+            batch_map = {b: i for i, b in enumerate(getattr(self, "unique_batches", []))}
+        mapped = []
+        for batch in raw_groups:
+            if batch in batch_map:
+                mapped.append(batch_map[batch])
+            else:
+                try:
+                    mapped.append(batch_map[str(batch)])
+                    continue
+                except Exception:
+                    pass
+                mapped.append(batch)
+        return np.asarray(mapped)
+
+    def _prepare_prediction_matrix(self, X, groups_test=None, batches_test=None, groups=None):
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        X = X.copy()
+        if getattr(self, "columns", None) is not None:
+            X = X.loc[:, list(self.columns)]
+
+        scale = getattr(self.args, "scaler", None)
+        scaler = getattr(self, "scaler", None)
+        if scale == "binarize":
+            X[X > 0] = 1
+            X[X <= 0] = 0
+        elif isinstance(scaler, dict):
+            batch_ids = self._prediction_batch_ids(
+                len(X), groups_test=groups_test, batches_test=batches_test, groups=groups
+            )
+            if batch_ids is None:
+                raise ValueError(
+                    f"BERNN.predict requires groups_test/batches_test when using scaler='{scale}'."
+                )
+            for batch_id in np.unique(batch_ids):
+                if batch_id not in scaler:
+                    raise ValueError(
+                        f"No fitted BERNN scaler found for prediction batch {batch_id!r}."
+                    )
+                mask = batch_ids == batch_id
+                if np.any(mask):
+                    X.iloc[mask] = scaler[batch_id].transform(X.iloc[mask])
+        elif scaler is not None:
+            X = pd.DataFrame(scaler.transform(X), columns=X.columns, index=X.index)
+
+        return X.round(4)
+
+    def predict(self, X, groups_test=None, batches_test=None, groups=None):
         """
         Predict numeric class ids for X using the best trained autoencoder (loaded from checkpoint).
         
@@ -910,8 +975,9 @@ class TrainAE:
         self.ae.enc.eval()
         self.ae.classifier.eval()
 
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
+        X = self._prepare_prediction_matrix(
+            X, groups_test=groups_test, batches_test=batches_test, groups=groups
+        )
 
         from torch.utils.data import DataLoader, TensorDataset
         device = getattr(self.args, 'device', 'cpu')
@@ -931,7 +997,7 @@ class TrainAE:
             return self._label_encoder.inverse_transform(preds_numeric)
         return preds_numeric
 
-    def predict_proba(self, X):
+    def predict_proba(self, X, groups_test=None, batches_test=None, groups=None):
         """Predict class probabilities for X using the best trained autoencoder.
 
         This mirrors ``predict`` but returns probability estimates from the
@@ -945,8 +1011,9 @@ class TrainAE:
 
         self.ae.eval()
 
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
+        X = self._prepare_prediction_matrix(
+            X, groups_test=groups_test, batches_test=batches_test, groups=groups
+        )
 
         from torch.utils.data import DataLoader, TensorDataset
         device = getattr(self.args, 'device', 'cpu')
