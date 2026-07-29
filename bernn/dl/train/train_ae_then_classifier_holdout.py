@@ -861,19 +861,22 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     if has_test_metrics
                     else ", Test metrics unavailable (no y_test)"
                 )
+                current_train_mcc = self._score_public_split_mcc('train')
+                current_valid_mcc = self._score_public_split_mcc('valid')
+                current_test_mcc = self._score_public_split_mcc('test')
                 valid_mcc_improved = (
-                    len(values['valid']['mcc']) > 0
-                    and values['valid']['mcc'][-1] > best_mcc
+                    np.isfinite(current_valid_mcc)
+                    and current_valid_mcc > best_mcc
                 )
                 if valid_mcc_improved:
                     print(f"Best Classification Epoch {epoch} (best valid MCC), "
-                          f"Train MCC: {values['train']['mcc'][-1]:.3f}, "
+                          f"Train MCC: {current_train_mcc:.3f}, "
                           f"Valid Acc: {values['valid']['acc'][-1]:.3f}, "
-                          f"Valid MCC: {values['valid']['mcc'][-1]:.3f}, "
+                          f"Valid MCC: {current_valid_mcc:.3f}, "
                           f"Classification train loss: {values['train']['closs'][-1]:.3f}, "
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
-                          f"{test_summary}")
-                    best_mcc = values['valid']['mcc'][-1]
+                          f"{test_summary if not np.isfinite(current_test_mcc) else f', Test MCC: {current_test_mcc:.3f}'}")
+                    best_mcc = current_valid_mcc
                     torch.save(ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}.pth')
                     self._save_best_model_state(epoch, best_mcc)
                     best_values = get_best_values(values.copy(), ae_only=False, n_agg=self.args.n_agg)
@@ -885,9 +888,9 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
                 if values['valid']['acc'][-1] > best_acc:
                     print(f"Best Valid-Acc Diagnostic Epoch {epoch}, "
-                          f"Train MCC: {values['train']['mcc'][-1]:.3f}, "
+                          f"Train MCC: {current_train_mcc:.3f}, "
                           f"Valid Acc: {values['valid']['acc'][-1]:.3f}, "
-                          f"Valid MCC: {values['valid']['mcc'][-1]:.3f}, "
+                          f"Valid MCC: {current_valid_mcc:.3f}, "
                           f"Classification train loss: {values['train']['closs'][-1]:.3f}, "
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
                           f"{test_summary}")
@@ -896,9 +899,9 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
                 if values['valid']['closs'][-1] < best_closs:
                     print(f"Lowest Valid-Loss Diagnostic Epoch {epoch}, "
-                          f"Train MCC: {values['train']['mcc'][-1]:.3f}, "
+                          f"Train MCC: {current_train_mcc:.3f}, "
                           f"Valid Acc: {values['valid']['acc'][-1]:.3f}, "
-                          f"Valid MCC: {values['valid']['mcc'][-1]:.3f}, "
+                          f"Valid MCC: {current_valid_mcc:.3f}, "
                           f"Classification train loss: {values['train']['closs'][-1]:.3f}, "
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
                           f"{test_summary}")

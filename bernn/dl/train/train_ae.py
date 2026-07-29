@@ -996,6 +996,23 @@ class TrainAE:
         preds = torch.as_tensor(preds, dtype=torch.long, device=data.device)
         return torch.nn.functional.one_hot(preds, num_classes=self.n_cats).float()
 
+    def _score_public_split_mcc(self, split):
+        """Score a prepared split through the same public predict path used after fit."""
+        try:
+            labels = self.data.get("labels", {}).get(split, None)
+            inputs = self.data.get("inputs", {}).get(split, None)
+            batches = self.data.get("batches", {}).get(split, None)
+            if labels is None or inputs is None or len(inputs) == 0:
+                return float("nan")
+            labels = pd.Series(labels)
+            if labels.empty or labels.astype(str).eq("-1").all():
+                return float("nan")
+            preds = self.predict(inputs, groups_test=batches, batches_test=batches)
+            return float(MCC(labels.astype(str), pd.Series(preds).astype(str)))
+        except Exception as exc:
+            print(f"[bernn] Warning: could not score public {split} MCC: {exc}")
+            return float("nan")
+
     def predict(self, X, groups_test=None, batches_test=None, groups=None):
         """
         Predict numeric class ids for X using the best trained autoencoder (loaded from checkpoint).
