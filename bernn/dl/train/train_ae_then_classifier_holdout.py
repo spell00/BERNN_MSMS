@@ -811,9 +811,9 @@ class TrainAEThenClassifierHoldout(TrainAE):
             test_labels = np.asarray(data.get('labels', {}).get('test', []))
             has_test_labels = test_labels.size > 0 and not np.all(test_labels == -1)
             for epoch in range(0, self.args.n_epochs):
-                if early_stop_counter == self.args.early_stop:
+                if early_stop_counter >= self.args.early_stop:
                     if self.verbose > 0:
-                        print('EARLY STOPPING.', epoch)
+                        print(f'EARLY STOPPING. {epoch} (patience {early_stop_counter}/{self.args.early_stop})')
                     break
                 lists, traces = get_empty_traces()
                 losses = {
@@ -864,6 +864,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 current_train_mcc = self._score_public_split_mcc('train')
                 current_valid_mcc = self._score_public_split_mcc('valid')
                 current_test_mcc = self._score_public_split_mcc('test')
+                patience_before = early_stop_counter
                 valid_mcc_improved = (
                     np.isfinite(current_valid_mcc)
                     and current_valid_mcc > best_mcc
@@ -886,7 +887,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     best_vals['dom_acc'] = best_dom_acc
                     early_stop_counter = 0
 
-                if values['valid']['acc'][-1] > best_acc:
+                valid_acc_improved = values['valid']['acc'][-1] > best_acc
+                if valid_acc_improved:
                     print(f"Best Valid-Acc Diagnostic Epoch {epoch}, "
                           f"Train MCC: {current_train_mcc:.3f}, "
                           f"Valid Acc: {values['valid']['acc'][-1]:.3f}, "
@@ -897,7 +899,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
                     best_acc = values['valid']['acc'][-1]
 
-                if values['valid']['closs'][-1] < best_closs:
+                valid_loss_improved = values['valid']['closs'][-1] < best_closs
+                if valid_loss_improved:
                     print(f"Lowest Valid-Loss Diagnostic Epoch {epoch}, "
                           f"Train MCC: {current_train_mcc:.3f}, "
                           f"Valid Acc: {values['valid']['acc'][-1]:.3f}, "
@@ -906,7 +909,21 @@ class TrainAEThenClassifierHoldout(TrainAE):
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
                           f"{test_summary}")
                     best_closs = values['valid']['closs'][-1]
-                if not valid_mcc_improved:
+                if valid_mcc_improved or valid_acc_improved or valid_loss_improved:
+                    if patience_before > 0:
+                        reasons = []
+                        if valid_mcc_improved:
+                            reasons.append('valid MCC')
+                        if valid_acc_improved:
+                            reasons.append('valid accuracy')
+                        if valid_loss_improved:
+                            reasons.append('valid loss')
+                        print(
+                            f"[early-stop] Reset patience at epoch {epoch} after improved "
+                            f"{', '.join(reasons)} (was {patience_before}/{self.args.early_stop})"
+                        )
+                    early_stop_counter = 0
+                else:
                     early_stop_counter += 1
 
                 if self.args.predict_tests and (epoch % 10 == 0):

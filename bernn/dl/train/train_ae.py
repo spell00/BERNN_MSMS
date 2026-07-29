@@ -1008,6 +1008,12 @@ class TrainAE:
             if labels.empty or labels.astype(str).eq("-1").all():
                 return float("nan")
             preds = self.predict(inputs, groups_test=batches, batches_test=batches)
+            if self._label_encoder is not None:
+                numeric_labels = labels.astype(int).to_numpy()
+                valid_mask = numeric_labels != -1
+                decoded_labels = self._label_encoder.inverse_transform(numeric_labels[valid_mask])
+                decoded_preds = pd.Series(preds).astype(str).iloc[valid_mask].to_numpy()
+                return float(MCC(pd.Series(decoded_labels).astype(str), pd.Series(decoded_preds).astype(str)))
             return float(MCC(labels.astype(str), pd.Series(preds).astype(str)))
         except Exception as exc:
             print(f"[bernn] Warning: could not score public {split} MCC: {exc}")
