@@ -452,6 +452,9 @@ class TrainAEClassifierHoldout(TrainAE):
                             except Exception:
                                 pass
 
+                test_labels = np.asarray(data.get('labels', {}).get('test', []))
+                has_test_labels = test_labels.size > 0 and not np.all(test_labels == -1)
+
                 for epoch in range(0, self.args.n_epochs):
                     if early_stop_counter == self.args.early_stop:
                         if self.verbose > 0:
@@ -504,15 +507,32 @@ class TrainAEClassifierHoldout(TrainAE):
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
                     valid_window = values['valid']['mcc'][-self.args.n_agg:]
+                    has_test_metrics = (
+                        has_test_labels
+                        and len(values['test']['mcc']) > 0
+                        and len(values['test']['acc']) > 0
+                        and len(values['test']['closs']) > 0
+                    )
+                    test_summary = (
+                        f", Test Acc: {values['test']['acc'][-1]}"
+                        f", Test MCC: {values['test']['mcc'][-1]}"
+                        f", Test loss: {values['test']['closs'][-1]}"
+                        if has_test_metrics
+                        else ", Test metrics unavailable (no y_test)"
+                    )
 
-                    if len(valid_window) > 0 and len(values['valid']['mcc']) >= self.args.n_agg and np.mean(valid_window) > best_mcc:
-                        print(f"Best Classification Monitor Epoch {epoch}, "
-                            f"Acc: {values['test']['acc'][-1]}"
-                            f"MONITOR Mcc: {values['valid']['mcc'][-1]}"
-                            f"TRAIN-COPY Mcc: {values['test']['mcc'][-1]}"
-                            f"Classification train loss: {values['train']['closs'][-1]},"
-                            f" monitor loss: {values['valid']['closs'][-1]},"
-                            f" train-copy loss: {values['test']['closs'][-1]}")
+                    valid_mcc_improved = (
+                        len(valid_window) > 0
+                        and len(values['valid']['mcc']) >= self.args.n_agg
+                        and np.mean(valid_window) > best_mcc
+                    )
+                    if valid_mcc_improved:
+                        print(f"Best Classification Epoch {epoch} (best valid MCC), "
+                            f"Valid Acc: {values['valid']['acc'][-1]}, "
+                            f"Valid MCC: {values['valid']['mcc'][-1]}, "
+                            f"Classification train loss: {values['train']['closs'][-1]}, "
+                            f"Valid loss: {values['valid']['closs'][-1]}"
+                            f"{test_summary}")
                         best_mcc = np.mean(valid_window)
                         torch.save(self.ae.state_dict(), f'{self.complete_log_path}/model_{self.rep}_state.pth')
                         torch.save(self.ae, f'{self.complete_log_path}/model_{self.rep}.pth')
@@ -525,27 +545,24 @@ class TrainAEClassifierHoldout(TrainAE):
                         early_stop_counter = 0
 
                     if values['valid']['acc'][-1] > best_acc:
-                        print(f"Best Classification Monitor-Acc Epoch {epoch}, "
-                              f"Acc: {values['test']['acc'][-1]}"
-                              f"Mcc: {values['test']['mcc'][-1]}"
-                              f"Classification train loss: {values['train']['closs'][-1]},"
-                              f" monitor loss: {values['valid']['closs'][-1]},"
-                              f" train-copy loss: {values['test']['closs'][-1]}")
+                        print(f"Best Valid-Acc Diagnostic Epoch {epoch}, "
+                              f"Valid Acc: {values['valid']['acc'][-1]}, "
+                              f"Valid MCC: {values['valid']['mcc'][-1]}, "
+                              f"Classification train loss: {values['train']['closs'][-1]}, "
+                              f"Valid loss: {values['valid']['closs'][-1]}"
+                              f"{test_summary}")
 
                         best_acc = values['valid']['acc'][-1]
-                        early_stop_counter = 0
 
                     if values['valid']['closs'][-1] < best_closs:
-                        print(f"Best Classification Monitor-Loss Epoch {epoch}, "
-                              f"Acc: {values['test']['acc'][-1]} "
-                              f"Mcc: {values['test']['mcc'][-1]} "
+                        print(f"Lowest Valid-Loss Diagnostic Epoch {epoch}, "
+                              f"Valid Acc: {values['valid']['acc'][-1]}, "
+                              f"Valid MCC: {values['valid']['mcc'][-1]}, "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
-                              f"monitor loss: {values['valid']['closs'][-1]}, "
-                              f"train-copy loss: {values['test']['closs'][-1]}")
+                              f"Valid loss: {values['valid']['closs'][-1]}"
+                              f"{test_summary}")
                         best_closs = values['valid']['closs'][-1]
-                        early_stop_counter = 0
-                    else:
-                        # if epoch > self.warmup:
+                    if not valid_mcc_improved:
                         early_stop_counter += 1
 
                     if self.args.predict_tests and (epoch % 10 == 0):
@@ -853,4 +870,3 @@ if __name__ == "__main__":
         total_trials=args.n_trials,
         random_seed=41
     )
-
