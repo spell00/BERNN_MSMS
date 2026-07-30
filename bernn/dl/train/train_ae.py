@@ -997,7 +997,7 @@ class TrainAE:
         return torch.nn.functional.one_hot(preds, num_classes=self.n_cats).float()
 
     def _score_public_split_mcc(self, split):
-        """Score a prepared split through the same public predict path used after fit."""
+        """Score an already-prepared split without applying prediction scaling again."""
         try:
             labels = self.data.get("labels", {}).get(split, None)
             inputs = self.data.get("inputs", {}).get(split, None)
@@ -1007,14 +1007,28 @@ class TrainAE:
             labels = pd.Series(labels)
             if labels.empty or labels.astype(str).eq("-1").all():
                 return float("nan")
-            preds = self.predict(inputs, groups_test=batches, batches_test=batches)
+            inputs = pd.DataFrame(inputs).copy()
+            tensors = [torch.tensor(inputs.values, dtype=torch.float32, device=getattr(self.args, "device", "cpu"))]
+            batch_ids = None if batches is None else np.asarray(batches)
+            if batch_ids is not None:
+                tensors.append(torch.tensor(batch_ids, dtype=torch.long, device=getattr(self.args, "device", "cpu")))
+
+            self.ae.enc.eval()
+            self.ae.classifier.eval()
+            with torch.no_grad():
+                logits = self._predict_logits_from_batch(
+                    tensors[0],
+                    tensors[1] if len(tensors) > 1 else None,
+                )
+                preds_numeric = logits.argmax(1).detach().cpu().numpy().astype(np.int64)
+
             if self._label_encoder is not None:
                 numeric_labels = labels.astype(int).to_numpy()
                 valid_mask = numeric_labels != -1
                 decoded_labels = self._label_encoder.inverse_transform(numeric_labels[valid_mask])
-                decoded_preds = pd.Series(preds).astype(str).iloc[valid_mask].to_numpy()
+                decoded_preds = self._label_encoder.inverse_transform(preds_numeric[valid_mask])
                 return float(MCC(pd.Series(decoded_labels).astype(str), pd.Series(decoded_preds).astype(str)))
-            return float(MCC(labels.astype(str), pd.Series(preds).astype(str)))
+            return float(MCC(labels.astype(str), pd.Series(preds_numeric).astype(str)))
         except Exception as exc:
             print(f"[bernn] Warning: could not score public {split} MCC: {exc}")
             return float("nan")

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+import types
 from types import SimpleNamespace
 
 from bernn.config.training_config import TrainingConfig
@@ -447,6 +448,42 @@ def test_holdout_fit_accepts_external_validation_and_unlabeled_test(tmp_path):
     assert set(trainer.data["sets"]["train"]) == {"train"}
     assert set(trainer.data["sets"]["valid"]) == {"valid"}
     assert set(trainer.data["sets"]["test"]) == {"test"}
+
+
+@pytest.mark.unit
+def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
+    trainer = TrainAEClassifierHoldout.__new__(TrainAEClassifierHoldout)
+    trainer.args = _args(device="cpu", scaler="standard")
+    trainer.columns = None
+    trainer._label_encoder = None
+    trainer.n_cats = 2
+
+    class BadScaler:
+        def transform(self, X):
+            return np.asarray(X) + 1000
+
+    class TinyAE(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.enc = torch.nn.Identity()
+            self.classifier = torch.nn.Identity()
+
+    trainer.scaler = BadScaler()
+    trainer.ae = TinyAE()
+    trainer.data = {
+        "inputs": {"valid": pd.DataFrame({"f0": [0.0, 1.0, 0.0, 1.0]})},
+        "labels": {"valid": np.array([0, 1, 0, 1])},
+        "batches": {"valid": np.array([0, 0, 1, 1])},
+    }
+
+    def fake_logits(self, data, batch_ids=None):
+        assert float(data.max()) < 10.0
+        preds = (data[:, 0] > 0.5).long()
+        return torch.nn.functional.one_hot(preds, num_classes=2).float()
+
+    trainer._predict_logits_from_batch = types.MethodType(fake_logits, trainer)
+
+    assert trainer._score_public_split_mcc("valid") == pytest.approx(1.0)
 
 
 @pytest.mark.unit
