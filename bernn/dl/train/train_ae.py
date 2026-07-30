@@ -996,17 +996,17 @@ class TrainAE:
         preds = torch.as_tensor(preds, dtype=torch.long, device=data.device)
         return torch.nn.functional.one_hot(preds, num_classes=self.n_cats).float()
 
-    def _score_public_split_mcc(self, split):
+    def _score_public_split_metrics(self, split):
         """Score an already-prepared split without applying prediction scaling again."""
         try:
             labels = self.data.get("labels", {}).get(split, None)
             inputs = self.data.get("inputs", {}).get(split, None)
             batches = self.data.get("batches", {}).get(split, None)
             if labels is None or inputs is None or len(inputs) == 0:
-                return float("nan")
+                return {"mcc": float("nan"), "acc": float("nan")}
             labels = pd.Series(labels)
             if labels.empty or labels.astype(str).eq("-1").all():
-                return float("nan")
+                return {"mcc": float("nan"), "acc": float("nan")}
             inputs = pd.DataFrame(inputs).copy()
             tensors = [torch.tensor(inputs.values, dtype=torch.float32, device=getattr(self.args, "device", "cpu"))]
             batch_ids = None if batches is None else np.asarray(batches)
@@ -1027,11 +1027,22 @@ class TrainAE:
                 valid_mask = numeric_labels != -1
                 decoded_labels = self._label_encoder.inverse_transform(numeric_labels[valid_mask])
                 decoded_preds = self._label_encoder.inverse_transform(preds_numeric[valid_mask])
-                return float(MCC(pd.Series(decoded_labels).astype(str), pd.Series(decoded_preds).astype(str)))
-            return float(MCC(labels.astype(str), pd.Series(preds_numeric).astype(str)))
+                y_true = pd.Series(decoded_labels).astype(str)
+                y_pred = pd.Series(decoded_preds).astype(str)
+            else:
+                y_true = labels.astype(str)
+                y_pred = pd.Series(preds_numeric).astype(str)
+            return {
+                "mcc": float(MCC(y_true, y_pred)),
+                "acc": float(metrics.accuracy_score(y_true, y_pred)),
+            }
         except Exception as exc:
             print(f"[bernn] Warning: could not score public {split} MCC: {exc}")
-            return float("nan")
+            return {"mcc": float("nan"), "acc": float("nan")}
+
+    def _score_public_split_mcc(self, split):
+        """Compatibility wrapper for callers that only need MCC."""
+        return float(self._score_public_split_metrics(split).get("mcc", float("nan")))
 
     def predict(self, X, groups_test=None, batches_test=None, groups=None):
         """

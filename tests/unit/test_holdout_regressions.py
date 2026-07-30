@@ -483,6 +483,9 @@ def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
 
     trainer._predict_logits_from_batch = types.MethodType(fake_logits, trainer)
 
+    split_metrics = trainer._score_public_split_metrics("valid")
+    assert split_metrics["mcc"] == pytest.approx(1.0)
+    assert split_metrics["acc"] == pytest.approx(1.0)
     assert trainer._score_public_split_mcc("valid") == pytest.approx(1.0)
 
 

@@ -506,9 +506,13 @@ class TrainAEClassifierHoldout(TrainAE):
                             print(f"Problem with add_to_logger: {e}")
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
-                    current_train_mcc = self._score_public_split_mcc('train')
-                    current_valid_mcc = self._score_public_split_mcc('valid')
-                    current_test_mcc = self._score_public_split_mcc('test')
+                    current_train_metrics = self._score_public_split_metrics('train')
+                    current_valid_metrics = self._score_public_split_metrics('valid')
+                    current_test_metrics = self._score_public_split_metrics('test')
+                    current_train_mcc = current_train_metrics["mcc"]
+                    current_valid_mcc = current_valid_metrics["mcc"]
+                    current_valid_acc = current_valid_metrics["acc"]
+                    current_test_mcc = current_test_metrics["mcc"]
                     has_test_metrics = (
                         has_test_labels
                         and len(values['test']['mcc']) > 0
@@ -531,7 +535,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     if valid_mcc_improved:
                         print(f"Best Classification Epoch {epoch} (best valid MCC), "
                             f"Train MCC: {current_train_mcc}, "
-                            f"Valid Acc: {values['valid']['acc'][-1]}, "
+                            f"Valid Acc: {current_valid_acc}, "
                             f"Valid MCC: {current_valid_mcc}, "
                             f"Classification train loss: {values['train']['closs'][-1]}, "
                             f"Valid loss: {values['valid']['closs'][-1]}"
@@ -547,23 +551,26 @@ class TrainAEClassifierHoldout(TrainAE):
                         best_vals['dom_acc'] = best_dom_acc
                         early_stop_counter = 0
 
-                    valid_acc_improved = values['valid']['acc'][-1] > best_acc
+                    valid_acc_improved = (
+                        np.isfinite(current_valid_acc)
+                        and current_valid_acc > best_acc
+                    )
                     if valid_acc_improved:
                         print(f"Best Valid-Acc Diagnostic Epoch {epoch}, "
                               f"Train MCC: {current_train_mcc}, "
-                              f"Valid Acc: {values['valid']['acc'][-1]}, "
+                              f"Valid Acc: {current_valid_acc}, "
                               f"Valid MCC: {current_valid_mcc}, "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
                               f"Valid loss: {values['valid']['closs'][-1]}"
                               f"{test_summary}")
 
-                        best_acc = values['valid']['acc'][-1]
+                        best_acc = current_valid_acc
 
                     valid_loss_improved = values['valid']['closs'][-1] < best_closs
                     if valid_loss_improved:
                         print(f"Lowest Valid-Loss Diagnostic Epoch {epoch}, "
                               f"Train MCC: {current_train_mcc}, "
-                              f"Valid Acc: {values['valid']['acc'][-1]}, "
+                              f"Valid Acc: {current_valid_acc}, "
                               f"Valid MCC: {current_valid_mcc}, "
                               f"Classification train loss: {values['train']['closs'][-1]}, "
                               f"Valid loss: {values['valid']['closs'][-1]}"
