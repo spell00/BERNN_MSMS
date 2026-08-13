@@ -8,7 +8,7 @@ try:
     from importlib.metadata import version as _meta_version
     __version__ = _meta_version("bernn")
 except Exception:
-    __version__ = "1.0.0"
+    __version__ = "1.0.2"
 __author__ = "Simon Pelletier"
 __license__ = "MIT"
 

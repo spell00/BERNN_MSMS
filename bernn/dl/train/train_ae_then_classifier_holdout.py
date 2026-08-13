@@ -916,18 +916,11 @@ class TrainAEThenClassifierHoldout(TrainAE):
                           f"Valid loss: {values['valid']['closs'][-1]:.3f}"
                           f"{test_summary}")
                     best_closs = values['valid']['closs'][-1]
-                if valid_mcc_improved or valid_acc_improved or valid_loss_improved:
+                if valid_mcc_improved:
                     if patience_before > 0:
-                        reasons = []
-                        if valid_mcc_improved:
-                            reasons.append('valid MCC')
-                        if valid_acc_improved:
-                            reasons.append('valid accuracy')
-                        if valid_loss_improved:
-                            reasons.append('valid loss')
                         print(
                             f"[early-stop] Reset patience at epoch {epoch} after improved "
-                            f"{', '.join(reasons)} (was {patience_before}/{self.args.early_stop})"
+                            f"valid MCC (was {patience_before}/{self.args.early_stop})"
                         )
                     early_stop_counter = 0
                 else:

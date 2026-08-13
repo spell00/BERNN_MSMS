@@ -997,19 +997,29 @@ class TrainAE:
         return torch.nn.functional.one_hot(preds, num_classes=self.n_cats).float()
 
     def _score_public_split_metrics(self, split):
-        """Score an already-prepared split without applying prediction scaling again."""
+        """Score an already-prepared split, applying the fitted scaler if available.
+
+        Historically this method used the raw `self.data` inputs, causing
+        training-time monitors to disagree with restored-model inference. Reuse
+        the prediction path exactly; never silently score raw inputs when a
+        configured scaler fails.
+        """
         try:
             labels = self.data.get("labels", {}).get(split, None)
-            inputs = self.data.get("inputs", {}).get(split, None)
+            inputs_raw = self.data.get("inputs", {}).get(split, None)
             batches = self.data.get("batches", {}).get(split, None)
-            if labels is None or inputs is None or len(inputs) == 0:
+            if labels is None or inputs_raw is None or len(inputs_raw) == 0:
                 return {"mcc": float("nan"), "acc": float("nan")}
             labels = pd.Series(labels)
             if labels.empty or labels.astype(str).eq("-1").all():
                 return {"mcc": float("nan"), "acc": float("nan")}
-            inputs = pd.DataFrame(inputs).copy()
+
+            inputs_df = pd.DataFrame(inputs_raw).copy()
+            inputs, batch_ids = self._prepare_prediction_matrix(
+                inputs_df, batches_test=batches, return_batch_ids=True
+            )
+
             tensors = [torch.tensor(inputs.values, dtype=torch.float32, device=getattr(self.args, "device", "cpu"))]
-            batch_ids = None if batches is None else np.asarray(batches)
             if batch_ids is not None:
                 tensors.append(torch.tensor(batch_ids, dtype=torch.long, device=getattr(self.args, "device", "cpu")))
 

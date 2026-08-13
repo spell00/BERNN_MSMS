@@ -304,7 +304,10 @@ class TrainAEClassifierHoldout(TrainAE):
             self.warmup_disc_b = False
             if self.data is None or 'cats' not in self.data or self.data['cats'] is None:
                 raise ValueError("Training data (specifically 'cats' labels) is not initialized. Ensure fit() is called correctly with valid labels.")
-            self.n_cats = len(np.unique(self.data['cats']['all']))  # + 1  # for pool samples
+            # Sentinel -1 marks unlabeled rows used only by reconstruction/domain
+            # learning. It must not allocate a classifier output class.
+            known_cats = np.asarray(self.data['cats']['all'])
+            self.n_cats = len(np.unique(known_cats[known_cats >= 0]))
             if self.args.groupkfold:
                 combination = list(np.concatenate((np.unique(self.data['batches']['train']),
                                                    np.unique(self.data['batches']['valid']),
@@ -576,18 +579,11 @@ class TrainAEClassifierHoldout(TrainAE):
                               f"Valid loss: {values['valid']['closs'][-1]}"
                               f"{test_summary}")
                         best_closs = values['valid']['closs'][-1]
-                    if valid_mcc_improved or valid_acc_improved or valid_loss_improved:
+                    if valid_mcc_improved:
                         if patience_before > 0:
-                            reasons = []
-                            if valid_mcc_improved:
-                                reasons.append('valid MCC')
-                            if valid_acc_improved:
-                                reasons.append('valid accuracy')
-                            if valid_loss_improved:
-                                reasons.append('valid loss')
                             print(
                                 f"[early-stop] Reset patience at epoch {epoch} after improved "
-                                f"{', '.join(reasons)} (was {patience_before}/{self.args.early_stop})"
+                                f"valid MCC (was {patience_before}/{self.args.early_stop})"
                             )
                         early_stop_counter = 0
                     else:

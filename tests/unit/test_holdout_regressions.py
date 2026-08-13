@@ -451,16 +451,19 @@ def test_holdout_fit_accepts_external_validation_and_unlabeled_test(tmp_path):
 
 
 @pytest.mark.unit
-def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
+def test_public_split_mcc_uses_prediction_scaling():
     trainer = TrainAEClassifierHoldout.__new__(TrainAEClassifierHoldout)
     trainer.args = _args(device="cpu", scaler="standard")
     trainer.columns = None
     trainer._label_encoder = None
     trainer.n_cats = 2
 
-    class BadScaler:
+    class TrackingScaler:
+        calls = 0
+
         def transform(self, X):
-            return np.asarray(X) + 1000
+            self.calls += 1
+            return np.asarray(X) + 10
 
     class TinyAE(torch.nn.Module):
         def __init__(self):
@@ -468,7 +471,7 @@ def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
             self.enc = torch.nn.Identity()
             self.classifier = torch.nn.Identity()
 
-    trainer.scaler = BadScaler()
+    trainer.scaler = TrackingScaler()
     trainer.ae = TinyAE()
     trainer.data = {
         "inputs": {"valid": pd.DataFrame({"f0": [0.0, 1.0, 0.0, 1.0]})},
@@ -477,8 +480,8 @@ def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
     }
 
     def fake_logits(self, data, batch_ids=None):
-        assert float(data.max()) < 10.0
-        preds = (data[:, 0] > 0.5).long()
+        assert float(data.min()) >= 10.0
+        preds = (data[:, 0] > 10.5).long()
         return torch.nn.functional.one_hot(preds, num_classes=2).float()
 
     trainer._predict_logits_from_batch = types.MethodType(fake_logits, trainer)
@@ -487,6 +490,7 @@ def test_public_split_mcc_scores_prepared_inputs_without_rescaling():
     assert split_metrics["mcc"] == pytest.approx(1.0)
     assert split_metrics["acc"] == pytest.approx(1.0)
     assert trainer._score_public_split_mcc("valid") == pytest.approx(1.0)
+    assert trainer.scaler.calls == 2
 
 
 @pytest.mark.unit
