@@ -1,10 +1,7 @@
-# 
-
 # BERNN-MSMS
 
-Minimal README for quick usage.
-
-Longer historical content is kept in [LEGACY_README.md](LEGACY_README.md).
+Batch-effect-aware representation learning and classification with an
+estimator-style `fit(...); predict(...)` interface.
 
 ## Install
 
@@ -12,34 +9,33 @@ Longer historical content is kept in [LEGACY_README.md](LEGACY_README.md).
 pip install bernn
 ```
 
-## Basic usage
+## Quick start
 
 ```python
 from bernn import TrainAEClassifierHoldout
+from bernn.config.training_config import TrainingConfig
 
-trainer_cls = TrainAEClassifierHoldout
-trainer = trainer_cls(config=bernn_config, log_metrics=True, keep_models=False)
-
-# Train and predict in one call
-preds_encoded = trainer.fit_predict(
-    X_train,
-    y_train,
-    X_test=X_test,
-    y_test=y_test,
-    groups_train=batches_train,
-    groups_test=batches_test,
-    cross_validation=False,
-    cross_test=False,
+config = TrainingConfig(
+    n_epochs=100,
+    optimize_hyperparams=False,
+    device="cpu",
 )
+model = TrainAEClassifierHoldout(config=config, log_metrics=False)
 
-# Decode predictions back to original labels
-preds = trainer.predict(X_test)
+# Inductive fit: training data only.
+model.fit(X_train, y_train, groups_train=batch_train)
+y_pred = model.predict(X_new, groups_test=batch_new)
 ```
+
+Read the complete [BERNN usage guide](TUTORIAL.md) for input shapes, inductive
+and fully transductive fitting, prediction, and hyperparameter guidance.
 
 Important runtime contract:
 
-- groups_train is mandatory.
-- If X_test is provided, groups_test is mandatory.
+- `groups_train` is mandatory.
+- If `X_valid` or `X_test` is supplied, its matching batch vector is mandatory.
+- BERNN hyperparameters are dataset-dependent. The examples are interface
+  demonstrations, not universal performance-optimal defaults.
 
 ## Important parameters
 
@@ -55,11 +51,6 @@ Focus on these first:
 - device: cpu/cuda target.
 - scaler, bs: preprocessing and batch size.
 
-## Official documentation
+## Documentation
 
-- Full reference: [OFFICIAL_DOCUMENTATION.md](OFFICIAL_DOCUMENTATION.md)
-- Full parameter catalog: [TRAINING_PARAMETERS.md](TRAINING_PARAMETERS.md)
-- Minimal runnable examples notebook (4 variants): [tutorials/minimal_examples.ipynb](tutorials/minimal_examples.ipynb)
-- Optimized all-config notebook (TrainAEClassifierHoldout): [tutorials/optimized_classifier_holdout_all_configs.ipynb](tutorials/optimized_classifier_holdout_all_configs.ipynb)
-- Optimized all-config notebook (TrainAEThenClassifierHoldout): [tutorials/optimized_ae_then_classifier_holdout_all_configs.ipynb](tutorials/optimized_ae_then_classifier_holdout_all_configs.ipynb)
-- Historical CLI-heavy guide: [LEGACY_README.md](LEGACY_README.md)
+- [Usage tutorial](TUTORIAL.md)
