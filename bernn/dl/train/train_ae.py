@@ -340,30 +340,43 @@ class TrainAE:
 
         # Normalize all labels (train, test, valid) upfront to ensure consistency.
         y = self._normalize_labels_for_encoding(y)
-        test_labels_for_union = None
         if y_test is not None:
             y_test = self._normalize_labels_for_encoding(y_test)
-            test_labels_for_union = y_test
         if y_valid is not None:
             y_valid = self._normalize_labels_for_encoding(y_valid)
 
+        def _known_label_mask(values):
+            return np.asarray(values).astype(str) != '-1'
+
         # Build label encoder on the union of train, valid, and test labels (if provided)
-        y_is_numeric = np.issubdtype(y.dtype, np.number)
+        y_is_numeric = np.issubdtype(np.asarray(y).dtype, np.number)
         if not y_is_numeric:
             self._label_encoder = LabelEncoder()
-            # Union all available labels for consistent encoding
-            label_union = [y]
-            if test_labels_for_union is not None:
-                label_union.append(test_labels_for_union)
+            # Fit only on known labels. Sentinel -1 rows remain available to
+            # reconstruction/domain losses but are never classifier targets.
+            label_union = [y[_known_label_mask(y)]]
+            if y_test is not None:
+                label_union.append(y_test[_known_label_mask(y_test)])
             if y_valid is not None:
-                label_union.append(y_valid)
+                label_union.append(y_valid[_known_label_mask(y_valid)])
+            label_union = [values for values in label_union if len(values)]
+            if not label_union:
+                raise ValueError("At least one labeled training sample is required")
             all_labels_union = np.unique(np.concatenate(label_union))
             self._label_encoder.fit(all_labels_union)
-            y = self._label_encoder.transform(y)
+
+            def _encode_preserving_unknown(values):
+                known = _known_label_mask(values)
+                encoded = np.full(len(values), -1, dtype=int)
+                if np.any(known):
+                    encoded[known] = self._label_encoder.transform(np.asarray(values)[known])
+                return encoded
+
+            y = _encode_preserving_unknown(y)
             if y_test is not None:
-                y_test = self._label_encoder.transform(y_test)
+                y_test = _encode_preserving_unknown(y_test)
             if y_valid is not None:
-                y_valid = self._label_encoder.transform(y_valid)
+                y_valid = _encode_preserving_unknown(y_valid)
         else:
             self._label_encoder = None
 
@@ -379,7 +392,10 @@ class TrainAE:
 
         assert len(X) == len(y) == len(groups), "X, y, groups must have same length"
 
-        label_map = {l: i for i, l in enumerate(sorted(np.unique(y), key=str))}
+        known_train_labels = y[np.asarray(y) != -1]
+        if not len(known_train_labels):
+            raise ValueError("At least one labeled training sample is required")
+        label_map = {l: i for i, l in enumerate(sorted(np.unique(known_train_labels), key=str))}
         self.unique_labels = np.array(sorted(label_map.keys(), key=str))
         self.unique_batches = np.unique(groups)
 
@@ -742,6 +758,54 @@ class TrainAE:
         self.best_state_dicts = None
         self.best_epoch = None
 
+
+    def _fit_triplet_knn_from_train_loader(self, loader, ae, mapping=True):
+        """Fit the legacy triplet classifier KNN using TRAIN rows/labels only.
+
+        This method must never be called with validation/test/all loaders.
+        Holdout labels are evaluation-only.
+        """
+        if loader is None:
+            raise RuntimeError("Triplet KNN requires the training loader.")
+        was_training = ae.training
+        ae.eval()
+        embeddings = []
+        labels_all = []
+        with torch.no_grad():
+            for batch in loader:
+                data, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
+                    pos_batch_sample, neg_batch_sample, sets = batch
+                # Defensive invariant: a loader passed here must contain train rows only.
+                set_values = np.asarray(sets).astype(str)
+                if len(set_values) and np.any(set_values != 'train'):
+                    raise RuntimeError(
+                        "Refusing to fit triplet KNN: non-train rows were found in the training loader."
+                    )
+                data = data.to(self.args.device).float()
+                to_rec = to_rec.to(self.args.device).float()
+                enc, _, _, _ = ae(
+                    data, to_rec, domain,
+                    sampling=False,
+                    mapping=mapping,
+                )
+                y_np = labels.detach().int().cpu().numpy()
+                known = y_np != -1
+                if np.any(known):
+                    embeddings.append(enc.detach().float().cpu().numpy()[known])
+                    labels_all.append(y_np[known])
+        if was_training:
+            ae.train()
+        if not embeddings:
+            raise RuntimeError("No labeled training embeddings available to fit triplet KNN.")
+        X_knn = np.concatenate(embeddings, axis=0)
+        y_knn = np.concatenate(labels_all, axis=0)
+        requested_k = int(getattr(self.args, 'knn_n_neighbors', 5))
+        k = max(1, min(requested_k, len(X_knn)))
+        self.knn = KNeighborsClassifier(n_neighbors=k, weights='distance')
+        self.knn.fit(X_knn, y_knn)
+        self._knn_ready = True
+        return self.knn
+
     def _train(self, params=None):
         """
         Master training loop that executes after data is loaded.
@@ -840,6 +904,15 @@ class TrainAE:
                             loaders['train'], lists, traces, nu=getattr(self.args, 'nu', 1), mapping=getattr(self.args, 'use_mapping', True))
 
             # ===== VALIDATION & CHECKPOINT SAVING =====
+            # For legacy triplet classification, fit the prediction KNN from TRAIN only
+            # before touching validation. No holdout label can enter this fit.
+            if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                self._fit_triplet_knn_from_train_loader(
+                    loaders['train'],
+                    self.ae,
+                    mapping=getattr(self.args, 'use_mapping', True),
+                )
+
             # After training epoch, validate on validation set
             if 'valid' in loaders and len(loaders['valid'].dataset) > 0:
                 valid_lists, valid_traces = get_empty_traces()
@@ -870,6 +943,12 @@ class TrainAE:
             try:
                 checkpoint = torch.load(self.best_checkpoint_path, map_location=device)
                 self.ae.load_state_dict(checkpoint['model_state_dict'])
+                if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
+                    self._fit_triplet_knn_from_train_loader(
+                        loaders['train'],
+                        self.ae,
+                        mapping=getattr(self.args, 'use_mapping', True),
+                    )
                 print(f"✓ Loaded best model from checkpoint (best_mcc={checkpoint['best_mcc']:.4f})")
             except Exception as e:
                 print(f"Warning: Could not load best checkpoint: {e}")
@@ -1290,6 +1369,8 @@ class TrainAE:
             self.data['labels'][group] = self.data['labels'][group][inds_to_keep]
             self.data['cats'][group] = self.data['cats'][group][inds_to_keep]
             self.data['batches'][group] = self.data['batches'][group][inds_to_keep]
+            self.data['sets'][group] = self.data['sets'][group][inds_to_keep]
+            self.data['orders'][group] = self.data['orders'][group][inds_to_keep]
 
         self.samples_weights = {
             group: [self.class_weights[label] if label not in ["MCI-AD", 'MCI-other', 'DEM-other', 'NPH'] else 0 for
@@ -1484,20 +1565,16 @@ class TrainAE:
 
                 if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
                     feats = enc
-                    # Prefer persistent KNN if available, fallback to in-batch KNN
                     X = feats.detach().float().cpu().numpy()
-                    try:
-                        from sklearn.exceptions import NotFittedError
-                        if getattr(self, "_knn_ready", False):
-                            proba = self.knn.predict_proba(X)
-                            # Map to full number of classes in correct order
-                            proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
-                            cls_idx = np.array(self.knn.classes_, dtype=int)
-                            proba_full[:, cls_idx] = proba.astype(np.float32)
-                        else:
-                            raise NotFittedError("Persistent KNN not ready")
-                    except Exception as e:
-                        # Fallback: in-batch KNN using neighbors within the current batch
+                    if getattr(self, "_knn_ready", False):
+                        # Validation/test prediction is ALWAYS from a KNN fitted on TRAIN only.
+                        proba = self.knn.predict_proba(X)
+                        proba_full = np.zeros((X.shape[0], self.n_cats), dtype=np.float32)
+                        cls_idx = np.array(self.knn.classes_, dtype=int)
+                        proba_full[:, cls_idx] = proba.astype(np.float32)
+                    elif group == 'train':
+                        # Train-only bootstrap for training telemetry before the persistent
+                        # train KNN is fitted at the end of the epoch. Never used on holdout.
                         from sklearn.neighbors import NearestNeighbors
                         k = int(getattr(self.args, 'knn_n_neighbors', 5))
                         y_np = labels.detach().int().cpu().numpy()
@@ -1508,7 +1585,14 @@ class TrainAE:
                         for i in range(X.shape[0]):
                             counts = np.bincount(y_np[idx[i]], minlength=self.n_cats).astype(np.float32)
                             s = counts.sum()
-                            proba_full[i] = counts / s if s > 0 else np.full(self.n_cats, 1.0 / self.n_cats, dtype=np.float32)
+                            proba_full[i] = counts / s if s > 0 else np.full(
+                                self.n_cats, 1.0 / self.n_cats, dtype=np.float32
+                            )
+                    else:
+                        raise RuntimeError(
+                            "Triplet KNN is not fitted. Validation/test labels must never "
+                            "be used to fit or bootstrap a classifier."
+                        )
                     preds = torch.from_numpy(proba_full).to(self.args.device)
                 else:
                     preds = ae.classifier(enc)
@@ -1524,17 +1608,24 @@ class TrainAE:
 
             # Select classification loss
             if getattr(self.args, 'classif_loss', 'ce') == 'triplet':
-                # Compute embeddings for positive/negative samples and apply TripletMarginLoss on enc
-                class_triplet = nn.TripletMarginLoss(getattr(self.args, 'triplet_margin', self.triplet_margin), p=2, swap=True)
-                pos_to_rec = pos_to_rec.to(self.args.device).float()
-                neg_to_rec = neg_to_rec.to(self.args.device).float()
-                pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
-                neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
-                if not self.args.train_after_warmup:
-                    enc = ae.classifier.net[0](enc)
-                    pos_enc = ae.classifier.net[0](pos_enc)
-                    neg_enc = ae.classifier.net[0](neg_enc)
-                classif_loss = class_triplet(enc, pos_enc, neg_enc)
+                if group == 'train':
+                    # Supervised class-triplet construction is TRAIN ONLY.
+                    class_triplet = nn.TripletMarginLoss(
+                        getattr(self.args, 'triplet_margin', self.triplet_margin),
+                        p=2, swap=True,
+                    )
+                    pos_to_rec = pos_to_rec.to(self.args.device).float()
+                    neg_to_rec = neg_to_rec.to(self.args.device).float()
+                    pos_enc, _, _, _ = ae(pos_to_rec, pos_to_rec, domain, sampling=True, mapping=mapping)
+                    neg_enc, _, _, _ = ae(neg_to_rec, neg_to_rec, domain, sampling=True, mapping=mapping)
+                    if not self.args.train_after_warmup:
+                        enc = ae.classifier.net[0](enc)
+                        pos_enc = ae.classifier.net[0](pos_enc)
+                        neg_enc = ae.classifier.net[0](neg_enc)
+                    classif_loss = class_triplet(enc, pos_enc, neg_enc)
+                else:
+                    # Holdout labels are metric-only. Do not construct supervised triplets.
+                    classif_loss = torch.zeros((), device=self.args.device)
             else:
                 classif_loss = celoss(preds, cats)
 
@@ -1893,7 +1984,7 @@ class TrainAE:
             # print(i)
             optimizer_ae.zero_grad()
             inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                pos_batch_sample, neg_batch_sample, _ = all_batch
+                pos_batch_sample, neg_batch_sample, sets = all_batch
             inputs = inputs.to(self.args.device).float()
             to_rec = to_rec.to(self.args.device).float()
             # verify if domain is str
@@ -1968,11 +2059,19 @@ class TrainAE:
             loss = rec_loss + self.gamma * dloss + self.beta * kld.mean() + l1_loss
             # Additive class-based triplet loss (combinable with any batch dloss)
             if getattr(self.args, 'class_triplet', False):
-                ct_loss = compute_class_triplet(
-                    ae, enc, pos_to_rec, neg_to_rec, domain, self.args.device,
-                    margin=getattr(self, 'class_triplet_margin', 1.0), mapping=mapping,
-                )
-                loss = loss + getattr(self.args, 'class_triplet_w', 1.0) * ct_loss
+                split_mask = np.asarray(sets).astype(str) == 'train'
+                label_mask = labels.detach().cpu().numpy().astype(int) != -1
+                supervised_mask = split_mask & label_mask
+                if np.any(supervised_mask):
+                    cpu_mask = torch.as_tensor(supervised_mask, dtype=torch.bool)
+                    enc_mask = cpu_mask.to(enc.device)
+                    domain_mask = cpu_mask.to(domain.device)
+                    ct_loss = compute_class_triplet(
+                        ae, enc[enc_mask], pos_to_rec[cpu_mask], neg_to_rec[cpu_mask],
+                        domain[domain_mask], self.args.device,
+                        margin=getattr(self, 'class_triplet_margin', 1.0), mapping=mapping,
+                    )
+                    loss = loss + getattr(self.args, 'class_triplet_w', 1.0) * ct_loss
             if torch.isnan(loss):
                 print("NAN in loss!")
                 return 0, ae, warmup

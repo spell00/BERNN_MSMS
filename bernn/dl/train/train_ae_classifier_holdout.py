@@ -227,6 +227,18 @@ class TrainAEClassifierHoldout(TrainAE):
                                      key=lambda x: int(x[0].replace('layer', ''))))
         return ordered_layers
 
+    def close_resources(self):
+        """Flush and close per-fit loggers; safe to call more than once."""
+        loggers = getattr(self, '_active_loggers', {})
+        self._active_loggers = {}
+        for logger in loggers.values():
+            close = getattr(logger, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
 
     def _train(self, params=None):
         """
@@ -262,6 +274,7 @@ class TrainAEClassifierHoldout(TrainAE):
         optimizer_type = 'adam'
         metrics = {'pool_metrics': {}}
         loggers = {'cm_logger': LogConfusionMatrix(self.complete_log_path)}
+        self._active_loggers = loggers
         print(f'See results using: tensorboard --logdir={self.complete_log_path} --port=6006')
 
         os.makedirs(self.hparams_filepath, exist_ok=True)

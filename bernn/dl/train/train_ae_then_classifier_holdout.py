@@ -161,6 +161,8 @@ def log_num_neurons(logger, n_neurons, init_n_neurons, mlops='mlflow', step=None
 
 
 class TrainAEThenClassifierHoldout(TrainAE):
+    # Shared KNN/classification behavior is inherited from TrainAE.
+    # This subclass only keeps its genuinely distinct two-stage training logic.
     """
     This class was previously named TrainAEClassifierHoldout. It is now TrainAEThenClassifierHoldout.
 
@@ -345,6 +347,18 @@ class TrainAEThenClassifierHoldout(TrainAE):
         layer_params = {k: v for k, v in params.items() if k.startswith('layer')}
         return dict(sorted(layer_params.items(), key=lambda x: int(x[0].replace('layer', ''))))
 
+    def close_resources(self):
+        """Flush and close per-fit loggers; safe to call more than once."""
+        loggers = getattr(self, '_active_loggers', {})
+        self._active_loggers = {}
+        for logger in loggers.values():
+            close = getattr(logger, 'close', None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    pass
+
 
 
     def _train(self, params=None):
@@ -427,6 +441,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
 
         self.complete_log_path = f'logs/ae_then_classifier_holdout/{self.foldername}'
         loggers = {'cm_logger': LogConfusionMatrix(self.complete_log_path)}
+        self._active_loggers = loggers
         print(f'See results using: tensorboard --logdir={self.complete_log_path} --port=6006')
 
         hparams_filepath = self.complete_log_path + '/hp'
@@ -634,7 +649,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                             if warmup or self.args.train_after_warmup:
                                 optimizer_ae.zero_grad()
                             inputs, names, labels, domain, to_rec, not_to_rec, pos_to_rec, neg_to_rec, \
-                                pos_batch_sample, neg_batch_sample, _ = all_batch
+                                pos_batch_sample, neg_batch_sample, sets = all_batch
                             inputs = inputs.to(self.args.device).float()
                             to_rec = to_rec.to(self.args.device).float()
 
@@ -715,12 +730,33 @@ class TrainAEThenClassifierHoldout(TrainAE):
                                 pass
                             if warmup or self.args.train_after_warmup and not warmup_disc_b:
                                 ae_loss = rec_loss + gamma * dloss + beta * kld.mean() + zeta * zinb_loss + l1_loss
-                                # Additive class-based triplet loss on embeddings
+                                # Additive supervised class-triplet loss.
+                                # Reconstruction/domain adaptation may stay transductive on
+                                # loaders['all'], but class labels from valid/test must never
+                                # influence the embedding. Restrict class-triplet to TRAIN rows.
                                 if getattr(self.args, 'class_triplet', False):
-                                    ae_loss = ae_loss + getattr(self.args, 'class_triplet_w', 1.0) * compute_class_triplet(
-                                        ae, enc, pos_to_rec, neg_to_rec, domain, self.args.device,
-                                        margin=margin, mapping=getattr(self.args, 'use_mapping', True),
-                                    )
+                                    split_mask = np.asarray(sets).astype(str) == 'train'
+                                    known_label_mask = labels.detach().cpu().numpy().astype(int) != -1
+                                    supervised_mask = split_mask & known_label_mask
+
+                                    if np.any(supervised_mask):
+                                        cpu_mask = torch.as_tensor(supervised_mask, dtype=torch.bool)
+                                        enc_mask = cpu_mask.to(enc.device)
+                                        domain_mask = cpu_mask.to(domain.device)
+
+                                        class_triplet_loss = compute_class_triplet(
+                                            ae,
+                                            enc[enc_mask],
+                                            pos_to_rec[cpu_mask],
+                                            neg_to_rec[cpu_mask],
+                                            domain[domain_mask],
+                                            self.args.device,
+                                            margin=margin,
+                                            mapping=getattr(self.args, 'use_mapping', True),
+                                        )
+                                        ae_loss = ae_loss + getattr(
+                                            self.args, 'class_triplet_w', 1.0
+                                        ) * class_triplet_loss
                                 ae_loss.backward()
                                 nn.utils.clip_grad_norm_(ae.parameters(), max_norm=1)
                                 optimizer_ae.step()

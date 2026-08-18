@@ -93,6 +93,29 @@ class MSDataset3(Dataset):
             self.labels_data = {label: data[labels_inds[label]] for label in labels}
             self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
 
+        # Class-supervised triplets for train anchors must draw only from train
+        # rows. The combined transductive loader also contains validation/test
+        # rows, whose labels are available for monitoring but not optimization.
+        train_label_inds = {}
+        if sets is not None:
+            for i, (label, split) in enumerate(zip(labels, sets)):
+                if str(split) == 'train' and str(label) != '-1':
+                    train_label_inds.setdefault(label, []).append(i)
+        try:
+            self.train_labels_data = {
+                label: data.iloc[indices].to_numpy()
+                for label, indices in train_label_inds.items()
+            }
+        except:
+            self.train_labels_data = {
+                label: data[indices]
+                for label, indices in train_label_inds.items()
+            }
+        self.train_unique_labels = list(self.train_labels_data)
+        self.n_train_labels = {
+            label: len(values) for label, values in self.train_labels_data.items()
+        }
+
         # except:
         #     print(labels)
         self.n_labels = {label: len(self.labels_data[label]) for label in labels}
@@ -127,12 +150,21 @@ class MSDataset3(Dataset):
             to_rec = self.samples[idx].copy()
             not_to_rec = torch.Tensor([0])
 
-        # Always provide a positive/negative sample for reconstruction context
-        pos_to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
+        # Train anchors use train-only class pools. This prevents validation/test
+        # labels from entering the optional supervised class-triplet loss.
+        use_train_class_pool = (
+            str(sets) == 'train'
+            and label in self.train_labels_data
+            and len(self.train_unique_labels) > 1
+        )
+        label_data = self.train_labels_data if use_train_class_pool else self.labels_data
+        n_labels = self.n_train_labels if use_train_class_pool else self.n_labels
+        unique_labels = self.train_unique_labels if use_train_class_pool else self.unique_labels
+        pos_to_rec = label_data[label][np.random.randint(0, n_labels[label])].copy()
         neg_label_for_rec = label
         while neg_label_for_rec == label:
-            neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
-        neg_to_rec = self.labels_data[neg_label_for_rec][np.random.randint(0, self.n_labels[neg_label_for_rec])].copy()
+            neg_label_for_rec = unique_labels[np.random.randint(0, len(unique_labels))].copy()
+        neg_to_rec = label_data[neg_label_for_rec][np.random.randint(0, n_labels[neg_label_for_rec])].copy()
         if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
             while not_batch_label == batch or not_batch_label is None:
@@ -1549,4 +1581,3 @@ class MSDataset5(Dataset):
             if np.random.random() > 0.5:
                 x = x * (Variable(x.data.new(x.size()).normal_(0, 0.1)) > -.1).type_as(x)
         return x, name, label, batch, to_rec, not_to_rec, pos_batch_sample, neg_batch_sample, sets
-
