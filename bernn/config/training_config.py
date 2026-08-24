@@ -78,6 +78,7 @@ class TrainingConfig:
 
     # Batch processing
     bs: int = 32  # Batch size
+    num_workers: int = 0  # PyTorch DataLoader subprocesses (0 keeps loading in-process)
     bdisc: bool = True
 
     # Hyperparameter optimization
@@ -101,6 +102,10 @@ class TrainingConfig:
 
     def __post_init__(self):
         """Validate configuration after initialization."""
+        self.num_workers = int(self.num_workers)
+        if self.num_workers < 0:
+            raise ValueError("num_workers must be >= 0")
+
         if self.dloss not in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae', 'no']:
             raise ValueError(f"Invalid dloss: {self.dloss}. Must be one of: revTriplet, revDANN, DANN, inverseTriplet, normae, no")
 

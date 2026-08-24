@@ -356,7 +356,8 @@ class validation_spliter:
         return partial_dataset
 
 
-def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, classifier=None, bs=64, device='cuda'):
+def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, classifier=None, bs=64,
+                device='cuda', num_workers=0):
     """
 
     Args:
@@ -367,6 +368,10 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     Returns:
 
     """
+    num_workers = int(num_workers)
+    if num_workers < 0:
+        raise ValueError("num_workers must be >= 0")
+
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
         # torchvision.transforms.Normalize(0.5, 0.5),
@@ -407,7 +412,7 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
 
     loaders = {
         'train': DataLoader(train_set,
-                            num_workers=0,
+                            num_workers=num_workers,
                             # shuffle=True,
                             sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                                                           replacement=True),
@@ -416,14 +421,14 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                             drop_last=True),
 
         'test': DataLoader(test_set,
-                           num_workers=0,
+                           num_workers=num_workers,
                            sampler=WeightedRandomSampler(samples_weights['test'], sum(samples_weights['test']),
                                                          replacement=False),
                            batch_size=bs,
                            pin_memory=False,
                            drop_last=False),
         'valid': DataLoader(valid_set,
-                            num_workers=0,
+                            num_workers=num_workers,
                             sampler=WeightedRandomSampler(samples_weights['valid'], sum(samples_weights['valid']),
                                                           replacement=False),
                             batch_size=bs,
@@ -431,33 +436,33 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                             drop_last=False),
 
         'train_pool': DataLoader(train_pool_set,
-                                 num_workers=0,
+                                 num_workers=num_workers,
                                  shuffle=True,
                                  batch_size=bs,
                                  pin_memory=False,
                                  drop_last=False),
 
         'test_pool': DataLoader(test_pool_set,
-                                num_workers=0,
+                                num_workers=num_workers,
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=False,
                                 drop_last=False),
         'valid_pool': DataLoader(valid_pool_set,
-                                 num_workers=0,
+                                 num_workers=num_workers,
                                  shuffle=True,
                                  batch_size=bs,
                                  pin_memory=False,
                                  drop_last=False),
 
         'test2': DataLoader(test_set2,
-                            num_workers=0,
+                            num_workers=num_workers,
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=False,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
-                             num_workers=0,
+                             num_workers=num_workers,
                              shuffle=True,
                              batch_size=bs,
                              pin_memory=False,
@@ -504,13 +509,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
                                [x for x in data['batches']['test']], sets=data['sets']['test'],
                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         loaders['valid2'] = DataLoader(valid_set2,
-                                       num_workers=0,
+                                       num_workers=num_workers,
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=False,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
-                                      num_workers=0,
+                                      num_workers=num_workers,
                                       shuffle=True,
                                       batch_size=bs,
                                       pin_memory=False,
@@ -543,13 +548,13 @@ def get_loaders(data, random_recs, samples_weights, triplet_dloss, ae=None, clas
     print(f"[DATALOADER DEBUG] len(sets/all)={len(data['sets']['all'])}", flush=True)
 
     loaders['all'] = DataLoader(all_set,
-                                num_workers=0,
+                                num_workers=num_workers,
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=False,
                                 drop_last=True)
     loaders['all_pool'] = DataLoader(all_set_pool,
-                                     num_workers=0,
+                                     num_workers=num_workers,
                                      shuffle=False,
                                      batch_size=bs,
                                      pin_memory=False,
@@ -989,7 +994,7 @@ def get_images_loaders_no_pool(data, random_recs, samples_weights, args,
 
 
 def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=None, classifier=None, bs=64,
-                        device='cuda'):
+                        device='cuda', num_workers=0):
     """
 
     Args:
@@ -1000,6 +1005,10 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
     Returns:
 
     """
+    num_workers = int(num_workers)
+    if num_workers < 0:
+        raise ValueError("num_workers must be >= 0")
+
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
         # torchvision.transforms.Normalize(0.5, 0.5),
@@ -1023,7 +1032,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
 
     loaders = {
         'train': DataLoader(train_set,
-                            num_workers=0,
+                            num_workers=num_workers,
                             # shuffle=True,
                             sampler=WeightedRandomSampler(samples_weights['train'], len(samples_weights['train']),
                                                           replacement=True),
@@ -1032,24 +1041,24 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                             drop_last=True),
 
         'test': DataLoader(test_set,
-                           num_workers=0,
+                           num_workers=num_workers,
                            batch_size=bs,
                            pin_memory=False,
                            drop_last=False),
         'valid': DataLoader(valid_set,
-                            num_workers=0,
+                            num_workers=num_workers,
                             batch_size=bs,
                             pin_memory=False,
                             drop_last=False),
 
         'test2': DataLoader(test_set2,
-                            num_workers=0,
+                            num_workers=num_workers,
                             shuffle=True,
                             batch_size=bs,
                             pin_memory=False,
                             drop_last=True),
         'valid2': DataLoader(valid_set2,
-                             num_workers=0,
+                             num_workers=num_workers,
                              shuffle=True,
                              batch_size=bs,
                              pin_memory=False,
@@ -1096,13 +1105,13 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                                [x for x in data['batches']['test']], sets=data['sets']['test'],
                                transform=transform, crop_size=-1, random_recs=random_recs, triplet_dloss=triplet_dloss)
         loaders['valid2'] = DataLoader(valid_set2,
-                                       num_workers=0,
+                                       num_workers=num_workers,
                                        shuffle=True,
                                        batch_size=bs,
                                        pin_memory=False,
                                        drop_last=True)
         loaders['test2'] = DataLoader(test_set2,
-                                      num_workers=0,
+                                      num_workers=num_workers,
                                       shuffle=True,
                                       batch_size=bs,
                                       pin_memory=False,
@@ -1126,7 +1135,7 @@ def get_loaders_no_pool(data, random_recs, samples_weights, triplet_dloss, ae=No
                              crop_size=-1, random_recs=False, triplet_dloss=triplet_dloss)
 
     loaders['all'] = DataLoader(all_set,
-                                num_workers=0,
+                                num_workers=num_workers,
                                 shuffle=True,
                                 batch_size=bs,
                                 pin_memory=False,

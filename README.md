@@ -9,7 +9,7 @@ estimator-style `fit(...); predict(...)` interface.
 pip install bernn
 ```
 
-## Quick start
+## Basic usage
 
 ```python
 from bernn import TrainAEClassifierHoldout
@@ -50,6 +50,7 @@ Focus on these first:
 - warmup, n_epochs: core training schedule.
 - device: cpu/cuda target.
 - scaler, bs: preprocessing and batch size.
+- num_workers: PyTorch DataLoader subprocesses; defaults to 0.
 
 ## Documentation
 

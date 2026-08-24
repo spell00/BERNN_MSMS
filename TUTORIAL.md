@@ -5,7 +5,7 @@ batch identifiers supplied alongside the feature matrix. Install the released
 package with:
 
 ```bash
-python -m pip install bernn==1.0.2
+python -m pip install bernn==1.0.4
 ```
 
 ## Inputs
@@ -73,7 +73,7 @@ only, or use a recommendation system that has been independently validated on
 held-out datasets. Do not use cross-test performance for model selection.
 
 The most important starting parameters are `dloss`, `n_layers`, `layer1`,
-`warmup`, `n_epochs`, `scaler`, `bs`, and `device`. Set
+`warmup`, `n_epochs`, `scaler`, `bs`, `num_workers`, and `device`. Set
 `optimize_hyperparams=True` only when the associated search cost and validation
 protocol are appropriate for the experiment.
 

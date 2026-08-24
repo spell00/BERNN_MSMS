@@ -198,6 +198,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 kan: Optional[bool] = None,
                 scaler: Optional[str] = None,
                 bs: Optional[int] = None,
+                num_workers: Optional[int] = None,
                 n_trials: Optional[int] = None,
                  fix_thres: float = -1,
                  log_metrics: bool = False,
@@ -227,6 +228,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             kan: Optional direct override for TrainingConfig.kan
             scaler: Optional direct override for TrainingConfig.scaler
             bs: Optional direct override for TrainingConfig.bs
+            num_workers: Optional direct override for TrainingConfig.num_workers
             n_trials: Optional direct override for TrainingConfig.n_trials
             fix_thres: If 1 > fix_thres >= 0 then the threshold is fixed to that value.
                        any other value means the threshold won't be fixed and will be
@@ -280,6 +282,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
             'kan': kan,
             'scaler': scaler,
             'bs': bs,
+            'num_workers': num_workers,
             'n_trials': n_trials,
         }
         direct_overrides = {k: v for k, v in direct_overrides.items() if v is not None}
@@ -547,10 +550,12 @@ class TrainAEThenClassifierHoldout(TrainAE):
             # Gets all the pytorch dataloaders to train the models
             if self.pools:
                 loaders = get_loaders(data, self.args.random_recs, self.samples_weights, self.args.dloss, None,
-                                      None, bs=getattr(self.args, 'bs', 32))
+                                      None, bs=getattr(self.args, 'bs', 32),
+                                      num_workers=getattr(self.args, 'num_workers', 0))
             else:
                 loaders = get_loaders_no_pool(data, self.args.random_recs, self.samples_weights, self.args.dloss,
-                                              None, None, bs=getattr(self.args, 'bs', 32))
+                                              None, None, bs=getattr(self.args, 'bs', 32),
+                                              num_workers=getattr(self.args, 'num_workers', 0))
 
             ae_cls = self.load_autoencoder()
 

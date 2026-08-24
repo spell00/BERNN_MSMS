@@ -819,9 +819,19 @@ class TrainAE:
         self.n_batches = len(set(self.data['batches']['all']))
         
         if getattr(self, 'pools', False):
-            loaders = get_loaders(self.data, getattr(self.args, 'random_recs', 0), self.samples_weights, getattr(self.args, 'dloss', 'revTriplet'), None, None, bs=getattr(self.args, 'bs', 32))
+            loaders = get_loaders(
+                self.data, getattr(self.args, 'random_recs', 0), self.samples_weights,
+                getattr(self.args, 'dloss', 'revTriplet'), None, None,
+                bs=getattr(self.args, 'bs', 32),
+                num_workers=getattr(self.args, 'num_workers', 0),
+            )
         else:
-            loaders = get_loaders_no_pool(self.data, getattr(self.args, 'random_recs', 0), self.samples_weights, getattr(self.args, 'dloss', 'revTriplet'), None, None, bs=getattr(self.args, 'bs', 32))
+            loaders = get_loaders_no_pool(
+                self.data, getattr(self.args, 'random_recs', 0), self.samples_weights,
+                getattr(self.args, 'dloss', 'revTriplet'), None, None,
+                bs=getattr(self.args, 'bs', 32),
+                num_workers=getattr(self.args, 'num_workers', 0),
+            )
 
         device = getattr(self.args, 'device', 'cpu')
         
@@ -972,7 +982,10 @@ class TrainAE:
         # We need a dataloader to transform X
         from torch.utils.data import DataLoader, TensorDataset
         dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
-        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+        loader = DataLoader(
+            dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
+            num_workers=getattr(self.args, 'num_workers', 0),
+        )
         
         from tqdm import tqdm
         encoded_list = []
@@ -1160,7 +1173,10 @@ class TrainAE:
         if batch_ids is not None:
             tensors.append(torch.tensor(batch_ids, dtype=torch.long))
         dataset = TensorDataset(*tensors)
-        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+        loader = DataLoader(
+            dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
+            num_workers=getattr(self.args, 'num_workers', 0),
+        )
 
         from tqdm import tqdm
         preds_list = []
@@ -1201,7 +1217,10 @@ class TrainAE:
         if batch_ids is not None:
             tensors.append(torch.tensor(batch_ids, dtype=torch.long))
         dataset = TensorDataset(*tensors)
-        loader = DataLoader(dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False)
+        loader = DataLoader(
+            dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
+            num_workers=getattr(self.args, 'num_workers', 0),
+        )
 
         from tqdm import tqdm
         proba_list = []
