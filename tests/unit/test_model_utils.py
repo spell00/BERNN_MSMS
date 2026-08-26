@@ -181,3 +181,54 @@ def test_msdataset3_getitem_returns_tensor(ms_dataset):
     item = ms_dataset[0]
     # item is a tuple; first element should be a tensor-like
     assert item is not None
+
+
+@pytest.mark.unit
+def test_class_triplet_partners_are_sampled_only_from_train_rows():
+    # Feature values identify their source split, making leakage unambiguous.
+    data = np.array([[10.0], [11.0], [20.0], [21.0], [100.0], [200.0]])
+    dataset = MSDataset3(
+        data,
+        names=np.array([f"s{i}" for i in range(len(data))]),
+        labels=np.array([0, 0, 1, 1, 0, 1]),
+        batches=np.array([0, 1, 0, 1, 0, 1]),
+        sets=np.array(["train", "train", "train", "train", "valid", "test"]),
+        random_recs=False,
+        triplet_dloss=False,
+    )
+
+    for train_idx in range(4):
+        item = dataset[train_idx]
+        pos_to_rec, neg_to_rec = item[6], item[7]
+        assert float(pos_to_rec.squeeze()) in {10.0, 11.0, 20.0, 21.0}
+        assert float(neg_to_rec.squeeze()) in {10.0, 11.0, 20.0, 21.0}
+        assert float(pos_to_rec.squeeze()) not in {100.0, 200.0}
+        assert float(neg_to_rec.squeeze()) not in {100.0, 200.0}
+        assert (float(pos_to_rec.squeeze()) < 20) == (train_idx < 2)
+        assert (float(neg_to_rec.squeeze()) < 20) != (train_idx < 2)
+
+    # Evaluation rows expose no class-derived partners at all.
+    for eval_idx in (4, 5):
+        item = dataset[eval_idx]
+        assert np.array_equal(np.asarray(item[6]), np.asarray(item[0]))
+        assert np.array_equal(np.asarray(item[7]), np.asarray(item[0]))
+
+
+@pytest.mark.unit
+def test_inverse_triplet_still_uses_transductive_batch_pools():
+    data = np.array([[10.0], [11.0], [100.0], [200.0]])
+    dataset = MSDataset3(
+        data,
+        names=np.array([f"s{i}" for i in range(len(data))]),
+        labels=np.array([0, 1, 0, 1]),
+        batches=np.array([0, 0, 1, 1]),
+        sets=np.array(["train", "train", "valid", "test"]),
+        random_recs=False,
+        triplet_dloss="inverseTriplet",
+    )
+
+    item = dataset[0]
+    pos_batch_sample, neg_batch_sample = item[8], item[9]
+    assert float(pos_batch_sample.squeeze()) in {10.0, 11.0}
+    # Opposite-batch partners remain available from validation/test features.
+    assert float(neg_batch_sample.squeeze()) in {100.0, 200.0}

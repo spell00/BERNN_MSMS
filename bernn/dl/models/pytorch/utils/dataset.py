@@ -105,6 +105,23 @@ class MSDataset3(Dataset):
         self.unique_batches = np.unique(batches) if batches is not None else []
         labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels} if labels is not None else {}
         batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches} if batches is not None else {}
+        # Class-triplet targets are supervised training data.  Keep this pool
+        # separate from labels_data because an ``all`` loader may legitimately
+        # contain transductive validation/test features and batch IDs, but its
+        # validation/test class labels must never influence optimization.
+        class_triplet_inds = {}
+        if labels is not None and sets is not None:
+            class_triplet_inds = {
+                label: [
+                    i for i, (sample_label, sample_set) in enumerate(zip(labels, sets))
+                    if sample_label == label and str(sample_set) == 'train'
+                ]
+                for label in self.unique_labels
+                if label != -1
+            }
+            class_triplet_inds = {
+                label: indices for label, indices in class_triplet_inds.items() if indices
+            }
         # try:
         try:
             self.labels_data = {label: data.iloc[labels_inds[label]].to_numpy() for label in labels}
@@ -112,6 +129,16 @@ class MSDataset3(Dataset):
         except:
             self.labels_data = {label: data[labels_inds[label]] for label in labels}
             self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
+        try:
+            self.class_triplet_data = {
+                label: data.iloc[indices].to_numpy()
+                for label, indices in class_triplet_inds.items()
+            }
+        except AttributeError:
+            self.class_triplet_data = {
+                label: data[indices] for label, indices in class_triplet_inds.items()
+            }
+        self.class_triplet_labels = list(self.class_triplet_data)
 
         # Validate all indexable arrays because __getitem__ reads from all of them.
         if not hasattr(self, 'sets') or self.sets is None:
@@ -191,17 +218,22 @@ class MSDataset3(Dataset):
             to_rec = self.samples[idx].copy()
             not_to_rec = torch.Tensor([0])
 
-        # Always provide a positive/negative sample for reconstruction context
-        pos_to_rec = self.labels_data[label][np.random.randint(0, self.n_labels[label])].copy()
-        neg_label_for_rec = label
-        # Guard against infinite loop when only one unique label exists in this split
-        if len(self.unique_labels) > 1:
-            _tries = 0
-            while neg_label_for_rec == label and _tries < 100:
-                neg_label_for_rec = self.unique_labels[np.random.randint(0, len(self.unique_labels))].copy()
-                _tries += 1
-        # If still same label (single-class split), fall back to same label
-        neg_to_rec = self.labels_data[neg_label_for_rec][np.random.randint(0, self.n_labels[neg_label_for_rec])].copy()
+        # Class-triplet partners must be selected exclusively from supervised
+        # training rows. Non-training rows still need collatable placeholders,
+        # but train_ae masks them out before computing the class-triplet loss.
+        if str(sets) == 'train' and label in self.class_triplet_data:
+            positive_pool = self.class_triplet_data[label]
+            pos_to_rec = positive_pool[np.random.randint(0, len(positive_pool))].copy()
+            negative_labels = [candidate for candidate in self.class_triplet_labels if candidate != label]
+            if negative_labels:
+                neg_label_for_rec = negative_labels[np.random.randint(0, len(negative_labels))]
+                negative_pool = self.class_triplet_data[neg_label_for_rec]
+                neg_to_rec = negative_pool[np.random.randint(0, len(negative_pool))].copy()
+            else:
+                neg_to_rec = pos_to_rec.copy()
+        else:
+            pos_to_rec = self.samples[idx].copy()
+            neg_to_rec = self.samples[idx].copy()
         if (self.triplet_dloss == 'revTriplet' or self.triplet_dloss == 'inverseTriplet') and len(self.unique_batches) > 1:
             not_batch_label = None
             _tries = 0
