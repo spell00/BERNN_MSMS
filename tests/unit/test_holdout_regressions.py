@@ -528,3 +528,45 @@ def test_holdout_prepare_data_legacy_internal_validation_still_splits(tmp_path):
     assert len(trainer.data["inputs"]["train"]) < len(X)
     assert len(trainer.data["inputs"]["valid"]) > 0
     assert len(trainer.data["inputs"]["test"]) > 0
+
+
+@pytest.mark.unit
+def test_prepare_data_rejects_holdout_class_absent_from_training(tmp_path):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=False,
+        log1p=True,
+        bs=4,
+    )
+    trainer = TrainAEThenClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        groupkfold=False,
+        pools=False,
+    )
+    X_train = pd.DataFrame(np.random.randn(8, 4))
+    y_train = np.array(["a", "b"] * 4)
+    groups_train = np.array(["b0", "b0", "b1", "b1"] * 2)
+    X_valid = pd.DataFrame(np.random.randn(4, 4))
+    y_valid = np.array(["a", "b", "unseen", "a"])
+    groups_valid = np.array(["v0", "v0", "v1", "v1"])
+
+    with pytest.raises(ValueError, match="previously unseen labels"):
+        trainer._prepare_data(
+            X=X_train,
+            y=y_train,
+            groups=groups_train,
+            X_valid=X_valid,
+            y_valid=y_valid,
+            groups_valid=groups_valid,
+            internal_validation=False,
+        )

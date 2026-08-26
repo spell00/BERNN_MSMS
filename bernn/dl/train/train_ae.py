@@ -348,17 +348,15 @@ class TrainAE:
         def _known_label_mask(values):
             return np.asarray(values).astype(str) != '-1'
 
-        # Build label encoder on the union of train, valid, and test labels (if provided)
+        # Fit the label vocabulary on training labels only. Validation/test labels
+        # may be used for evaluation, but must not define the classifier output
+        # space or otherwise influence model construction.
         y_is_numeric = np.issubdtype(np.asarray(y).dtype, np.number)
         if not y_is_numeric:
             self._label_encoder = LabelEncoder()
             # Fit only on known labels. Sentinel -1 rows remain available to
             # reconstruction/domain losses but are never classifier targets.
             label_union = [y[_known_label_mask(y)]]
-            if y_test is not None:
-                label_union.append(y_test[_known_label_mask(y_test)])
-            if y_valid is not None:
-                label_union.append(y_valid[_known_label_mask(y_valid)])
             label_union = [values for values in label_union if len(values)]
             if not label_union:
                 raise ValueError("At least one labeled training sample is required")
