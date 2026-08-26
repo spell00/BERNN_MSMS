@@ -42,3 +42,15 @@ bernn/ml/train/__pycache__/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Local experiment output
+.neptune/
+legacy_results/
+DeepExplainer/
+dvc_plots/
+dvclive_test/
+/PRC.png
+/ROC.png
+/prc_train_multiclass.png
+/prc_valid_multiclass.png
+/prc_test_multiclass.png
