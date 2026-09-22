@@ -309,6 +309,33 @@ class TrainAE:
 
         return layer_params
 
+    def _preprocess_feature_matrix(self, X):
+        """Apply BERNN's configured raw-input preprocessing exactly once.
+
+        The sklearn-style fit/predict API bypasses the legacy CSV data getters,
+        so preprocessing such as log1p must live here to keep training and
+        inference identical. Missing/non-finite values are mapped to zero, and
+        log1p follows BERNN's historical non-negative intensity convention.
+        """
+        if X is None:
+            return None
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        frame = (
+            X.copy()
+            .apply(pd.to_numeric, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0.0)
+        )
+        if bool(getattr(self.args, "log1p", False)):
+            values = np.clip(frame.to_numpy(dtype=float, copy=False), 0.0, None)
+            frame = pd.DataFrame(
+                np.log1p(values),
+                index=frame.index,
+                columns=frame.columns,
+            )
+        return frame
+
     def _prepare_data(self, X, y=None, groups=None, X_valid=None, y_valid=None,
                       groups_valid=None, X_test=None, y_test=None, groups_test=None,
                       cross_validation=False, cross_test=False, val_size=0.2,
@@ -330,9 +357,12 @@ class TrainAE:
             cross_validation = True
         self._cross_test_active = cross_test
 
-        # Ensure inputs are in the right format
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
+        # Apply the same configured preprocessing to every split before
+        # scaling/model fitting. This is the sklearn-style equivalent of BERNN's
+        # legacy CSV data-getter preprocessing.
+        X = self._preprocess_feature_matrix(X)
+        X_valid = self._preprocess_feature_matrix(X_valid)
+        X_test = self._preprocess_feature_matrix(X_test)
         if y is None:
             y = np.zeros(len(X))
         if not isinstance(y, np.ndarray):
@@ -1029,12 +1059,22 @@ class TrainAE:
                 mapped.append(batch)
         return np.asarray(mapped)
 
-    def _prepare_prediction_matrix(self, X, groups_test=None, batches_test=None, groups=None, return_batch_ids=False):
+    def _prepare_prediction_matrix(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_batch_ids=False,
+        preprocessed=False,
+    ):
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
         X = X.copy()
         if getattr(self, "columns", None) is not None:
             X = X.loc[:, list(self.columns)]
+        if not preprocessed:
+            X = self._preprocess_feature_matrix(X)
 
         scale = getattr(self.args, "scaler", None)
         scaler = getattr(self, "scaler", None)
@@ -1106,7 +1146,10 @@ class TrainAE:
 
             inputs_df = pd.DataFrame(inputs_raw).copy()
             inputs, batch_ids = self._prepare_prediction_matrix(
-                inputs_df, batches_test=batches, return_batch_ids=True
+                inputs_df,
+                batches_test=batches,
+                return_batch_ids=True,
+                preprocessed=True,
             )
 
             tensors = [torch.tensor(inputs.values, dtype=torch.float32, device=getattr(self.args, "device", "cpu"))]
