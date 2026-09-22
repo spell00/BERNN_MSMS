@@ -128,6 +128,18 @@ def test_scale_data_binarize():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("scale", ["standard_per_batch", "robust_per_batch", "minmax_per_batch"])
+def test_scale_data_per_batch_returns_fitted_scalers(scale):
+    """Per-batch preprocessing must be reusable by predict()."""
+    data = _make_tabular_data(n=40, n_features=5, n_batches=2, seed=3)
+    expected_batches = set(np.unique(data["batches"]["all"]))
+    _, scaler = scale_data(scale, data)
+    assert isinstance(scaler, dict)
+    assert set(scaler) == expected_batches
+    assert all(hasattr(fitted, "transform") for fitted in scaler.values())
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("scale", ["robust_minmax", "standard_minmax", "l1_minmax", "l2_minmax"])
 def test_scale_data_pipeline_variants(scale):
     data = _make_tabular_data()
