@@ -24,33 +24,30 @@ RUN apt-get update && \
         libgit2-dev \
         r-base \
         r-base-dev \
-        r-cran-devtools \
         python3-dev \
         software-properties-common && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     rm -rf /var/lib/apt/lists/*
 
-# Install requested Python version and upgrade pip.
-# Deadsnakes supplies non-default Python versions on the Ubuntu 24.04 CUDA base image.
+# Install the requested Python version into an isolated virtual environment.
+# This avoids pip trying to uninstall/replace Debian-managed Python packages.
 RUN add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     if [ "$PYTHON_VERSION" = "3.11" ]; then \
-        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-distutils; \
+        apt-get install -y --no-install-recommends python3.11 python3.11-dev python3.11-venv; \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-venv; \
     elif [ "$PYTHON_VERSION" = "3.13" ]; then \
         apt-get install -y --no-install-recommends python3.13 python3.13-dev python3.13-venv; \
     else \
-        apt-get install -y --no-install-recommends python3 python3-dev python3-distutils; \
+        apt-get install -y --no-install-recommends python3 python3-dev python3-venv; \
     fi && \
-    ln -sf /usr/bin/python$PYTHON_VERSION /usr/bin/python && \
-    ln -sf /usr/bin/python$PYTHON_VERSION /usr/bin/python3 && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python get-pip.py && \
-    python -m pip install --upgrade pip setuptools wheel && \
-    rm get-pip.py && \
+    python$PYTHON_VERSION -m venv /opt/venv && \
+    /opt/venv/bin/python -m pip install --upgrade pip setuptools wheel && \
     rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Add your files
 ADD mlflow_eval_runs.py ./
@@ -72,8 +69,8 @@ COPY INSTALLATION.md ./INSTALLATION.md
 RUN chmod +x launch_train_ae_classifier_holdout_experiments.sh && \
     chmod +x launch_train_ae_then_classifier_holdout_experiments.sh
 
-# Install R packages with proper dependency handling
-RUN R -e "install.packages(c('cpp11', 'systemfonts', 'textshaping', 'ragg', 'pkgdown', 'devtools', 'BiocManager'), dependencies=TRUE, repos='https://cloud.r-project.org/')"
+# Install R packages from one source so their dependency versions stay consistent.
+RUN R -e "install.packages(c('fs', 'cpp11', 'systemfonts', 'textshaping', 'ragg', 'pkgdown', 'devtools', 'BiocManager'), dependencies=TRUE, repos='https://cloud.r-project.org/')"
 
 # Install Python packages with version-specific logic
 RUN echo "Installing for Python $PYTHON_VERSION" && \
@@ -84,8 +81,8 @@ RUN echo "Installing for Python $PYTHON_VERSION" && \
         echo "Installing Python 3.12 specific packages..." && \
         pip install .[py312-plus]; \
     elif [ "$PYTHON_VERSION" = "3.13" ]; then \
-        echo "Installing Python 3.13 minimal ML packages..." && \
-        pip install .[python313-ml-minimal]; \
+        echo "Installing Python 3.13 stable ML packages..." && \
+        pip install .[python313-ml-stable]; \
     else \
         echo "Installing default packages..." && \
         pip install .; \
