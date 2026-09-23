@@ -21,7 +21,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install torch pytest pytest-cov
+          pip install torch torchvision pytest pytest-cov
       - name: Run core unit tests with coverage
         env:
           CUDA_VISIBLE_DEVICES: ""
