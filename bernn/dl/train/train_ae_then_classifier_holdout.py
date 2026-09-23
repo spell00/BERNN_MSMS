@@ -576,6 +576,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 device=self.args.device,
                 update_grid=self.args.update_grid,
             ).to(self.args.device)
+            ae = self._maybe_compile_model(ae)
             self.ae = ae
             if self.args.kan:
                 self.count_neurons(ae)
