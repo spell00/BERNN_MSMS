@@ -1,6 +1,7 @@
 """Unit tests for TrainAE helpers in bernn/dl/train/train_ae.py."""
 import pytest
 import numpy as np
+import torch
 from types import SimpleNamespace
 
 from bernn.dl.train.train_ae import TrainAE
@@ -14,6 +15,7 @@ def _minimal_args(**overrides):
         early_stop=5,
         early_warmup_stop=-1,
         train_after_warmup=0,
+        train_only_warmup=0,
         threshold=0.0,
         n_epochs=1,
         rec_loss="l1",
@@ -199,7 +201,7 @@ def test_make_params_no_fix_thres(trainer):
 
 @pytest.mark.unit
 def test_default_params_has_required_keys(trainer):
-    required = {"n_epochs", "dloss", "variational", "rec_loss", "bs", "kan"}
+    required = {"n_epochs", "dloss", "variational", "rec_loss", "bs", "kan", "train_only_warmup"}
     assert required.issubset(set(trainer.all_params.keys()))
 
 
@@ -231,3 +233,60 @@ def test_binarize_labels_produces_binary(tmp_path):
     assert set(result["labels"]["all"]).issubset({0, 1})
     assert result["labels"]["all"][0] == 0   # ctrl → 0
     assert result["labels"]["all"][1] == 1   # case → 1
+
+
+
+class _TinyInferenceAE(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.enc = torch.nn.Linear(2, 2)
+        self.dec = torch.nn.Linear(2, 2)
+        self.classifier = torch.nn.Linear(2, 2)
+
+    def forward(self, x, to_rec, batches=None, sampling=False, **kwargs):
+        encoded = self.enc(x)
+        reconstructed = {"mean": self.dec(encoded)}
+        return encoded, reconstructed, torch.zeros(1), torch.zeros(1)
+
+    def predict(self, x):
+        return self.classifier(self.enc(x)).argmax(1).detach().cpu().numpy()
+
+    def predict_proba(self, x):
+        return torch.softmax(self.classifier(self.enc(x)), dim=1).detach().cpu().numpy()
+
+
+@pytest.fixture
+def inference_trainer(trainer):
+    trainer.ae = _TinyInferenceAE()
+    trainer.args.device = "cpu"
+    trainer.args.bs = 2
+    trainer.args.scaler = None
+    trainer.columns = None
+    trainer.scaler = None
+    trainer.n_cats = 2
+    return trainer
+
+
+@pytest.mark.unit
+def test_get_encoded_inputs_returns_bottleneck(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    encoded = inference_trainer.get_encoded_inputs(X)
+    assert encoded.shape == (3, 2)
+
+
+@pytest.mark.unit
+def test_get_reconstructed_inputs_returns_original_feature_shape(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    reconstructed = inference_trainer.get_reconstructed_inputs(X)
+    assert reconstructed.shape == (3, 2)
+
+
+@pytest.mark.unit
+def test_infer_can_return_predictions_and_representations(inference_trainer):
+    X = np.ones((3, 2), dtype=np.float32)
+    result = inference_trainer.infer(X, return_representations=True)
+    assert {"predictions", "encoded", "reconstructed", "probabilities"}.issubset(result)
+    assert result["predictions"].shape == (3,)
+    assert result["encoded"].shape == (3, 2)
+    assert result["reconstructed"].shape == (3, 2)
+    assert result["probabilities"].shape == (3, 2)
