@@ -19,7 +19,8 @@ class KANLinear(torch.nn.Module):
         grid_eps=0.02,
         grid_range=[-1, 1],
         prune_threshold=1e-2,
-        name=None
+        name=None,
+        device=None,
     ):
         super(KANLinear, self).__init__()
         self.name = name
@@ -32,24 +33,49 @@ class KANLinear(torch.nn.Module):
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
-                torch.arange(-spline_order, grid_size + spline_order + 1) * h
+                torch.arange(
+                    -spline_order,
+                    grid_size + spline_order + 1,
+                    device=device,
+                    dtype=torch.float32,
+                ) * h
                 + grid_range[0]
             )
             .expand(in_features, -1)
             .contiguous()
         )
         self.register_buffer("grid", grid)
-        self.register_buffer("mask", torch.ones(out_features, dtype=torch.bool))
-        self.n = np.zeros(1)
-        self.counts = np.zeros(out_features)
+        self.register_buffer(
+            "mask",
+            torch.ones(out_features, dtype=torch.bool, device=device),
+        )
+        # Runtime-only pruning statistics. Keeping them as non-persistent buffers
+        # moves them with the module without changing checkpoint/state_dict format.
+        self.register_buffer(
+            "n",
+            torch.zeros(1, dtype=torch.float32, device=device),
+            persistent=False,
+        )
+        self.register_buffer(
+            "counts",
+            torch.zeros(out_features, dtype=torch.float32, device=device),
+            persistent=False,
+        )
 
-        self.base_weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        self.base_weight = torch.nn.Parameter(
+            torch.empty(out_features, in_features, device=device)
+        )
         self.spline_weight = torch.nn.Parameter(
-            torch.Tensor(out_features, in_features, grid_size + spline_order)
+            torch.empty(
+                out_features,
+                in_features,
+                grid_size + spline_order,
+                device=device,
+            )
         )
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
-                torch.Tensor(out_features, in_features)
+                torch.empty(out_features, in_features, device=device)
             )
 
         self.scale_noise = scale_noise
@@ -66,7 +92,13 @@ class KANLinear(torch.nn.Module):
         with torch.no_grad():
             noise = (
                 (
-                    torch.rand(self.grid_size + 1, self.in_features, self.out_features)
+                    torch.rand(
+                        self.grid_size + 1,
+                        self.in_features,
+                        self.out_features,
+                        device=self.base_weight.device,
+                        dtype=self.base_weight.dtype,
+                    )
                     - 1 / 2
                 )
                 * self.scale_noise
@@ -136,9 +168,18 @@ class KANLinear(torch.nn.Module):
             0, 1
         )  # (in_features, batch_size, grid_size + spline_order)
         B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
-        solution = torch.linalg.lstsq(
-            A, B
-        ).solution  # (in_features, grid_size + spline_order, out_features)
+        try:
+            solution = torch.linalg.lstsq(
+                A, B
+            ).solution  # (in_features, grid_size + spline_order, out_features)
+        except RuntimeError:
+            if not A.is_cuda:
+                raise
+            # Preserve the exact least-squares initialization as a fallback for
+            # CUDA builds/drivers that cannot solve this batched shape.
+            solution = torch.linalg.lstsq(
+                A.cpu(), B.cpu()
+            ).solution.to(A.device)
         result = solution.permute(
             2, 0, 1
         )  # (out_features, in_features, grid_size + spline_order)
@@ -173,23 +214,23 @@ class KANLinear(torch.nn.Module):
         output = output.view(*original_shape[:-1], self.out_features)
         if self.prune_threshold > 0.0:
             output = self.mask * output
-        self.counts += output.abs().detach().float().cpu().numpy().mean(0)
-        self.n += 1
+        # Accumulate activity on-device. The previous CPU/NumPy conversion
+        # synchronized CUDA on every KAN layer and every forward pass.
+        with torch.no_grad():
+            self.counts.add_(output.detach().float().abs().mean(dim=0))
+            self.n.add_(1)
         return output
 
     def count_active_neurons(self):
         """
         Count the number of active neurons in the current batch.
         """
-        if self.counts.sum() == 0:
+        if self.counts.sum().item() == 0:
             return
-        new_mask = self.mask.clone().detach().float().cpu()
-        scores = (torch.Tensor(self.counts).clone() / self.n)
+        scores = self.counts / self.n.clamp_min(1)
         new_mask = scores > self.prune_threshold
-        if new_mask.sum() == 0:
-            print(f'{new_mask.sum()}/{len(new_mask.sum())}')
-        else:
-            pass
+        if new_mask.sum().item() == 0:
+            print(f'{new_mask.sum().item()}/{new_mask.numel()}')
 
     def prune_neurons(self, prune_threshold):
         """
@@ -203,18 +244,17 @@ class KANLinear(torch.nn.Module):
         Dead Neurons can't be unpruned.
         TODO : REMOVE THE NEURONS, NOT ONLY HIDE THEM!
         """
-        if self.counts.sum() == 0:
+        if self.counts.sum().item() == 0:
             return
-        new_mask = self.mask.clone().detach().float().cpu()
-        scores = (torch.Tensor(self.counts).clone() / self.n)
+        scores = self.counts / self.n.clamp_min(1)
         new_mask = scores > prune_threshold
-        self.mask = torch.tensor(new_mask, device=self.mask.device, dtype=torch.bool)
+        self.mask.copy_(new_mask.to(device=self.mask.device, dtype=torch.bool))
         self.restore_counts()
         # return new_mask.sum()/len(new_mask.sum())
     
     def restore_counts(self):
-        self.counts = np.zeros(self.out_features)
-        self.n = np.zeros(1)
+        self.counts.zero_()
+        self.n.zero_()
     
 
     @torch.no_grad()
@@ -303,6 +343,7 @@ class KAN(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
+        device=None,
     ):
         super(KAN, self).__init__()
         self.grid_size = grid_size
@@ -322,6 +363,7 @@ class KAN(torch.nn.Module):
                     base_activation=base_activation,
                     grid_eps=grid_eps,
                     grid_range=grid_range,
+                    device=device,
                 )
             )
 

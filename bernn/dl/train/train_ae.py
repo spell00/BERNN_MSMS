@@ -167,6 +167,7 @@ class TrainAE:
         self._label_encoder = None        # Optional encoder for non-numeric labels
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
+        self._configure_runtime_performance()
         self.load_autoencoder()
         # Persistent KNN for triplet mode
         self._knn_ready = False
@@ -309,6 +310,33 @@ class TrainAE:
 
         return layer_params
 
+    def _preprocess_feature_matrix(self, X):
+        """Apply BERNN's configured raw-input preprocessing exactly once.
+
+        The sklearn-style fit/predict API bypasses the legacy CSV data getters,
+        so preprocessing such as log1p must live here to keep training and
+        inference identical. Missing/non-finite values are mapped to zero, and
+        log1p follows BERNN's historical non-negative intensity convention.
+        """
+        if X is None:
+            return None
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
+        frame = (
+            X.copy()
+            .apply(pd.to_numeric, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(0.0)
+        )
+        if bool(getattr(self.args, "log1p", False)):
+            values = np.clip(frame.to_numpy(dtype=float, copy=False), 0.0, None)
+            frame = pd.DataFrame(
+                np.log1p(values),
+                index=frame.index,
+                columns=frame.columns,
+            )
+        return frame
+
     def _prepare_data(self, X, y=None, groups=None, X_valid=None, y_valid=None,
                       groups_valid=None, X_test=None, y_test=None, groups_test=None,
                       cross_validation=False, cross_test=False, val_size=0.2,
@@ -330,9 +358,12 @@ class TrainAE:
             cross_validation = True
         self._cross_test_active = cross_test
 
-        # Ensure inputs are in the right format
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
+        # Apply the same configured preprocessing to every split before
+        # scaling/model fitting. This is the sklearn-style equivalent of BERNN's
+        # legacy CSV data-getter preprocessing.
+        X = self._preprocess_feature_matrix(X)
+        X_valid = self._preprocess_feature_matrix(X_valid)
+        X_test = self._preprocess_feature_matrix(X_test)
         if y is None:
             y = np.zeros(len(X))
         if not isinstance(y, np.ndarray):
@@ -861,6 +892,7 @@ class TrainAE:
             except TypeError:
                 ae_model = ae_cls(self.data['inputs']['all'].shape[1], self.n_cats, self.n_batches, 0, self.args, None).to(device)
                 
+        ae_model = self._maybe_compile_model(ae_model)
         self.ae = ae_model
 
         if hasattr(self.ae, 'mapper'):
@@ -901,6 +933,14 @@ class TrainAE:
                 lists, traces = get_empty_traces()
                 self.ae.train()
                 self.warmup_loop(optimizer_ae, None, self.ae, celoss, loaders['all'], triplet_loss, mseloss, True, warmup_epoch, values, loggers, {}, traces, None)
+
+        if bool(getattr(self.args, 'train_only_warmup', False)):
+            # Warmup-only mode is intended for learning/using the latent
+            # representation without classifier training. Keep the final
+            # warmup state in memory so fit() can restore it consistently.
+            self._save_best_model_state(max(warmup_epochs - 1, 0), 0.0)
+            print("Warmup-only training requested; skipping supervised training epochs.")
+            return self
 
         pbar = tqdm(range(warmup_epochs, n_epochs), desc="Epochs", unit="epoch")
         for epoch in pbar:
@@ -964,41 +1004,178 @@ class TrainAE:
         print("Training completed.")
         return self
 
-    def transform(self, X):
-        """
-        Transform X into the latent space of the autoencoder.
+    @staticmethod
+    def _extract_reconstruction(reconstruction):
+        """Extract the reconstruction tensor from BERNN model outputs."""
+        if isinstance(reconstruction, dict):
+            if 'mean' in reconstruction:
+                reconstruction = reconstruction['mean']
+            else:
+                tensors = [value for value in reconstruction.values() if torch.is_tensor(value)]
+                if not tensors:
+                    raise TypeError("Autoencoder reconstruction dictionary contains no tensor output.")
+                reconstruction = tensors[-1]
+        if isinstance(reconstruction, (list, tuple)):
+            tensors = [value for value in reconstruction if torch.is_tensor(value)]
+            if not tensors:
+                raise TypeError("Autoencoder reconstruction output contains no tensor.")
+            reconstruction = tensors[-1]
+        if not torch.is_tensor(reconstruction):
+            raise TypeError("Autoencoder reconstruction output is not a tensor.")
+        return reconstruction
+
+    def _forward_representations(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_reconstruction=False,
+    ):
+        """Return latent representations, and optionally reconstructions.
+
+        The same fitted preprocessing and batch mapping used by predict is
+        applied here, so representation extraction follows the inference path.
         """
         if not isinstance(self.ae, nn.Module):
             raise ValueError("AutoEncoder is not initialized. Please run training first.")
-        
-        self.ae.enc.eval()
-        self.ae.classifier.eval()
-        
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-        
-        # We need a dataloader to transform X
+
+        self.ae.eval()
+        X, batch_ids = self._prepare_prediction_matrix(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_batch_ids=True,
+        )
+
         from torch.utils.data import DataLoader, TensorDataset
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+
+        device = getattr(self.args, 'device', 'cpu')
+        tensors = [torch.tensor(X.values, dtype=torch.float32)]
+        if batch_ids is not None:
+            tensors.append(torch.tensor(batch_ids, dtype=torch.long))
+        dataset = TensorDataset(*tensors)
         loader = DataLoader(
-            dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
+            dataset,
+            batch_size=getattr(self.args, 'bs', 32),
+            shuffle=False,
             num_workers=getattr(self.args, 'num_workers', 0),
         )
-        
-        from tqdm import tqdm
+
         encoded_list = []
+        reconstructed_list = []
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Transforming", leave=False):
-                data = batch[0].to(self.args.device)
-                
-                # Mock domain as all zeros
-                domain = torch.zeros(data.shape[0], dtype=torch.long, device=self.args.device)
-                to_rec = data.clone()
-                
-                enc, _, _, _ = self.ae(data, to_rec, domain, sampling=False)
-                encoded_list.append(enc.detach().cpu().numpy())
-                
-        return np.concatenate(encoded_list, axis=0)
+            for batch in loader:
+                data = batch[0].to(device)
+                domains = (
+                    batch[1].to(device)
+                    if len(batch) > 1
+                    else torch.zeros(data.shape[0], dtype=torch.long, device=device)
+                )
+                try:
+                    output = self.ae(
+                        data,
+                        data.clone(),
+                        domains,
+                        sampling=False,
+                        mapping=getattr(self.args, 'use_mapping', True),
+                    )
+                except TypeError:
+                    output = self.ae(data, data.clone(), domains, sampling=False)
+
+                if not isinstance(output, (list, tuple)) or len(output) < 2:
+                    raise TypeError(
+                        "Autoencoder forward pass must return at least encoded and reconstructed outputs."
+                    )
+                encoded = output[0]
+                if not torch.is_tensor(encoded):
+                    raise TypeError("Autoencoder encoded output is not a tensor.")
+                encoded_list.append(encoded.detach().cpu().numpy())
+
+                if return_reconstruction:
+                    reconstructed = self._extract_reconstruction(output[1])
+                    reconstructed_list.append(reconstructed.detach().cpu().numpy())
+
+        if not encoded_list:
+            return (np.empty((0, 0)), np.empty((0, 0))) if return_reconstruction else np.empty((0, 0))
+
+        encoded = np.concatenate(encoded_list, axis=0)
+        if not return_reconstruction:
+            return encoded
+        reconstructed = np.concatenate(reconstructed_list, axis=0)
+        return encoded, reconstructed
+
+    def transform(self, X, groups_test=None, batches_test=None, groups=None):
+        """Transform X into the trained autoencoder latent space."""
+        return self.get_encoded_inputs(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+        )
+
+    def get_encoded_inputs(self, X, groups_test=None, batches_test=None, groups=None):
+        """Return bottleneck/latent representations for X."""
+        return self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=False,
+        )
+
+    def get_reconstructed_inputs(self, X, groups_test=None, batches_test=None, groups=None):
+        """Return autoencoder reconstructions for X."""
+        _, reconstructed = self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=True,
+        )
+        return reconstructed
+
+    def infer(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_representations=False,
+    ):
+        """Run prediction and optionally return encoded/reconstructed inputs."""
+        predictions = self.predict(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+        )
+        if not return_representations:
+            return predictions
+
+        encoded, reconstructed = self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=True,
+        )
+        result = {
+            'predictions': predictions,
+            'encoded': encoded,
+            'reconstructed': reconstructed,
+        }
+        try:
+            result['probabilities'] = self.predict_proba(
+                X,
+                groups_test=groups_test,
+                batches_test=batches_test,
+                groups=groups,
+            )
+        except (AttributeError, NotImplementedError):
+            pass
+        return result
 
     def _prediction_batch_ids(self, n_rows, groups_test=None, batches_test=None, groups=None):
         raw_groups = groups_test
@@ -1029,12 +1206,22 @@ class TrainAE:
                 mapped.append(batch)
         return np.asarray(mapped)
 
-    def _prepare_prediction_matrix(self, X, groups_test=None, batches_test=None, groups=None, return_batch_ids=False):
+    def _prepare_prediction_matrix(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_batch_ids=False,
+        preprocessed=False,
+    ):
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X)
         X = X.copy()
         if getattr(self, "columns", None) is not None:
             X = X.loc[:, list(self.columns)]
+        if not preprocessed:
+            X = self._preprocess_feature_matrix(X)
 
         scale = getattr(self.args, "scaler", None)
         scaler = getattr(self, "scaler", None)
@@ -1106,7 +1293,10 @@ class TrainAE:
 
             inputs_df = pd.DataFrame(inputs_raw).copy()
             inputs, batch_ids = self._prepare_prediction_matrix(
-                inputs_df, batches_test=batches, return_batch_ids=True
+                inputs_df,
+                batches_test=batches,
+                return_batch_ids=True,
+                preprocessed=True,
             )
 
             tensors = [torch.tensor(inputs.values, dtype=torch.float32, device=getattr(self.args, "device", "cpu"))]
@@ -1240,18 +1430,65 @@ class TrainAE:
 
 
 
-    def autocast_context(self):
-        """Create autocast context for mixed precision training with bfloat16."""
-        device = str(getattr(self.args, 'device', 'cpu')).lower()
+    def _configure_runtime_performance(self):
+        """Apply process-level performance settings before model construction."""
+        cpu_threads = int(getattr(self.args, 'cpu_threads', 0) or 0)
+        if cpu_threads > 0:
+            os.environ["OMP_NUM_THREADS"] = str(cpu_threads)
+            os.environ["MKL_NUM_THREADS"] = str(cpu_threads)
+            torch.set_num_threads(cpu_threads)
 
-        # Never request CUDA autocast on CPU runs.
-        if device == 'cpu':
+        tf32 = bool(getattr(self.args, 'tf32', False))
+        if torch.cuda.is_available():
+            try:
+                torch.backends.cuda.matmul.allow_tf32 = tf32
+            except Exception:
+                pass
+            try:
+                torch.backends.cudnn.allow_tf32 = tf32
+            except Exception:
+                pass
+            try:
+                torch.set_float32_matmul_precision("high" if tf32 else "highest")
+            except (AttributeError, RuntimeError):
+                pass
+
+    def _maybe_compile_model(self, model):
+        """Optionally compile a model without changing the default execution path."""
+        if not bool(getattr(self.args, 'torch_compile', False)):
+            return model
+        if getattr(model, "_bernn_torch_compiled", False):
+            return model
+        compile_fn = getattr(torch, "compile", None)
+        if compile_fn is None:
+            print("[performance] torch.compile requested but unavailable; using eager mode.")
+            return model
+
+        mode = str(getattr(self.args, 'torch_compile_mode', 'default') or 'default')
+        try:
+            compiled = compile_fn(model, mode=mode)
+            compiled._bernn_torch_compiled = True
+            print(f"[performance] torch.compile enabled (mode={mode!r}).")
+            return compiled
+        except Exception as exc:
+            print(
+                "[performance] torch.compile setup failed; using eager mode: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return model
+
+    def autocast_context(self):
+        """Create the configured CUDA autocast context (BF16 by default)."""
+        device = str(getattr(self.args, 'device', 'cpu')).lower()
+        precision = str(getattr(self.args, 'precision', 'bf16')).lower()
+
+        if device == 'cpu' or precision in {'fp32', 'float32', '32'}:
             return contextlib.nullcontext()
 
-        # Use CUDA autocast only when CUDA is both requested and available.
         if device.startswith('cuda') and torch.cuda.is_available():
+            dtype = torch.float16 if precision in {'fp16', 'float16', '16'} else torch.bfloat16
             try:
-                return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
+                return torch.autocast(device_type='cuda', dtype=dtype)
             except (AttributeError, RuntimeError):
                 return contextlib.nullcontext()
 
@@ -1266,6 +1503,7 @@ class TrainAE:
             'early_stop': 50,
             'early_warmup_stop': -1,
             'train_after_warmup': 0,
+            'train_only_warmup': 0,
             'threshold': 0.,
             'n_epochs': 1000,
             'n_trials': 100,
@@ -1297,7 +1535,11 @@ class TrainAE:
             'log_plots': 1,
             'prune_network': 1,
             'prune_threshold': 0,  # Threshold for pruning the network
-            'precision': 'bf16',  # Mixed precision training type
+            'precision': 'bf16',  # Mixed precision training type (existing CUDA default)
+            'tf32': 0,  # Optional TensorFloat-32 acceleration for float32 matmul
+            'torch_compile': 0,  # Optional torch.compile acceleration
+            'torch_compile_mode': 'default',
+            'cpu_threads': 0,  # 0 keeps PyTorch/BLAS defaults; >0 is CPU fallback
             'dropout': 0,  # Dropout rate for the network
             'use_sigmoid': 0,  # Use sigmoid activation in the last layer of the AE
             'scaler': 'standard',  # Set during training
@@ -2275,6 +2517,8 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=-1)
     parser.add_argument('--train_after_warmup', type=int, default=0)
+    parser.add_argument('--train_only_warmup', type=int, default=0,
+                        help='Train only the autoencoder warmup phase and skip supervised epochs')
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)

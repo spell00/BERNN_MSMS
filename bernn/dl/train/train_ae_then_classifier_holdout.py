@@ -413,7 +413,6 @@ class TrainAEThenClassifierHoldout(TrainAE):
             params['reg_entropy'] = 0
         if not self.args.use_l1:
             params['l1'] = 0
-        params['smoothing'] = 0
         print(params)
         # Assigns the hyperparameters getting optimized
         smooth = params['smoothing']
@@ -576,6 +575,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                 device=self.args.device,
                 update_grid=self.args.update_grid,
             ).to(self.args.device)
+            ae = self._maybe_compile_model(ae)
             self.ae = ae
             if self.args.kan:
                 self.count_neurons(ae)
