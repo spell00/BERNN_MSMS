@@ -614,8 +614,7 @@ class TrainAEClassifierHoldout(TrainAE):
                     else:
                         early_stop_counter += 1
 
-                    if self.epoch_callback is not None:
-                        self.epoch_callback({
+                    self._notify_epoch({
                             "phase": "joint",
                             "epoch": int(epoch),
                             "rep": int(self.rep),
