@@ -428,6 +428,8 @@ class TrainAEClassifierHoldout(TrainAE):
                             prune_threshold=params['prune_threshold'],
                             update_grid=self.args.update_grid,
                         ).to(self.args.device)
+
+                self.ae = self._maybe_compile_model(self.ae)
                 loggers['logger_cm'] = SummaryWriter(f'{self.complete_log_path}/cm')
                 loggers['logger'] = SummaryWriter(f'{self.complete_log_path}/traces')
                 sceloss, celoss, mseloss, triplet_loss = self.get_losses(
