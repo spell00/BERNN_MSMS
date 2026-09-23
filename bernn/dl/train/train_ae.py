@@ -167,6 +167,7 @@ class TrainAE:
         self._label_encoder = None        # Optional encoder for non-numeric labels
         self.default_params()
         self.args = self.fill_missing_params_with_default(args)
+        self._configure_runtime_performance()
         self.load_autoencoder()
         # Persistent KNN for triplet mode
         self._knn_ready = False
@@ -891,6 +892,7 @@ class TrainAE:
             except TypeError:
                 ae_model = ae_cls(self.data['inputs']['all'].shape[1], self.n_cats, self.n_batches, 0, self.args, None).to(device)
                 
+        ae_model = self._maybe_compile_model(ae_model)
         self.ae = ae_model
 
         if hasattr(self.ae, 'mapper'):
@@ -1428,18 +1430,65 @@ class TrainAE:
 
 
 
-    def autocast_context(self):
-        """Create autocast context for mixed precision training with bfloat16."""
-        device = str(getattr(self.args, 'device', 'cpu')).lower()
+    def _configure_runtime_performance(self):
+        """Apply process-level performance settings before model construction."""
+        cpu_threads = int(getattr(self.args, 'cpu_threads', 0) or 0)
+        if cpu_threads > 0:
+            os.environ["OMP_NUM_THREADS"] = str(cpu_threads)
+            os.environ["MKL_NUM_THREADS"] = str(cpu_threads)
+            torch.set_num_threads(cpu_threads)
 
-        # Never request CUDA autocast on CPU runs.
-        if device == 'cpu':
+        tf32 = bool(getattr(self.args, 'tf32', False))
+        if torch.cuda.is_available():
+            try:
+                torch.backends.cuda.matmul.allow_tf32 = tf32
+            except Exception:
+                pass
+            try:
+                torch.backends.cudnn.allow_tf32 = tf32
+            except Exception:
+                pass
+            try:
+                torch.set_float32_matmul_precision("high" if tf32 else "highest")
+            except (AttributeError, RuntimeError):
+                pass
+
+    def _maybe_compile_model(self, model):
+        """Optionally compile a model without changing the default execution path."""
+        if not bool(getattr(self.args, 'torch_compile', False)):
+            return model
+        if getattr(model, "_bernn_torch_compiled", False):
+            return model
+        compile_fn = getattr(torch, "compile", None)
+        if compile_fn is None:
+            print("[performance] torch.compile requested but unavailable; using eager mode.")
+            return model
+
+        mode = str(getattr(self.args, 'torch_compile_mode', 'default') or 'default')
+        try:
+            compiled = compile_fn(model, mode=mode)
+            compiled._bernn_torch_compiled = True
+            print(f"[performance] torch.compile enabled (mode={mode!r}).")
+            return compiled
+        except Exception as exc:
+            print(
+                "[performance] torch.compile setup failed; using eager mode: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return model
+
+    def autocast_context(self):
+        """Create the configured CUDA autocast context (BF16 by default)."""
+        device = str(getattr(self.args, 'device', 'cpu')).lower()
+        precision = str(getattr(self.args, 'precision', 'bf16')).lower()
+
+        if device == 'cpu' or precision in {'fp32', 'float32', '32'}:
             return contextlib.nullcontext()
 
-        # Use CUDA autocast only when CUDA is both requested and available.
         if device.startswith('cuda') and torch.cuda.is_available():
+            dtype = torch.float16 if precision in {'fp16', 'float16', '16'} else torch.bfloat16
             try:
-                return torch.autocast(device_type='cuda', dtype=torch.bfloat16)
+                return torch.autocast(device_type='cuda', dtype=dtype)
             except (AttributeError, RuntimeError):
                 return contextlib.nullcontext()
 
@@ -1486,7 +1535,11 @@ class TrainAE:
             'log_plots': 1,
             'prune_network': 1,
             'prune_threshold': 0,  # Threshold for pruning the network
-            'precision': 'bf16',  # Mixed precision training type
+            'precision': 'bf16',  # Mixed precision training type (existing CUDA default)
+            'tf32': 0,  # Optional TensorFloat-32 acceleration for float32 matmul
+            'torch_compile': 0,  # Optional torch.compile acceleration
+            'torch_compile_mode': 'default',
+            'cpu_threads': 0,  # 0 keeps PyTorch/BLAS defaults; >0 is CPU fallback
             'dropout': 0,  # Dropout rate for the network
             'use_sigmoid': 0,  # Use sigmoid activation in the last layer of the AE
             'scaler': 'standard',  # Set during training
