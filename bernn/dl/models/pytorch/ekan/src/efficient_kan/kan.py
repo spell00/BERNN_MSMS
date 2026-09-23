@@ -168,9 +168,18 @@ class KANLinear(torch.nn.Module):
             0, 1
         )  # (in_features, batch_size, grid_size + spline_order)
         B = y.transpose(0, 1)  # (in_features, batch_size, out_features)
-        solution = torch.linalg.lstsq(
-            A, B
-        ).solution  # (in_features, grid_size + spline_order, out_features)
+        try:
+            solution = torch.linalg.lstsq(
+                A, B
+            ).solution  # (in_features, grid_size + spline_order, out_features)
+        except RuntimeError:
+            if not A.is_cuda:
+                raise
+            # Preserve the exact least-squares initialization as a fallback for
+            # CUDA builds/drivers that cannot solve this batched shape.
+            solution = torch.linalg.lstsq(
+                A.cpu(), B.cpu()
+            ).solution.to(A.device)
         result = solution.permute(
             2, 0, 1
         )  # (out_features, in_features, grid_size + spline_order)
