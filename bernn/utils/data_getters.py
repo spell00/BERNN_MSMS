@@ -337,8 +337,8 @@ def get_amide(path, args, seed=42):
             if not args.zinb:
                 print('Imputing zeros.')
                 matrix = matrix.apply(impute_zero, axis=0)
-            pool_pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' in name]
-            pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
+            pool_pos = [i for i, name in enumerate(np.asarray(names).ravel()) if 'QC' in name]
+            pos = [i for i, name in enumerate(np.asarray(names).ravel()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
             data['names'][group] = names.iloc[pos]
             data['labels'][group] = labels.to_numpy()[pos]
@@ -633,7 +633,7 @@ def get_data(path, args, seed=42):
             if args.log1p:
                 matrix = matrix.astype(float)
                 matrix.iloc[:] = np.log1p(matrix.values.clip(min=0))
-            pos = [i for i, name in enumerate(names.values.flatten()) if 'QC' not in name]
+            pos = [i for i, name in enumerate(np.asarray(names).ravel()) if 'QC' not in name]
             data['inputs'][group] = matrix.iloc[pos]
             data['names'][group] = names
             data['labels'][group] = labels.to_numpy()[pos]
