@@ -124,6 +124,37 @@ def _small_no_pool_data():
 
 
 @pytest.mark.unit
+def test_sklearn_log1p_preprocessing_matches_prediction_path():
+    """Raw fit and predict matrices must receive the same one-time preprocessing."""
+    trainer = TrainAEClassifierHoldout.__new__(TrainAEClassifierHoldout)
+    trainer.args = SimpleNamespace(log1p=True, scaler=None)
+    trainer.columns = pd.Index(["f0", "f1"])
+    trainer.scaler = None
+
+    raw = pd.DataFrame({
+        "f0": [0.0, 3.0, -2.0, np.nan],
+        "f1": [np.inf, 8.0, 1.0, 0.0],
+    })
+    numeric = raw.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    expected = pd.DataFrame(
+        np.log1p(np.clip(numeric.to_numpy(dtype=float), 0.0, None)),
+        columns=raw.columns,
+        index=raw.index,
+    )
+
+    fit_matrix = trainer._preprocess_feature_matrix(raw)
+    predict_matrix = trainer._prepare_prediction_matrix(raw)
+    internal_monitor_matrix = trainer._prepare_prediction_matrix(
+        fit_matrix,
+        preprocessed=True,
+    )
+
+    pd.testing.assert_frame_equal(fit_matrix, expected)
+    pd.testing.assert_frame_equal(predict_matrix, expected)
+    pd.testing.assert_frame_equal(internal_monitor_matrix, expected)
+
+
+@pytest.mark.unit
 def test_custom_get_data_builds_aligned_sets(tmp_path):
     csv_path = tmp_path / "mock.csv"
     rows = []
