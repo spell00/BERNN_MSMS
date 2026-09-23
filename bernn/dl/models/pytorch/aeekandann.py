@@ -153,6 +153,7 @@ class Classifier(KANGridMixin, nn.Module):
         use_softmax: bool = True,
         activation: Any = nn.ReLU,
         dropout: float = 0.1,
+        device: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.use_softmax = use_softmax
@@ -162,13 +163,13 @@ class Classifier(KANGridMixin, nn.Module):
         prev = in_shape
         for h in hidden_sizes:
             layers += [
-                KANLinear(prev, h),
+                KANLinear(prev, h, device=device),
                 # nn.LayerNorm(h),
                 nn.Dropout(dropout),
                 # activation(),
             ]
             prev = h
-        layers.append(KANLinear(prev, out_shape))
+        layers.append(KANLinear(prev, out_shape, device=device))
         self.net = nn.Sequential(*layers)
         self._random_init()
 
@@ -206,16 +207,17 @@ class Classifier2(KANGridMixin, nn.Module):
         out_shape: int = 9,
         use_softmax: bool = True,
         dropout: float = 0.1,
+        device: Optional[str] = None,
     ) -> None:
         super().__init__()
         self.use_softmax = use_softmax
         self.linear1 = nn.Sequential(
-            KANLinear(in_shape, hidden),
+            KANLinear(in_shape, hidden, device=device),
             # nn.LayerNorm(hidden),
             nn.Dropout(dropout),
             # nn.ReLU(),
         )
-        self.linear2 = KANLinear(hidden, out_shape)
+        self.linear2 = KANLinear(hidden, out_shape, device=device)
         self._random_init()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -246,16 +248,23 @@ class Classifier2(KANGridMixin, nn.Module):
 
 # -------------------- Encoders / Decoders (KAN) -------------------- #
 class Encoder2(KANGridMixin, nn.Module):
-    def __init__(self, in_shape: int, layer1: int, layer2: int, dropout: float) -> None:
+    def __init__(
+        self,
+        in_shape: int,
+        layer1: int,
+        layer2: int,
+        dropout: float,
+        device: Optional[str] = None,
+    ) -> None:
         super().__init__()
         self.linear1 = nn.Sequential(
-            KANLinear(in_shape, layer1),
+            KANLinear(in_shape, layer1, device=device),
             nn.LayerNorm(layer1),
             nn.Dropout(dropout),
             nn.LeakyReLU(),
         )
         self.linear2 = nn.Sequential(
-            KANLinear(layer1, layer2),
+            KANLinear(layer1, layer2, device=device),
             nn.LayerNorm(layer2),
         )
         self._random_init()
@@ -285,13 +294,13 @@ class Encoder3(KANGridMixin, nn.Module):
         sizes = list(layers.values())
         for size in sizes[:-1]:
             self.blocks.append(nn.Sequential(
-                KANLinear(prev, size),
+                KANLinear(prev, size, device=device),
                 # nn.LayerNorm(size),
                 nn.Dropout(dropout),
                 #nn.LeakyReLU(),
             ))
             prev = size
-        self.blocks.append(nn.Sequential(KANLinear(prev, sizes[-1])))
+        self.blocks.append(nn.Sequential(KANLinear(prev, sizes[-1], device=device)))
         self._random_init()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -314,16 +323,24 @@ class Encoder3(KANGridMixin, nn.Module):
 
 
 class Decoder2(KANGridMixin, nn.Module):
-    def __init__(self, in_shape: int, n_batches: int, layer1: int, layer2: int, dropout: float) -> None:
+    def __init__(
+        self,
+        in_shape: int,
+        n_batches: int,
+        layer1: int,
+        layer2: int,
+        dropout: float,
+        device: Optional[str] = None,
+    ) -> None:
         super().__init__()
         self.n_batches = n_batches
         self.linear1 = nn.Sequential(
-            KANLinear(layer1 + n_batches, layer2),
+            KANLinear(layer1 + n_batches, layer2, device=device),
             nn.LayerNorm(layer2),
             nn.Dropout(dropout),
             nn.ReLU(),
         )
-        self.linear2 = KANLinear(layer2, in_shape)
+        self.linear2 = KANLinear(layer2, in_shape, device=device)
         self._random_init()
 
     def forward(self, x: torch.Tensor, batches: Optional[torch.Tensor] = None) -> List[torch.Tensor]:
@@ -356,13 +373,21 @@ class Decoder3(KANGridMixin, nn.Module):
         prev = rev_sizes[0]
         for size in rev_sizes[1:]:
             self.blocks.append(nn.Sequential(
-                KANLinear(prev + (n_batches if n_batches > 0 else 0), size),
+                KANLinear(
+                    prev + (n_batches if n_batches > 0 else 0),
+                    size,
+                    device=device,
+                ),
                 nn.LayerNorm(size),
                 nn.Dropout(dropout),
                 nn.ReLU(),
             ))
             prev = size
-        self.out = KANLinear(prev + (n_batches if n_batches > 0 else 0), in_shape)
+        self.out = KANLinear(
+            prev + (n_batches if n_batches > 0 else 0),
+            in_shape,
+            device=device,
+        )
         self._random_init()
 
     def forward(self, x: torch.Tensor, batches: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -420,20 +445,32 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
         self.tied_weights = tied_weights
         self.flow_type = 'vanilla'
 
-        self.enc = Encoder2(in_shape, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape, layer1, layer2, dropout, device=device)
         if conditional:
-            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout, device=device)
         else:
-            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
+            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout, device=device)
+        self.mapper = Classifier(
+            n_batches + 1,
+            layer2,
+            n_layers=1,
+            hidden_sizes=[],
+            dropout=dropout,
+            device=device,
+        )
 
         if variational:
             self.gaussian_sampling = GaussianSample(layer2, layer2, device)
         else:
             self.gaussian_sampling = None
 
-        self.dann_discriminator = Classifier2(layer2, 64, n_batches)
-        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers)
+        self.dann_discriminator = Classifier2(layer2, 64, n_batches, device=device)
+        self.classifier = Classifier(
+            layer2,
+            nb_classes,
+            n_layers=n_layers,
+            device=device,
+        )
 
     def forward(
         self,
@@ -520,15 +557,22 @@ class SHAPKANAutoEncoder3(KANGridMixin, nn.Module):
             self.dec = Decoder3(in_shape, 0, layers, dropout, device)
 
         last_dim = list(layers.values())[-1]
-        self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
+        self.mapper = Classifier(
+            n_batches + 1,
+            last_dim,
+            n_layers=1,
+            hidden_sizes=[],
+            dropout=dropout,
+            device=device,
+        )
 
         if variational:
             self.gaussian_sampling = GaussianSample(last_dim, last_dim, device)
         else:
             self.gaussian_sampling = None
 
-        self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
-        self.classifier = Classifier(last_dim, nb_classes, n_layers=n_layers)
+        self.dann_discriminator = Classifier2(last_dim, 64, n_batches, device=device)
+        self.classifier = Classifier(last_dim, nb_classes, n_layers=n_layers, device=device)
 
 
     def forward(
@@ -636,7 +680,14 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
             self.dec = Decoder3(in_shape, 0, layers, dropout, device)
 
         last_dim = list(layers.values())[-1]
-        self.mapper = Classifier(n_batches + 1, last_dim, n_layers=1, hidden_sizes=[], dropout=dropout)
+        self.mapper = Classifier(
+            n_batches + 1,
+            last_dim,
+            n_layers=1,
+            hidden_sizes=[],
+            dropout=dropout,
+            device=device,
+        )
 
         # Variational sampling
         if variational:
@@ -644,8 +695,15 @@ class KANAutoEncoder3(KANGridMixin, nn.Module):
         else:
             self.gaussian_sampling = None
 
-        self.dann_discriminator = Classifier2(last_dim, 64, n_batches)
-        self.classifier = Classifier(last_dim, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
+        self.dann_discriminator = Classifier2(last_dim, 64, n_batches, device=device)
+        self.classifier = Classifier(
+            last_dim,
+            nb_classes,
+            n_layers=n_layers,
+            hidden_sizes=None,
+            dropout=dropout,
+            device=device,
+        )
 
 
     def forward(
@@ -779,12 +837,19 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         self.is_sigmoid = is_sigmoid
 
         # Encoder / Decoder
-        self.enc = Encoder2(in_shape, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape, layer1, layer2, dropout, device=device)
         if conditional:
-            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout, device=device)
         else:
-            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
+            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout, device=device)
+        self.mapper = Classifier(
+            n_batches + 1,
+            layer2,
+            n_layers=1,
+            hidden_sizes=[],
+            dropout=dropout,
+            device=device,
+        )
 
         # Variational sampling
         if variational:
@@ -792,8 +857,15 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         else:
             self.gaussian_sampling = None
 
-        self.dann_discriminator = Classifier2(layer2, 64, n_batches)
-        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers, hidden_sizes=None, dropout=dropout)
+        self.dann_discriminator = Classifier2(layer2, 64, n_batches, device=device)
+        self.classifier = Classifier(
+            layer2,
+            nb_classes,
+            n_layers=n_layers,
+            hidden_sizes=None,
+            dropout=dropout,
+            device=device,
+        )
 
 
     def forward(
