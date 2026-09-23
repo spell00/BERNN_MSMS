@@ -465,7 +465,12 @@ class SHAPKANAutoEncoder2(KANGridMixin, nn.Module):
             self.gaussian_sampling = None
 
         self.dann_discriminator = Classifier2(layer2, 64, n_batches, device=device)
-        self.classifier = Classifier(layer2, nb_classes, n_layers=n_layers)
+        self.classifier = Classifier(
+            layer2,
+            nb_classes,
+            n_layers=n_layers,
+            device=device,
+        )
 
     def forward(
         self,
@@ -832,12 +837,19 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         self.is_sigmoid = is_sigmoid
 
         # Encoder / Decoder
-        self.enc = Encoder2(in_shape, layer1, layer2, dropout)
+        self.enc = Encoder2(in_shape, layer1, layer2, dropout, device=device)
         if conditional:
-            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout)
+            self.dec = Decoder2(in_shape, n_batches, layer2, layer1, dropout, device=device)
         else:
-            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout)
-        self.mapper = Classifier(n_batches + 1, layer2, n_layers=1, hidden_sizes=[], dropout=dropout)
+            self.dec = Decoder2(in_shape, 0, layer2, layer1, dropout, device=device)
+        self.mapper = Classifier(
+            n_batches + 1,
+            layer2,
+            n_layers=1,
+            hidden_sizes=[],
+            dropout=dropout,
+            device=device,
+        )
 
         # Variational sampling
         if variational:
@@ -845,7 +857,7 @@ class KANAutoEncoder2(KANGridMixin, nn.Module):
         else:
             self.gaussian_sampling = None
 
-        self.dann_discriminator = Classifier2(layer2, 64, n_batches)
+        self.dann_discriminator = Classifier2(layer2, 64, n_batches, device=device)
         self.classifier = Classifier(
             layer2,
             nb_classes,
