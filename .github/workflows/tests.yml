@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
-          pip install tensorboardX pytest pytest-cov
+          pip install tensorboard tensorboardX pytest pytest-cov
       - name: Run core unit tests with coverage
         env:
           CUDA_VISIBLE_DEVICES: ""
