@@ -150,8 +150,11 @@ def test_sklearn_log1p_preprocessing_matches_prediction_path():
     )
 
     pd.testing.assert_frame_equal(fit_matrix, expected)
-    pd.testing.assert_frame_equal(predict_matrix, expected)
-    pd.testing.assert_frame_equal(internal_monitor_matrix, expected)
+    # BERNN rounds model-ready matrices to four decimals after preprocessing /
+    # scaling in both training and prediction paths.
+    expected_model_ready = expected.round(4)
+    pd.testing.assert_frame_equal(predict_matrix, expected_model_ready)
+    pd.testing.assert_frame_equal(internal_monitor_matrix, expected_model_ready)
 
 
 @pytest.mark.unit
