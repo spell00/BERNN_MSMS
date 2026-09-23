@@ -42,6 +42,7 @@ def test_kan_initializes_directly_on_cuda():
 @pytest.mark.unit
 def test_runtime_defaults_keep_bf16_and_optional_accelerators_off():
     cfg = TrainingConfig()
+    assert cfg.train_only_warmup is False
     assert cfg.precision == "bf16"
     assert cfg.tf32 is False
     assert cfg.torch_compile is False
