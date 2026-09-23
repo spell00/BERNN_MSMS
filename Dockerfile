@@ -76,7 +76,7 @@ RUN R -e "install.packages(c('fs', 'cpp11', 'systemfonts', 'textshaping', 'ragg'
 RUN echo "Installing for Python $PYTHON_VERSION" && \
     if [ "$PYTHON_VERSION" = "3.11" ]; then \
         echo "Installing Python 3.11 specific packages..." && \
-        pip install .[python311-plus]; \
+        pip install .[py311-plus]; \
     elif [ "$PYTHON_VERSION" = "3.12" ]; then \
         echo "Installing Python 3.12 specific packages..." && \
         pip install .[py312-plus]; \
