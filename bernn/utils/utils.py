@@ -18,6 +18,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'robust_per_batch':
         scalers = {b: RobustScaler() for b in unique_batches}
+        scaler = scalers
         for b in unique_batches:
             mask = data['batches']['all'] == b
             scalers[b].fit(data['inputs']['all'][mask])
@@ -35,6 +36,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'standard_per_batch':
         scalers = {b: StandardScaler() for b in unique_batches}
+        scaler = scalers
         for b in unique_batches:
             mask = data['batches']['all'] == b
             scalers[b].fit(data['inputs']['all'][mask])
@@ -51,6 +53,7 @@ def scale_data(scale, data, device='cpu'):
 
     elif scale == 'minmax_per_batch':
         scalers = {b: MinMaxScaler() for b in unique_batches}
+        scaler = scalers
         for b in unique_batches:
             mask = data['batches']['all'] == b
             scalers[b].fit(data['inputs']['all'][mask])
