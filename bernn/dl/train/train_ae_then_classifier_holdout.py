@@ -211,6 +211,7 @@ class TrainAEThenClassifierHoldout(TrainAE):
                  groupkfold: bool = True,
                  pools: bool = False,
                  load_tb: bool = False,
+                 epoch_callback=None,
                  **kwargs):
         """
         Initialize the TrainAEThenClassifierHoldout trainer.
@@ -247,6 +248,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
             groupkfold: Whether or not to use GroupKFold cross-validation.
             pools: Whether or not to use pooled samples.
             load_tb: Whether or not to load previous tensorboard runs.
+            epoch_callback: Optional callable invoked after each supervised classifier epoch.
+                            Exceptions intentionally propagate for external HPO pruning.
             **kwargs: Additional keyword arguments to pass to the TrainingConfig constructor.
 
         Examples:
@@ -269,6 +272,8 @@ class TrainAEThenClassifierHoldout(TrainAE):
             # Legacy approach (still supported)
             trainer = TrainAEThenClassifierHoldout(args)
         """
+
+        self.epoch_callback = epoch_callback
 
         direct_overrides: dict[str, Any] = {
             'n_epochs': n_epochs,
@@ -965,6 +970,19 @@ class TrainAEThenClassifierHoldout(TrainAE):
                     early_stop_counter = 0
                 else:
                     early_stop_counter += 1
+
+                self._notify_epoch({
+                    "phase": "classifier",
+                    "epoch": int(epoch),
+                    "rep": int(self.rep),
+                    "train_mcc": float(current_train_mcc),
+                    "valid_mcc": float(current_valid_mcc),
+                    "valid_acc": float(current_valid_acc),
+                    "test_mcc": float(current_test_mcc),
+                    "best_valid_mcc": float(best_mcc),
+                    "early_stop_counter": int(early_stop_counter),
+                    "early_stop_patience": int(self.args.early_stop),
+                })
 
                 if self.args.predict_tests and (epoch % 10 == 0):
                     loaders = get_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, ae,

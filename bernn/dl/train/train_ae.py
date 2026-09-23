@@ -77,6 +77,16 @@ def binarize_labels(data, controls):
 
 class TrainAE:
 
+    def _notify_epoch(self, payload):
+        """Notify an optional external observer after a validation epoch.
+
+        Exceptions intentionally propagate so HPO frameworks can prune a trial
+        immediately without BERNN translating that signal into a failed score.
+        """
+        callback = getattr(self, "epoch_callback", None)
+        if callback is not None:
+            callback(dict(payload))
+
     @staticmethod
     def _normalize_labels_for_encoding(values):
         """Canonicalize labels before LabelEncoder fit/transform.

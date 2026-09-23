@@ -1,0 +1,36 @@
+name: Epoch pruning hook checks
+
+on:
+  push:
+    branches:
+      - feature/epoch-pruning-hook-parity
+  pull_request:
+
+jobs:
+  check-hook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax check touched trainers
+        run: |
+          python -m py_compile \
+            bernn/dl/train/train_ae.py \
+            bernn/dl/train/train_ae_classifier_holdout.py \
+            bernn/dl/train/train_ae_then_classifier_holdout.py \
+            tests/unit/test_epoch_callback.py
+      - name: Verify callback contract is present
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          joint = Path("bernn/dl/train/train_ae_classifier_holdout.py").read_text()
+          staged = Path("bernn/dl/train/train_ae_then_classifier_holdout.py").read_text()
+          base = Path("bernn/dl/train/train_ae.py").read_text()
+          assert "epoch_callback=None" in joint
+          assert "epoch_callback=None" in staged
+          assert "self._notify_epoch({" in joint
+          assert "self._notify_epoch({" in staged
+          assert "def _notify_epoch(self, payload):" in base
+          PY
