@@ -52,6 +52,8 @@ Precedence rule:
   - Early-stop patience during warmup.
 - `train_after_warmup: bool = False`
   - Continue AE/domain learning after warmup when `True`.
+- `train_only_warmup: bool = False`
+  - Train only the autoencoder warmup phase and skip supervised classifier epochs. Use this when the learned latent representation is the desired output.
 - `warmup_after_warmup: bool = False`
   - Run extra warmup-style phase after warmup when `True`.
 - `warmup: int = 100`
@@ -254,3 +256,22 @@ Notes:
 - If `n_layers` is greater than 1 and deeper layers are missing, defaults are auto-derived by halving each step with floor at 16.
 - If optimization is disabled (`optimize_hyperparams=False`), Ax search space is emptied.
 - Any parameter in `fixed_hyperparams` (and explicit `layer1`) is removed from search space and injected as fixed.
+
+
+## Inference representations
+
+After a normal fitted run, `TrainAE` exposes the same preprocessed inference path for labels, latent representations, and reconstructions:
+
+```python
+predictions = trainer.infer(X_test, groups_test=batch_ids)
+encoded = trainer.get_encoded_inputs(X_test, groups_test=batch_ids)
+reconstructed = trainer.get_reconstructed_inputs(X_test, groups_test=batch_ids)
+
+outputs = trainer.infer(
+    X_test,
+    groups_test=batch_ids,
+    return_representations=True,
+)
+```
+
+When a per-batch scaler is configured, pass the prediction batch IDs so BERNN can reuse the fitted batch-specific scaler. Warmup-only mode is intended primarily for latent/reconstruction extraction; its classifier has not undergone supervised training.
