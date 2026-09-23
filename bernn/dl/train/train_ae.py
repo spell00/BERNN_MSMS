@@ -902,6 +902,14 @@ class TrainAE:
                 self.ae.train()
                 self.warmup_loop(optimizer_ae, None, self.ae, celoss, loaders['all'], triplet_loss, mseloss, True, warmup_epoch, values, loggers, {}, traces, None)
 
+        if bool(getattr(self.args, 'train_only_warmup', False)):
+            # Warmup-only mode is intended for learning/using the latent
+            # representation without classifier training. Keep the final
+            # warmup state in memory so fit() can restore it consistently.
+            self._save_best_model_state(max(warmup_epochs - 1, 0), 0.0)
+            print("Warmup-only training requested; skipping supervised training epochs.")
+            return self
+
         pbar = tqdm(range(warmup_epochs, n_epochs), desc="Epochs", unit="epoch")
         for epoch in pbar:
             lists, traces = get_empty_traces()
@@ -964,41 +972,178 @@ class TrainAE:
         print("Training completed.")
         return self
 
-    def transform(self, X):
-        """
-        Transform X into the latent space of the autoencoder.
+    @staticmethod
+    def _extract_reconstruction(reconstruction):
+        """Extract the reconstruction tensor from BERNN model outputs."""
+        if isinstance(reconstruction, dict):
+            if 'mean' in reconstruction:
+                reconstruction = reconstruction['mean']
+            else:
+                tensors = [value for value in reconstruction.values() if torch.is_tensor(value)]
+                if not tensors:
+                    raise TypeError("Autoencoder reconstruction dictionary contains no tensor output.")
+                reconstruction = tensors[-1]
+        if isinstance(reconstruction, (list, tuple)):
+            tensors = [value for value in reconstruction if torch.is_tensor(value)]
+            if not tensors:
+                raise TypeError("Autoencoder reconstruction output contains no tensor.")
+            reconstruction = tensors[-1]
+        if not torch.is_tensor(reconstruction):
+            raise TypeError("Autoencoder reconstruction output is not a tensor.")
+        return reconstruction
+
+    def _forward_representations(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_reconstruction=False,
+    ):
+        """Return latent representations, and optionally reconstructions.
+
+        The same fitted preprocessing and batch mapping used by predict is
+        applied here, so representation extraction follows the inference path.
         """
         if not isinstance(self.ae, nn.Module):
             raise ValueError("AutoEncoder is not initialized. Please run training first.")
-        
-        self.ae.enc.eval()
-        self.ae.classifier.eval()
-        
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-        
-        # We need a dataloader to transform X
+
+        self.ae.eval()
+        X, batch_ids = self._prepare_prediction_matrix(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_batch_ids=True,
+        )
+
         from torch.utils.data import DataLoader, TensorDataset
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+
+        device = getattr(self.args, 'device', 'cpu')
+        tensors = [torch.tensor(X.values, dtype=torch.float32)]
+        if batch_ids is not None:
+            tensors.append(torch.tensor(batch_ids, dtype=torch.long))
+        dataset = TensorDataset(*tensors)
         loader = DataLoader(
-            dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
+            dataset,
+            batch_size=getattr(self.args, 'bs', 32),
+            shuffle=False,
             num_workers=getattr(self.args, 'num_workers', 0),
         )
-        
-        from tqdm import tqdm
+
         encoded_list = []
+        reconstructed_list = []
         with torch.no_grad():
-            for batch in tqdm(loader, desc="Transforming", leave=False):
-                data = batch[0].to(self.args.device)
-                
-                # Mock domain as all zeros
-                domain = torch.zeros(data.shape[0], dtype=torch.long, device=self.args.device)
-                to_rec = data.clone()
-                
-                enc, _, _, _ = self.ae(data, to_rec, domain, sampling=False)
-                encoded_list.append(enc.detach().cpu().numpy())
-                
-        return np.concatenate(encoded_list, axis=0)
+            for batch in loader:
+                data = batch[0].to(device)
+                domains = (
+                    batch[1].to(device)
+                    if len(batch) > 1
+                    else torch.zeros(data.shape[0], dtype=torch.long, device=device)
+                )
+                try:
+                    output = self.ae(
+                        data,
+                        data.clone(),
+                        domains,
+                        sampling=False,
+                        mapping=getattr(self.args, 'use_mapping', True),
+                    )
+                except TypeError:
+                    output = self.ae(data, data.clone(), domains, sampling=False)
+
+                if not isinstance(output, (list, tuple)) or len(output) < 2:
+                    raise TypeError(
+                        "Autoencoder forward pass must return at least encoded and reconstructed outputs."
+                    )
+                encoded = output[0]
+                if not torch.is_tensor(encoded):
+                    raise TypeError("Autoencoder encoded output is not a tensor.")
+                encoded_list.append(encoded.detach().cpu().numpy())
+
+                if return_reconstruction:
+                    reconstructed = self._extract_reconstruction(output[1])
+                    reconstructed_list.append(reconstructed.detach().cpu().numpy())
+
+        if not encoded_list:
+            return (np.empty((0, 0)), np.empty((0, 0))) if return_reconstruction else np.empty((0, 0))
+
+        encoded = np.concatenate(encoded_list, axis=0)
+        if not return_reconstruction:
+            return encoded
+        reconstructed = np.concatenate(reconstructed_list, axis=0)
+        return encoded, reconstructed
+
+    def transform(self, X, groups_test=None, batches_test=None, groups=None):
+        """Transform X into the trained autoencoder latent space."""
+        return self.get_encoded_inputs(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+        )
+
+    def get_encoded_inputs(self, X, groups_test=None, batches_test=None, groups=None):
+        """Return bottleneck/latent representations for X."""
+        return self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=False,
+        )
+
+    def get_reconstructed_inputs(self, X, groups_test=None, batches_test=None, groups=None):
+        """Return autoencoder reconstructions for X."""
+        _, reconstructed = self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=True,
+        )
+        return reconstructed
+
+    def infer(
+        self,
+        X,
+        groups_test=None,
+        batches_test=None,
+        groups=None,
+        return_representations=False,
+    ):
+        """Run prediction and optionally return encoded/reconstructed inputs."""
+        predictions = self.predict(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+        )
+        if not return_representations:
+            return predictions
+
+        encoded, reconstructed = self._forward_representations(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_reconstruction=True,
+        )
+        result = {
+            'predictions': predictions,
+            'encoded': encoded,
+            'reconstructed': reconstructed,
+        }
+        try:
+            result['probabilities'] = self.predict_proba(
+                X,
+                groups_test=groups_test,
+                batches_test=batches_test,
+                groups=groups,
+            )
+        except (AttributeError, NotImplementedError):
+            pass
+        return result
 
     def _prediction_batch_ids(self, n_rows, groups_test=None, batches_test=None, groups=None):
         raw_groups = groups_test
@@ -1266,6 +1411,7 @@ class TrainAE:
             'early_stop': 50,
             'early_warmup_stop': -1,
             'train_after_warmup': 0,
+            'train_only_warmup': 0,
             'threshold': 0.,
             'n_epochs': 1000,
             'n_trials': 100,
@@ -2275,6 +2421,8 @@ if __name__ == "__main__":
     parser.add_argument('--early_stop', type=int, default=50)
     parser.add_argument('--early_warmup_stop', type=int, default=-1)
     parser.add_argument('--train_after_warmup', type=int, default=0)
+    parser.add_argument('--train_only_warmup', type=int, default=0,
+                        help='Train only the autoencoder warmup phase and skip supervised epochs')
     parser.add_argument('--threshold', type=float, default=0.)
     parser.add_argument('--n_epochs', type=int, default=1000)
     parser.add_argument('--n_trials', type=int, default=100)
