@@ -75,6 +75,7 @@ class TrainAEClassifierHoldout(TrainAE):
                  log_dvclive: bool = False,
                  groupkfold: bool = True,
                  pools: bool = False,
+                 epoch_callback=None,
                  **kwargs):
         """
         Args:
@@ -154,6 +155,10 @@ class TrainAEClassifierHoldout(TrainAE):
 
         # Deactivate SHAP by default
         self.use_shap = getattr(args, 'use_shap', False) if hasattr(self, 'args') else False
+        # Optional observer invoked after each supervised validation epoch.
+        # It is deliberately outside TrainingConfig so callers such as Optuna can
+        # stop a fit without changing BERNN's default training behavior.
+        self.epoch_callback = epoch_callback
 
     # TODO SHOULD BE IN PARENT CLASS
     def launch_mlflow(self, params):
@@ -608,6 +613,20 @@ class TrainAEClassifierHoldout(TrainAE):
                         early_stop_counter = 0
                     else:
                         early_stop_counter += 1
+
+                    if self.epoch_callback is not None:
+                        self.epoch_callback({
+                            "phase": "joint",
+                            "epoch": int(epoch),
+                            "rep": int(self.rep),
+                            "train_mcc": float(current_train_mcc),
+                            "valid_mcc": float(current_valid_mcc),
+                            "valid_acc": float(current_valid_acc),
+                            "test_mcc": float(current_test_mcc),
+                            "best_valid_mcc": float(best_mcc),
+                            "early_stop_counter": int(early_stop_counter),
+                            "early_stop_patience": int(self.args.early_stop),
+                        })
 
                     if self.args.predict_tests and (epoch % 10 == 0):
                         loaders = get_loaders(self.data, data, self.args.random_recs, self.args.triplet_dloss, ae,
