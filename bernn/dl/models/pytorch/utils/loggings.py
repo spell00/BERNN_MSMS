@@ -2,15 +2,25 @@
 # CUDA_VISIBLE_DEVICES = ""
 import os
 
-from tensorboard.plugins.hparams import api as hp
-import tensorflow as tf
+try:
+    from tensorboard.plugins.hparams import api as hp
+except Exception:  # Optional logging dependency.
+    hp = None
+
+try:
+    import tensorflow as tf
+except Exception:  # Optional logging dependency.
+    tf = None
 from sklearn.metrics import silhouette_score, adjusted_rand_score, adjusted_mutual_info_score
 from bernn.dl.models.pytorch.utils.metrics import rKBET, rLISI
 import numpy as np
 from bernn.utils.mlflow_compat import mlflow
 import pandas as pd
 import matplotlib
-import shap
+try:
+    import shap
+except Exception:  # Optional explainability dependency.
+    shap = None
 
 from bernn.utils.utils import get_unique_labels
 
@@ -39,14 +49,21 @@ def _get_umap_cls():
 # from bernn.utils.metrics import calculate_aic, calculate_bic
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
-# It is useless to run tensorflow on GPU and it takes a lot of GPU RAM for nothing
-physical_devices = tf.config.list_physical_devices('CPU')
-tf.config.set_visible_devices(physical_devices)
+# It is useless to run TensorFlow on GPU here and it takes GPU RAM for nothing.
+# Keep package import lightweight when TensorFlow is not installed.
+if tf is not None:
+    physical_devices = tf.config.list_physical_devices('CPU')
+    tf.config.set_visible_devices(physical_devices)
 
 
 class TensorboardLoggingAE:
     def __init__(self, hparams_filepath, params, variational, zinb, tw, tl, dloss, pseudo,
                  train_after_warmup, berm, args):
+        if hp is None or tf is None:
+            raise ImportError(
+                "TensorBoard logging requires tensorflow and tensorboard. "
+                "Install BERNN with the experiment-tracking/deep-learning extras."
+            )
         self.params = params
         self.train_after_warmup = train_after_warmup
         self.tw = tw
@@ -274,6 +291,8 @@ def make_force_plot(df, values, features, group, run, log_path, category='explai
 
 
 def make_deep_beeswarm(df, values, group, run, log_path, category='explainer', mlops='mlflow'):
+    if shap is None:
+        raise ImportError("SHAP is required for make_deep_beeswarm(). Install bernn[core-extended].")
     shap.summary_plot(values, feature_names=df.columns, features=df, show=False)
     f = plt.gcf()
     if mlops == 'mlflow':
@@ -335,6 +354,8 @@ def make_beeswarm_plot(values, group, run, log_path, category='explainer', mlops
 
 
 def make_heatmap(values, group, run, log_path, category='explainer', mlops='mlflow'):
+    if shap is None:
+        raise ImportError("SHAP is required for make_heatmap(). Install bernn[core-extended].")
     shap.plots.heatmap(values, instance_order=values.values.sum(1).argsort(), max_display=20, show=False)
     f = plt.gcf()
     if mlops == 'mlflow':
