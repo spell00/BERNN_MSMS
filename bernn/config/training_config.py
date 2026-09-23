@@ -42,6 +42,13 @@ class TrainingConfig:
     warmup_after_warmup: bool = False
     warmup: int = 100  # Set during training
     device: str = 'cpu'
+    # Runtime precision/performance. BF16 preserves BERNN's existing CUDA
+    # training behavior; TF32 and torch.compile remain explicit opt-ins.
+    precision: str = 'bf16'  # one of bf16, fp16, fp32
+    tf32: bool = False
+    torch_compile: bool = False
+    torch_compile_mode: str = 'default'
+    cpu_threads: int = 0  # 0 = leave PyTorch/BLAS thread defaults unchanged
     use_sigmoid: bool = False  # Use sigmoid activation in the last layer of the AE
 
     # Loss and regularization
@@ -105,6 +112,18 @@ class TrainingConfig:
         self.num_workers = int(self.num_workers)
         if self.num_workers < 0:
             raise ValueError("num_workers must be >= 0")
+
+        self.cpu_threads = int(self.cpu_threads)
+        if self.cpu_threads < 0:
+            raise ValueError("cpu_threads must be >= 0")
+
+        self.precision = str(self.precision).lower()
+        if self.precision not in {'bf16', 'bfloat16', 'fp16', 'float16', 'fp32', 'float32'}:
+            raise ValueError(
+                "precision must be one of: bf16, bfloat16, fp16, float16, fp32, float32"
+            )
+
+        self.torch_compile_mode = str(self.torch_compile_mode or 'default')
 
         if self.dloss not in ['revTriplet', 'revDANN', 'DANN', 'inverseTriplet', 'normae', 'no']:
             raise ValueError(f"Invalid dloss: {self.dloss}. Must be one of: revTriplet, revDANN, DANN, inverseTriplet, normae, no")
