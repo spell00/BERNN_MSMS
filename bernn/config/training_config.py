@@ -39,6 +39,7 @@ class TrainingConfig:
     early_stop: int = 50
     early_warmup_stop: int = 50
     train_after_warmup: bool = False
+    train_only_warmup: bool = False
     warmup_after_warmup: bool = False
     warmup: int = 100  # Set during training
     device: str = 'cpu'
