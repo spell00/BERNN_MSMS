@@ -994,40 +994,59 @@ class TrainAE:
         print("Training completed.")
         return self
 
-    def transform(self, X):
+    def transform(self, X, groups_test=None, batches_test=None, groups=None):
         """
-        Transform X into the latent space of the autoencoder.
+        Transform X into the fitted BERNN latent space.
+
+        The exact preprocessing and scaler fitted during fit are reapplied
+        before encoding, matching predict. Batch ids are optional for global
+        scalers and required for per-batch scalers.
         """
         if not isinstance(self.ae, nn.Module):
             raise ValueError("AutoEncoder is not initialized. Please run training first.")
-        
+
         self.ae.enc.eval()
         self.ae.classifier.eval()
-        
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-        
-        # We need a dataloader to transform X
+
+        X, batch_ids = self._prepare_prediction_matrix(
+            X,
+            groups_test=groups_test,
+            batches_test=batches_test,
+            groups=groups,
+            return_batch_ids=True,
+        )
+
         from torch.utils.data import DataLoader, TensorDataset
-        dataset = TensorDataset(torch.tensor(X.values, dtype=torch.float32))
+        tensors = [torch.tensor(X.values, dtype=torch.float32)]
+        if batch_ids is not None:
+            tensors.append(torch.tensor(batch_ids, dtype=torch.long))
+        dataset = TensorDataset(*tensors)
         loader = DataLoader(
             dataset, batch_size=getattr(self.args, 'bs', 32), shuffle=False,
             num_workers=getattr(self.args, 'num_workers', 0),
         )
-        
+
         from tqdm import tqdm
         encoded_list = []
+        device = getattr(self.args, 'device', 'cpu')
         with torch.no_grad():
             for batch in tqdm(loader, desc="Transforming", leave=False):
-                data = batch[0].to(self.args.device)
-                
-                # Mock domain as all zeros
-                domain = torch.zeros(data.shape[0], dtype=torch.long, device=self.args.device)
+                data = batch[0].to(device)
+                if len(batch) > 1:
+                    domain = batch[1].to(device)
+                else:
+                    domain = torch.zeros(data.shape[0], dtype=torch.long, device=device)
                 to_rec = data.clone()
-                
-                enc, _, _, _ = self.ae(data, to_rec, domain, sampling=False)
+
+                enc, _, _, _ = self.ae(
+                    data,
+                    to_rec,
+                    domain,
+                    sampling=False,
+                    mapping=getattr(self.args, 'use_mapping', True),
+                )
                 encoded_list.append(enc.detach().cpu().numpy())
-                
+
         return np.concatenate(encoded_list, axis=0)
 
     def _prediction_batch_ids(self, n_rows, groups_test=None, batches_test=None, groups=None):
