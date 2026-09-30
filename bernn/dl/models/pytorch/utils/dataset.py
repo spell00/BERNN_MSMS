@@ -103,32 +103,55 @@ class MSDataset3(Dataset):
         self.unique_labels = list(set(labels)) if labels is not None else []
         self.batches = batches
         self.unique_batches = np.unique(batches) if batches is not None else []
-        labels_inds = {label: [i for i, x in enumerate(labels) if x == label] for label in self.unique_labels} if labels is not None else {}
-        batches_inds = {batch: [i for i, x in enumerate(batches) if x == batch] for batch in self.unique_batches} if batches is not None else {}
+
+        # Build class/batch indices once per unique value. The previous code
+        # rebuilt the same full-data index list once per sample below, which is
+        # effectively O(N^2) and stalls large single-cell datasets.
+        labels_arr = np.asarray(labels) if labels is not None else np.asarray([])
+        batches_arr = np.asarray(batches) if batches is not None else np.asarray([])
+        labels_inds = {
+            label: np.flatnonzero(labels_arr == label)
+            for label in self.unique_labels
+        } if labels is not None else {}
+        batches_inds = {
+            batch: np.flatnonzero(batches_arr == batch)
+            for batch in self.unique_batches
+        } if batches is not None else {}
         # Class-triplet targets are supervised training data.  Keep this pool
         # separate from labels_data because an ``all`` loader may legitimately
         # contain transductive validation/test features and batch IDs, but its
         # validation/test class labels must never influence optimization.
         class_triplet_inds = {}
         if labels is not None and sets is not None:
+            sets_arr = np.asarray(sets).astype(str)
+            train_mask = sets_arr == 'train'
             class_triplet_inds = {
-                label: [
-                    i for i, (sample_label, sample_set) in enumerate(zip(labels, sets))
-                    if sample_label == label and str(sample_set) == 'train'
-                ]
+                label: np.flatnonzero((labels_arr == label) & train_mask)
                 for label in self.unique_labels
                 if label != -1
             }
             class_triplet_inds = {
-                label: indices for label, indices in class_triplet_inds.items() if indices
+                label: indices for label, indices in class_triplet_inds.items() if len(indices)
             }
         # try:
         try:
-            self.labels_data = {label: data.iloc[labels_inds[label]].to_numpy() for label in labels}
-            self.batches_data = {batch: data.iloc[batches_inds[batch]].to_numpy() for batch in batches}
+            self.labels_data = {
+                label: data.iloc[labels_inds[label]].to_numpy()
+                for label in self.unique_labels
+            }
+            self.batches_data = {
+                batch: data.iloc[batches_inds[batch]].to_numpy()
+                for batch in self.unique_batches
+            }
         except:
-            self.labels_data = {label: data[labels_inds[label]] for label in labels}
-            self.batches_data = {batch: data[batches_inds[batch]] for batch in batches}
+            self.labels_data = {
+                label: data[labels_inds[label]]
+                for label in self.unique_labels
+            }
+            self.batches_data = {
+                batch: data[batches_inds[batch]]
+                for batch in self.unique_batches
+            }
         try:
             self.class_triplet_data = {
                 label: data.iloc[indices].to_numpy()
@@ -173,8 +196,12 @@ class MSDataset3(Dataset):
 
         # except:
         #     print(labels)
-        self.n_labels = {label: len(self.labels_data[label]) for label in labels} if labels is not None else {}
-        self.n_batches = {batch: len(self.batches_data[batch]) for batch in batches} if batches is not None else {}
+        self.n_labels = {
+            label: len(self.labels_data[label]) for label in self.unique_labels
+        } if labels is not None else {}
+        self.n_batches = {
+            batch: len(self.batches_data[batch]) for batch in self.unique_batches
+        } if batches is not None else {}
         self.triplet_dloss = triplet_dloss
 
     def __len__(self):
