@@ -14,6 +14,7 @@ from typing import Any, Callable, Mapping, Optional
 
 import numpy as np
 import torch
+from sklearn.metrics import matthews_corrcoef
 
 from .config.training_config import TrainingConfig
 from .dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
@@ -147,6 +148,124 @@ def fit_openproblems_once(
     return embedding
 
 
+def fit_openproblems_grouped_once(
+    adata: Any,
+    *,
+    layer: str = "normalized",
+    batch_key: str = "batch",
+    label_key: str = "cell_type",
+    n_hvg: Optional[int] = 2000,
+    dloss: str = "inverseTriplet",
+    variational: bool = False,
+    kan: bool = False,
+    class_triplet: bool = False,
+    class_triplet_w: float = 1.0,
+    rec_loss: str = "l1",
+    gamma: float = 0.1,
+    beta: float = 0.0,
+    l1: float = 0.0,
+    reg_entropy: float = 0.0,
+    thres: float = 0.0,
+    n_epochs: int = 200,
+    warmup: int = 20,
+    batch_size: int = 256,
+    n_layers: int = 2,
+    layer1: int = 256,
+    scaler: str = "standard",
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-5,
+    dropout: float = 0.1,
+    margin: float = 1.0,
+    smoothing: float = 0.1,
+    nu: float = 1.0,
+    random_state: int = 1,
+    num_workers: int = 0,
+    device: Optional[str] = None,
+    n_splits: int = 5,
+    return_trainer: bool = False,
+):
+    """Fit BERNN with true grouped train/valid/test splits for OpenProblems.
+
+    This is the legacy-style ``gkf=1`` mode: batches are split into disjoint
+    train/valid/test groups, and BERNN restores the checkpoint with the best
+    validation MCC. The returned embedding is then produced for the complete
+    transductive dataset. Train/valid/test MCCs are recomputed afterward through
+    the same public prediction path so their values are directly comparable.
+    """
+    if batch_key not in adata.obs:
+        raise KeyError(f"AnnData obs is missing required batch key {batch_key!r}")
+    if label_key not in adata.obs:
+        raise KeyError(f"AnnData obs is missing required label key {label_key!r}")
+    if int(n_splits) < 3:
+        raise ValueError("n_splits must be >= 3 for train/valid/test grouped mode")
+
+    feature_idx = _select_feature_indices(adata, n_hvg)
+    frame = _dense_frame(adata, feature_idx, layer)
+    labels = adata.obs[label_key].astype(str).to_numpy()
+    batches = adata.obs[batch_key].astype(str).to_numpy()
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    config = TrainingConfig(
+        optimize_hyperparams=False, dloss=dloss, class_triplet=bool(class_triplet),
+        class_triplet_w=float(class_triplet_w), variational=bool(variational), kan=bool(kan),
+        n_layers=int(n_layers), layer1=int(layer1), tied_weights=False, use_mapping=True,
+        rec_loss=str(rec_loss), scaler=scaler,
+        log1p=False, use_l1=True, prune_network=False, update_grid=False,
+        n_epochs=int(n_epochs), warmup=int(warmup), n_repeats=int(n_splits),
+        bs=int(batch_size), num_workers=int(num_workers), groupkfold=True,
+        device=device, dataset=str(getattr(adata, "uns", {}).get("dataset_id", "openproblems")),
+        exp_id="bernn_openproblems_grouped",
+        early_stop=50,
+    )
+    config.lr=float(learning_rate); config.wd=float(weight_decay)
+    config.dropout=float(dropout); config.margin=float(margin)
+    config.smoothing=float(smoothing); config.nu=float(nu)
+    config.thres=float(thres); config.gamma=float(gamma); config.beta=float(beta); config.l1=float(l1); config.reg_entropy=float(reg_entropy)
+
+    trainer = TrainAEClassifierHoldout(
+        config=config, groupkfold=True, pools=False, keep_models=False,
+        log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False,
+        log_dvclive=False,
+    )
+    trainer.seed = int(random_state)
+    params = {
+        "lr": float(learning_rate), "dropout": float(dropout),
+        "wd": float(weight_decay), "margin": float(margin),
+        "smoothing": float(smoothing), "scaler": scaler, "gamma": float(gamma),
+        "beta": float(beta), "nu": float(nu), "thres": float(thres),
+        "prune_threshold": 0.0, "warmup": int(warmup), "l1": float(l1),
+        "reg_entropy": float(reg_entropy), "layer1": int(layer1), "n_layers": int(n_layers),
+    }
+    for idx in range(2, int(n_layers) + 1):
+        params[f"layer{idx}"] = max(16, int(layer1) // (2 ** (idx - 1)))
+
+    trainer.fit(
+        frame, labels, groups_train=batches, params=params,
+        internal_validation=True,
+    )
+
+    split_metrics: dict[str, float] = {}
+    split_batches: dict[str, list[str]] = {}
+    for split in ("train", "valid", "test"):
+        split_frame = trainer.data["inputs"][split]
+        indices = np.asarray(split_frame.index, dtype=int)
+        y_true = labels[indices]
+        batch_true = batches[indices]
+        y_pred = trainer.predict(frame.iloc[indices], batches_test=batch_true)
+        split_metrics[f"{split}_mcc"] = float(
+            matthews_corrcoef(y_true.astype(str), np.asarray(y_pred).astype(str))
+        )
+        split_batches[split] = sorted(set(batch_true.tolist()))
+
+    trainer.openproblems_split_metrics = split_metrics
+    trainer.openproblems_split_batches = split_batches
+    embedding = trainer.transform(frame, groups_test=batches).astype(np.float32, copy=False)
+    if return_trainer:
+        return embedding, trainer
+    return embedding
+
+
 ScoreResult = float | Mapping[str, float]
 ScoreFn = Callable[[np.ndarray], ScoreResult]
 ParamSuggester = Callable[[Any], Mapping[str, Any]]
@@ -191,6 +310,7 @@ def _default_openproblems_params(
         "margin": trial.suggest_float("margin", 0.5, 2.0, step=0.25),
         "smoothing": trial.suggest_float("smoothing", 0.0, 0.20, step=0.05),
         "nu": trial.suggest_float("nu", 0.25, 2.0, log=True),
+        "scaler": trial.suggest_categorical("scaler", ["standard", "robust", "standard_per_batch", "robust_per_batch"]),
         "batch_size": trial.suggest_categorical("batch_size", [128, 256, 512, 1024]),
         "n_layers": trial.suggest_int("n_layers", 1, 3),
         "layer1": trial.suggest_categorical("layer1", [128, 256, 512, 1024]),
