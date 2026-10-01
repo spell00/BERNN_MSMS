@@ -18,6 +18,7 @@ from . import config
 # Import other modules
 from .utils import *
 from .dl import models
+from .single_cell import fit_transform_anndata
 
 # Import models explicitly so they are available for direct import
 from .dl.models.pytorch import (
@@ -42,6 +43,9 @@ except Exception:
     TrainAE = TrainAEClassifierHoldout = TrainAEThenClassifierHoldout = None
 
 __all__ = [
+    # Single-cell integration
+    "fit_transform_anndata",
+
     # Training
     "TrainAE",
     "TrainAEClassifierHoldout",

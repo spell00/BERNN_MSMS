@@ -55,3 +55,26 @@ Focus on these first:
 ## Documentation
 
 - [Usage tutorial](TUTORIAL.md)
+
+## Single-cell batch integration
+
+The `feature/openproblems-single-cell` branch adds an AnnData adapter for
+single-cell batch integration while keeping BERNN's matrix-based training API
+unchanged.
+
+```python
+from bernn.single_cell import fit_transform_anndata
+
+embedding = fit_transform_anndata(
+    adata,
+    layer="normalized",
+    batch_key="batch",
+    label_key="cell_type",
+    n_hvg=2000,
+)
+adata.obsm["X_emb"] = embedding
+```
+
+The adapter uses `var["hvg_score"]` when available, trains BERNN with
+`obs["batch"]` as the domain label and `obs["cell_type"]` as the supervised
+biological label, and returns the integrated latent representation.
