@@ -1387,9 +1387,20 @@ class TrainAE:
                 preds_list.append(np.asarray(preds).reshape(-1))
 
         preds_numeric = np.concatenate(preds_list, axis=0).astype(np.int64)
+        # Classifier outputs are indices in BERNN's ``cats`` space. Map those
+        # indices back through ``unique_labels`` before decoding the original
+        # labels; for >=11 classes, cats order may differ from LabelEncoder
+        # integer order because legacy BERNN sorts category keys via ``key=str``.
+        unique_labels = np.asarray(getattr(self, "unique_labels", []))
+        if unique_labels.size and preds_numeric.size:
+            if preds_numeric.min() < 0 or preds_numeric.max() >= len(unique_labels):
+                raise ValueError("Predicted BERNN class index is outside unique_labels")
+            preds_labels = unique_labels[preds_numeric]
+        else:
+            preds_labels = preds_numeric
         if self._label_encoder is not None:
-            return self._label_encoder.inverse_transform(preds_numeric)
-        return preds_numeric
+            return self._label_encoder.inverse_transform(np.asarray(preds_labels, dtype=int))
+        return np.asarray(preds_labels)
 
     def predict_proba(self, X, groups_test=None, batches_test=None, groups=None):
         """Predict class probabilities for X using the best trained autoencoder.
