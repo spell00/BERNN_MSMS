@@ -8,13 +8,143 @@ to evaluate a candidate embedding with the benchmark (or another objective).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import copy
 import gc
 from typing import Any, Callable, Mapping, Optional
 
 import numpy as np
 import torch
 
-from .single_cell import fit_transform_anndata
+from .config.training_config import TrainingConfig
+from .dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
+from .single_cell import _dense_frame, _select_feature_indices
+
+
+class _OpenProblemsFinalEpochTrainer(TrainAEClassifierHoldout):
+    """OpenProblems-only trainer behavior without changing BERNN legacy trainers.
+
+    BERNN's legacy holdout trainer selects/restores checkpoints by validation MCC.
+    OpenProblems optimization must not use BERNN metrics for model selection, so
+    this subclass captures the final epoch state and restores that state after
+    the parent fit has completed its own bookkeeping.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self._openproblems_last_state: Optional[dict[str, Any]] = None
+        self._openproblems_last_epoch: Optional[int] = None
+
+    def _notify_epoch(self, payload: Mapping[str, Any]):
+        # Capture state after each completed joint-training epoch. Do not use any
+        # BERNN validation metric to decide whether this state is better.
+        self._openproblems_last_state = {
+            name: copy.deepcopy(module.state_dict())
+            for name, module in self._iter_torch_modules()
+        }
+        self._openproblems_last_epoch = int(payload.get("epoch", -1))
+
+    def restore_openproblems_final_state(self):
+        if not self._openproblems_last_state:
+            raise RuntimeError("No final OpenProblems training state was captured")
+        modules = dict(self._iter_torch_modules())
+        for name, state in self._openproblems_last_state.items():
+            if name in modules:
+                modules[name].load_state_dict(state)
+
+
+def fit_openproblems_once(
+    adata: Any,
+    *,
+    layer: str = "normalized",
+    batch_key: str = "batch",
+    label_key: str = "cell_type",
+    n_hvg: Optional[int] = 2000,
+    dloss: str = "inverseTriplet",
+    n_epochs: int = 200,
+    warmup: int = 20,
+    batch_size: int = 256,
+    n_layers: int = 2,
+    layer1: int = 256,
+    scaler: str = "standard",
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-5,
+    dropout: float = 0.1,
+    margin: float = 1.0,
+    smoothing: float = 0.1,
+    nu: float = 1.0,
+    random_state: int = 1,
+    num_workers: int = 0,
+    device: Optional[str] = None,
+    return_trainer: bool = False,
+):
+    """Fit BERNN on the full OpenProblems dataset with no holdout split.
+
+    This path is intentionally separate from BERNN's legacy fit APIs. Every row
+    is used for fitting. BERNN's internal metrics may still be computed for
+    bookkeeping by the inherited trainer, but they do not control early stopping,
+    checkpoint selection, trial ranking, or the returned embedding. The returned
+    model is always the final completed epoch.
+    """
+    import torch
+
+    if batch_key not in adata.obs:
+        raise KeyError(f"AnnData obs is missing required batch key {batch_key!r}")
+    if label_key not in adata.obs:
+        raise KeyError(f"AnnData obs is missing required label key {label_key!r}")
+
+    feature_idx = _select_feature_indices(adata, n_hvg)
+    frame = _dense_frame(adata, feature_idx, layer)
+    labels = adata.obs[label_key].astype(str).to_numpy()
+    batches = adata.obs[batch_key].astype(str).to_numpy()
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    config = TrainingConfig(
+        optimize_hyperparams=False, dloss=dloss, class_triplet=False,
+        variational=False, kan=False, n_layers=int(n_layers), layer1=int(layer1),
+        tied_weights=False, use_mapping=True, rec_loss="l1", scaler=scaler,
+        log1p=False, use_l1=True, prune_network=False, update_grid=False,
+        n_epochs=int(n_epochs), warmup=int(warmup), n_repeats=1,
+        bs=int(batch_size), num_workers=int(num_workers), groupkfold=True,
+        device=device, dataset=str(getattr(adata, "uns", {}).get("dataset_id", "openproblems")),
+        exp_id="bernn_openproblems_exact",
+        # Disable MCC-driven early stopping for this dedicated path.
+        early_stop=int(n_epochs) + 1,
+    )
+    config.lr=float(learning_rate); config.wd=float(weight_decay)
+    config.dropout=float(dropout); config.margin=float(margin)
+    config.smoothing=float(smoothing); config.nu=float(nu)
+    config.thres=0.0; config.gamma=0.1; config.beta=0.0
+
+    trainer = _OpenProblemsFinalEpochTrainer(
+        config=config, groupkfold=True, pools=False, keep_models=False,
+        log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False,
+        log_dvclive=False,
+    )
+    params = {
+        "lr": float(learning_rate), "dropout": float(dropout),
+        "wd": float(weight_decay), "margin": float(margin),
+        "smoothing": float(smoothing), "scaler": scaler, "gamma": 0.1,
+        "beta": 0.0, "nu": float(nu), "thres": 0.0,
+        "prune_threshold": 0.0, "warmup": int(warmup), "l1": 0.0,
+        "reg_entropy": 0.0, "layer1": int(layer1),
+        "n_layers": int(n_layers),
+    }
+    for idx in range(2, int(n_layers) + 1):
+        params[f"layer{idx}"] = max(16, int(layer1) // (2 ** (idx - 1)))
+
+    # No external validation/test and no internal split: every row is fit data.
+    trainer.fit(
+        frame, labels, groups_train=batches, params=params,
+        internal_validation=False,
+    )
+    # Parent fit restores best-valid-MCC for legacy semantics. Replace it with the
+    # final-epoch state for this OpenProblems-only path.
+    trainer.restore_openproblems_final_state()
+    embedding = trainer.transform(frame, groups_test=batches).astype(np.float32, copy=False)
+    if return_trainer:
+        return embedding, trainer
+    return embedding
 
 
 ScoreResult = float | Mapping[str, float]
@@ -200,7 +330,7 @@ def fit_openproblems(
         embedding = None
         metrics: dict[str, float] = {}
         try:
-            embedding, trainer = fit_transform_anndata(
+            embedding, trainer = fit_openproblems_once(
                 adata,
                 return_trainer=True,
                 **trial_fit_kwargs,
@@ -257,7 +387,7 @@ def fit_openproblems(
     final_fit_kwargs = dict(best_params)
     final_fit_kwargs["n_epochs"] = int(final_epochs)
     final_fit_kwargs.setdefault("random_state", int(random_state))
-    embedding, trainer = fit_transform_anndata(
+    embedding, trainer = fit_openproblems_once(
         adata,
         return_trainer=True,
         **final_fit_kwargs,
@@ -276,5 +406,6 @@ def fit_openproblems(
 
 __all__ = [
     "OpenProblemsFitResult",
+    "fit_openproblems_once",
     "fit_openproblems",
 ]

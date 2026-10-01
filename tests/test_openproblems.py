@@ -19,7 +19,7 @@ def test_fit_openproblems_optimizes_external_score_and_retrains(monkeypatch):
         trainer = SimpleNamespace(best_valid_mcc=0.75)
         return (embedding, trainer) if return_trainer else embedding
 
-    monkeypatch.setattr(op, "fit_transform_anndata", fake_fit_transform)
+    monkeypatch.setattr(op, "fit_openproblems_once", fake_fit_transform)
 
     def suggest(trial):
         return {"dropout": trial.suggest_categorical("dropout", [0.0, 0.2])}
@@ -71,7 +71,7 @@ def test_fit_openproblems_enqueues_known_baseline(monkeypatch):
         trainer = SimpleNamespace(best_valid_mcc=0.1)
         return (emb, trainer) if return_trainer else emb
 
-    monkeypatch.setattr(op, "fit_transform_anndata", fake_fit_transform)
+    monkeypatch.setattr(op, "fit_openproblems_once", fake_fit_transform)
 
     def suggest(trial):
         return {"dropout": trial.suggest_categorical("dropout", [0.0, 0.2])}

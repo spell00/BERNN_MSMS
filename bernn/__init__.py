@@ -19,7 +19,7 @@ from . import config
 from .utils import *
 from .dl import models
 from .single_cell import fit_transform_anndata
-from .openproblems import OpenProblemsFitResult, fit_openproblems
+from .openproblems import OpenProblemsFitResult, fit_openproblems, fit_openproblems_once
 
 # Import models explicitly so they are available for direct import
 from .dl.models.pytorch import (
@@ -47,6 +47,7 @@ __all__ = [
     # Single-cell integration
     "fit_transform_anndata",
     "fit_openproblems",
+    "fit_openproblems_once",
     "OpenProblemsFitResult",
 
     # Training
