@@ -120,6 +120,7 @@ def fit_openproblems(
     sampler: Any = None,
     pruner: Any = None,
     param_suggester: Optional[ParamSuggester] = None,
+    enqueue_params: Optional[list[Mapping[str, Any]]] = None,
     on_trial_complete: Optional[TrialCallback] = None,
     random_state: int = 1,
     retrain_best: bool = True,
@@ -174,6 +175,9 @@ def fit_openproblems(
         sampler=sampler,
         pruner=pruner,
     )
+
+    for known_params in enqueue_params or []:
+        study.enqueue_trial(dict(known_params), skip_if_exists=True)
 
     if param_suggester is None:
         suggest = lambda trial: _default_openproblems_params(

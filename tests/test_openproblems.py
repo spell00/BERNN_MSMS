@@ -59,3 +59,33 @@ def test_normalize_score_result_requires_named_objective_for_multiple_metrics():
     )
     assert score == pytest.approx(0.7)
     assert metrics["ari"] == pytest.approx(0.5)
+
+
+def test_fit_openproblems_enqueues_known_baseline(monkeypatch):
+    calls = []
+
+    def fake_fit_transform(adata, *, return_trainer=False, **kwargs):
+        calls.append(dict(kwargs))
+        value = float(kwargs.get("dropout", 0.0))
+        emb = np.full((3, 2), value, dtype=np.float32)
+        trainer = SimpleNamespace(best_valid_mcc=0.1)
+        return (emb, trainer) if return_trainer else emb
+
+    monkeypatch.setattr(op, "fit_transform_anndata", fake_fit_transform)
+
+    def suggest(trial):
+        return {"dropout": trial.suggest_categorical("dropout", [0.0, 0.2])}
+
+    result = op.fit_openproblems(
+        object(),
+        lambda emb: float(emb.mean()),
+        n_trials=1,
+        trial_epochs=2,
+        final_epochs=3,
+        param_suggester=suggest,
+        enqueue_params=[{"dropout": 0.2}],
+        device="cpu",
+    )
+    assert result.best_score == pytest.approx(0.2)
+    assert result.study.trials[0].params["dropout"] == pytest.approx(0.2)
+    assert calls[0]["dropout"] == pytest.approx(0.2)
