@@ -1440,7 +1440,7 @@ def log_metrics(logger, lists, values, model, unique_labels, unique_batches, epo
 
 
 def make_data(lists, values):
-    n_mini_batches = int(1000/lists['train'][values][0].shape[0])
+    n_mini_batches = max(1, int(1000/lists['train'][values][0].shape[0]))
     try:
         data = {
             'inputs': {group: np.concatenate(lists[group][values][:n_mini_batches]) for group in list(lists.keys()) if

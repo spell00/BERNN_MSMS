@@ -183,7 +183,7 @@ class LogConfusionMatrix:
         self.batches = {'train': [], 'valid': [], 'test': []}
 
     def add(self, lists):
-        n_mini_batches = int(1000 / lists['train']['preds'][0].shape[0])
+        n_mini_batches = max(1, int(1000 / lists['train']['preds'][0].shape[0]))
         for group in list(self.preds.keys()):
             # Calculate the confusion matrix.
             if len(lists[group]['preds']) == 0:

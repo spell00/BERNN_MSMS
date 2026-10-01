@@ -58,9 +58,8 @@ Focus on these first:
 
 ## Single-cell batch integration
 
-The `feature/openproblems-single-cell` branch adds an AnnData adapter for
-single-cell batch integration while keeping BERNN's matrix-based training API
-unchanged.
+BERNN includes an AnnData adapter for single-cell batch integration while
+keeping the core matrix-based training API unchanged.
 
 ```python
 from bernn.single_cell import fit_transform_anndata
@@ -78,3 +77,30 @@ adata.obsm["X_emb"] = embedding
 The adapter uses `var["hvg_score"]` when available, trains BERNN with
 `obs["batch"]` as the domain label and `obs["cell_type"]` as the supervised
 biological label, and returns the integrated latent representation.
+
+### Optimize BERNN for an external OpenProblems score
+
+`fit_openproblems()` uses Optuna to optimize the score returned by a benchmark
+callback rather than BERNN's internal classification MCC. This keeps the
+OpenProblems/scIB metric implementation outside BERNN while making the benchmark
+score the actual HPO objective.
+
+```python
+from bernn import fit_openproblems
+
+result = fit_openproblems(
+    adata,
+    score_fn=lambda embedding: score_with_openproblems(embedding),
+    n_trials=20,
+    trial_epochs=40,
+    final_epochs=200,
+    device="cuda",
+)
+adata.obsm["X_emb"] = result.embedding
+print(result.best_score, result.best_params)
+```
+
+The shorter `trial_epochs` budget makes HPO practical on large single-cell
+datasets; BERNN then retrains once at `final_epochs` using the best Optuna
+parameters. `score_fn` may return either a scalar or a mapping containing
+`score` (or a custom `objective_key`).
