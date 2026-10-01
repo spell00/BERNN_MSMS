@@ -1293,7 +1293,12 @@ class TrainAE:
         configured scaler fails.
         """
         try:
-            labels = self.data.get("labels", {}).get(split, None)
+            # Score against the exact classifier target ids used by BERNN's
+            # DataLoader/epoch loop. ``labels`` may have already been encoded by
+            # LabelEncoder and then remapped again into ``cats``; for >= 11
+            # classes those two integer spaces can differ because legacy BERNN
+            # orders category keys with ``key=str``.
+            labels = self.data.get("cats", {}).get(split, None)
             inputs_raw = self.data.get("inputs", {}).get(split, None)
             batches = self.data.get("batches", {}).get(split, None)
             if labels is None or inputs_raw is None or len(inputs_raw) == 0:
@@ -1323,16 +1328,10 @@ class TrainAE:
                 )
                 preds_numeric = logits.argmax(1).detach().cpu().numpy().astype(np.int64)
 
-            if self._label_encoder is not None:
-                numeric_labels = labels.astype(int).to_numpy()
-                valid_mask = numeric_labels != -1
-                decoded_labels = self._label_encoder.inverse_transform(numeric_labels[valid_mask])
-                decoded_preds = self._label_encoder.inverse_transform(preds_numeric[valid_mask])
-                y_true = pd.Series(decoded_labels).astype(str)
-                y_pred = pd.Series(decoded_preds).astype(str)
-            else:
-                y_true = labels.astype(str)
-                y_pred = pd.Series(preds_numeric).astype(str)
+            numeric_labels = labels.astype(int).to_numpy()
+            valid_mask = numeric_labels != -1
+            y_true = numeric_labels[valid_mask]
+            y_pred = preds_numeric[valid_mask]
             return {
                 "mcc": float(MCC(y_true, y_pred)),
                 "acc": float(metrics.accuracy_score(y_true, y_pred)),

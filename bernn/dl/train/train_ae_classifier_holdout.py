@@ -534,13 +534,14 @@ class TrainAEClassifierHoldout(TrainAE):
                             print(f"Problem with add_to_logger: {e}")
                     if self.log_mlflow:
                         add_to_mlflow(values, epoch)
-                    current_train_metrics = self._score_public_split_metrics('train')
-                    current_valid_metrics = self._score_public_split_metrics('valid')
-                    current_test_metrics = self._score_public_split_metrics('test')
-                    current_train_mcc = current_train_metrics["mcc"]
-                    current_valid_mcc = current_valid_metrics["mcc"]
-                    current_valid_acc = current_valid_metrics["acc"]
-                    current_test_mcc = current_test_metrics["mcc"]
+                    # Preserve BERNN's established checkpoint-selection semantics:
+                    # use the MCC/accuracy produced by the epoch DataLoader loop.
+                    # The public scorer is an independent post-hoc diagnostic and
+                    # must not redefine legacy model selection.
+                    current_train_mcc = values['train']['mcc'][-1]
+                    current_valid_mcc = values['valid']['mcc'][-1]
+                    current_valid_acc = values['valid']['acc'][-1]
+                    current_test_mcc = values['test']['mcc'][-1] if has_test_labels else float('nan')
                     has_test_metrics = (
                         has_test_labels
                         and len(values['test']['mcc']) > 0
