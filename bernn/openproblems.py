@@ -21,6 +21,47 @@ from .dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
 from .single_cell import _dense_frame, _select_feature_indices
 
 
+class _OpenProblemsGroupedWarmupTrainer(TrainAEClassifierHoldout):
+    """OpenProblems grouped trainer that snapshots the model after warmup.
+
+    This is intentionally isolated to the OpenProblems integration. Legacy BERNN
+    checkpointing and validation-MCC selection remain unchanged.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self._openproblems_warmup_state: Optional[dict[str, Any]] = None
+        self._openproblems_warmup_epoch: Optional[int] = None
+
+    def warmup_loop(
+        self, optimizer_ae, scheduler, ae, celoss, loader, triplet_loss, mseloss,
+        warmup, epoch, optimizer_b, values, loggers, loaders, run, mapping=True,
+    ):
+        result = super().warmup_loop(
+            optimizer_ae, scheduler, ae, celoss, loader, triplet_loss, mseloss,
+            warmup, epoch, optimizer_b, values, loggers, loaders, run, mapping,
+        )
+        # Capture the state *after* every true warmup epoch. The last snapshot is
+        # therefore the exact model state at the warmup -> supervised boundary,
+        # including the early-stop boundary if warmup terminates early.
+        if warmup:
+            self._openproblems_warmup_state = {
+                name: copy.deepcopy(module.state_dict())
+                for name, module in self._iter_torch_modules()
+            }
+            self._openproblems_warmup_epoch = int(epoch)
+        return result
+
+    def restore_openproblems_warmup_state(self):
+        if not self._openproblems_warmup_state:
+            raise RuntimeError("No post-warmup OpenProblems state was captured")
+        modules = dict(self._iter_torch_modules())
+        for name, state in self._openproblems_warmup_state.items():
+            if name not in modules:
+                raise RuntimeError(f"Cannot restore post-warmup model: missing module '{name}'")
+            modules[name].load_state_dict(state)
+
+
 class _OpenProblemsFinalEpochTrainer(TrainAEClassifierHoldout):
     """OpenProblems-only trainer behavior without changing BERNN legacy trainers.
 
@@ -223,7 +264,7 @@ def fit_openproblems_grouped_once(
     config.smoothing=float(smoothing); config.nu=float(nu)
     config.thres=float(thres); config.gamma=float(gamma); config.beta=float(beta); config.l1=float(l1); config.reg_entropy=float(reg_entropy)
 
-    trainer = TrainAEClassifierHoldout(
+    trainer = _OpenProblemsGroupedWarmupTrainer(
         config=config, groupkfold=True, pools=False, keep_models=False,
         log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False,
         log_dvclive=False,
@@ -260,7 +301,25 @@ def fit_openproblems_grouped_once(
 
     trainer.openproblems_split_metrics = split_metrics
     trainer.openproblems_split_batches = split_batches
+
+    # Current behavior: score the restored best-validation-MCC checkpoint as the
+    # end-of-training candidate. Preserve it exactly, then temporarily restore
+    # the post-warmup snapshot to generate a second full-dataset embedding.
     embedding = trainer.transform(frame, groups_test=batches).astype(np.float32, copy=False)
+    end_state = {
+        name: copy.deepcopy(module.state_dict())
+        for name, module in trainer._iter_torch_modules()
+    }
+    trainer.restore_openproblems_warmup_state()
+    trainer.openproblems_after_warmup_embedding = trainer.transform(
+        frame, groups_test=batches
+    ).astype(np.float32, copy=False)
+    modules = dict(trainer._iter_torch_modules())
+    for name, state in end_state.items():
+        if name in modules:
+            modules[name].load_state_dict(state)
+    trainer.openproblems_after_warmup_epoch = trainer._openproblems_warmup_epoch
+
     if return_trainer:
         return embedding, trainer
     return embedding

@@ -89,3 +89,34 @@ def test_fit_openproblems_enqueues_known_baseline(monkeypatch):
     assert result.best_score == pytest.approx(0.2)
     assert result.study.trials[0].params["dropout"] == pytest.approx(0.2)
     assert calls[0]["dropout"] == pytest.approx(0.2)
+
+
+def test_grouped_openproblems_captures_and_restores_post_warmup_state(monkeypatch):
+    import torch
+    from bernn.dl.train.train_ae_classifier_holdout import TrainAEClassifierHoldout
+
+    trainer = op._OpenProblemsGroupedWarmupTrainer.__new__(op._OpenProblemsGroupedWarmupTrainer)
+    trainer._openproblems_warmup_state = None
+    trainer._openproblems_warmup_epoch = None
+    trainer.ae = torch.nn.Linear(1, 1, bias=False)
+    with torch.no_grad():
+        trainer.ae.weight.fill_(1.0)
+
+    def fake_parent_warmup(self, *args, **kwargs):
+        with torch.no_grad():
+            self.ae.weight.fill_(2.5)
+        return 1, self.ae, True
+
+    monkeypatch.setattr(TrainAEClassifierHoldout, "warmup_loop", fake_parent_warmup)
+    trainer.warmup_loop(
+        None, None, trainer.ae, None, None, None, None,
+        True, 7, None, None, None, None, None, True,
+    )
+
+    assert trainer._openproblems_warmup_epoch == 7
+    assert float(trainer._openproblems_warmup_state["ae"]["weight"].item()) == pytest.approx(2.5)
+
+    with torch.no_grad():
+        trainer.ae.weight.fill_(9.0)
+    trainer.restore_openproblems_warmup_state()
+    assert float(trainer.ae.weight.item()) == pytest.approx(2.5)
