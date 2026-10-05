@@ -132,3 +132,10 @@ def test_grouped_openproblems_exposes_epoch_callback_parameter():
     sig = inspect.signature(op.fit_openproblems_grouped_once)
     assert "epoch_callback" in sig.parameters
     assert sig.parameters["epoch_callback"].default is None
+
+
+def test_openproblems_exposes_warmup_early_stop_parameters():
+    grouped = inspect.signature(op.fit_openproblems_grouped_once)
+    full = inspect.signature(op.fit_openproblems_once)
+    assert grouped.parameters["early_warmup_stop"].default == 50
+    assert full.parameters["early_warmup_stop"].default == 50
