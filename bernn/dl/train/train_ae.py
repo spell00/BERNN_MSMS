@@ -1327,6 +1327,12 @@ class TrainAE:
             # classes those two integer spaces can differ because legacy BERNN
             # orders category keys with ``key=str``.
             labels = self.data.get("cats", {}).get(split, None)
+            if labels is None:
+                # Backward-compatible fallback for callers/tests that prepare
+                # numeric labels directly without BERNN's remapped cats
+                # payload. Real training paths populate cats and therefore
+                # still use the exact classifier target ids.
+                labels = self.data.get("labels", {}).get(split, None)
             inputs_raw = self.data.get("inputs", {}).get(split, None)
             batches = self.data.get("batches", {}).get(split, None)
             if labels is None or inputs_raw is None or len(inputs_raw) == 0:
