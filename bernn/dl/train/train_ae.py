@@ -569,14 +569,42 @@ class TrainAE:
                 from sklearn.model_selection import StratifiedKFold
                 skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.seed)
                 split_iter = list(skf.split(X, y))
-            if (self.seed - self.rep) > 10:
-                valid_fold = 1
-            else:
-                valid_fold = 0
-            test_fold = (valid_fold + 1) % n_splits
-            train_inds_v, valid_inds = split_iter[valid_fold]
-            train_inds_t, test_inds = split_iter[test_fold]
-            train_inds = np.array([x for x in range(len(X)) if x not in np.concatenate((valid_inds, test_inds))])
+            # Prefer the historical fold pair, but only use a pair whose
+            # remaining training samples contain every supervised label.
+            # With grouped single-cell data a rare cell type can be confined
+            # to one fold; blindly holding that fold out makes supervised
+            # training impossible and caused whole Optuna trials to fail.
+            required_labels = set(np.unique(y[np.asarray(y) != -1]))
+            preferred_valid_fold = 1 if (self.seed - self.rep) > 10 else 0
+            preferred_test_fold = (preferred_valid_fold + 1) % len(split_iter)
+            candidate_pairs = [(preferred_valid_fold, preferred_test_fold)]
+            candidate_pairs.extend(
+                (valid_fold, test_fold)
+                for valid_fold in range(len(split_iter))
+                for test_fold in range(len(split_iter))
+                if valid_fold != test_fold
+                and (valid_fold, test_fold) != (preferred_valid_fold, preferred_test_fold)
+            )
+
+            selected_split = None
+            all_inds = np.arange(len(X))
+            for valid_fold, test_fold in candidate_pairs:
+                valid_inds = np.asarray(split_iter[valid_fold][1], dtype=int)
+                test_inds = np.asarray(split_iter[test_fold][1], dtype=int)
+                holdout_inds = np.unique(np.concatenate((valid_inds, test_inds)))
+                train_inds = np.setdiff1d(all_inds, holdout_inds, assume_unique=False)
+                train_labels = set(np.unique(y[train_inds][np.asarray(y[train_inds]) != -1]))
+                if required_labels.issubset(train_labels):
+                    selected_split = (train_inds, valid_inds, test_inds)
+                    break
+
+            if selected_split is None:
+                raise ValueError(
+                    "Unable to create grouped train/valid/test splits with every supervised "
+                    "label represented in train. Reduce n_repeats, revise grouping, or disable "
+                    "the supervised objective for labels confined to holdout batches."
+                )
+            train_inds, valid_inds, test_inds = selected_split
             self.data['inputs']['train'] = X.iloc[train_inds]
             self.data['labels']['train'] = y[train_inds]
             self.data['batches']['train'] = groups[train_inds]

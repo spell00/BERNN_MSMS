@@ -254,6 +254,7 @@ def fit_openproblems_grouped_once(
         rec_loss=str(rec_loss), scaler=scaler,
         log1p=False, use_l1=True, prune_network=False, update_grid=False,
         n_epochs=int(n_epochs), warmup=int(warmup), n_repeats=int(n_splits),
+        train_after_warmup=True,
         bs=int(batch_size), num_workers=int(num_workers), groupkfold=True,
         device=device, dataset=str(getattr(adata, "uns", {}).get("dataset_id", "openproblems")),
         exp_id="bernn_openproblems_grouped",

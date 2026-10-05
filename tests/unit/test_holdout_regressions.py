@@ -565,6 +565,81 @@ def test_holdout_prepare_data_legacy_internal_validation_still_splits(tmp_path):
 
 
 @pytest.mark.unit
+def test_internal_grouped_split_keeps_every_supervised_label_in_train(tmp_path, monkeypatch):
+    config = TrainingConfig(
+        device="cpu",
+        kan=False,
+        use_l1=False,
+        prune_network=False,
+        groupkfold=True,
+        n_epochs=1,
+        warmup=0,
+        n_repeats=3,
+        bs=4,
+        optimize_hyperparams=False,
+    )
+    trainer = TrainAEClassifierHoldout(
+        config=config,
+        path=str(tmp_path),
+        log_metrics=False,
+        keep_models=False,
+        log_inputs=False,
+        log_plots=False,
+        log_tb=False,
+        log_mlflow=False,
+        log_dvclive=False,
+        groupkfold=True,
+    )
+
+    X = pd.DataFrame(np.arange(36).reshape(12, 3))
+    # Rare class "c" occurs only in fold 0. The historical preferred pair
+    # (valid=0, test=1) would remove it from train entirely.
+    y = np.array(["c", "a", "b", "a", "a", "b", "a", "b", "a", "b", "a", "b"])
+    groups = np.array([f"g{i // 2}" for i in range(len(X))])
+
+    class FakeStratifiedGroupKFold:
+        def __init__(self, n_splits, shuffle, random_state):
+            assert n_splits == 3
+
+        def split(self, X_arg, y_arg, groups_arg):
+            folds = [
+                np.array([0, 1, 2, 3]),
+                np.array([4, 5, 6, 7]),
+                np.array([8, 9, 10, 11]),
+            ]
+            all_idx = np.arange(len(X_arg))
+            return [
+                (np.setdiff1d(all_idx, fold), fold)
+                for fold in folds
+            ]
+
+    monkeypatch.setattr(
+        "sklearn.model_selection.StratifiedGroupKFold",
+        FakeStratifiedGroupKFold,
+    )
+
+    trainer._prepare_data(
+        X=X,
+        y=y,
+        groups=groups,
+        internal_validation=True,
+    )
+
+    train_labels = set(np.unique(trainer.data["labels"]["train"]))
+    all_labels = set(np.unique(np.concatenate([
+        trainer.data["labels"]["train"],
+        trainer.data["labels"]["valid"],
+        trainer.data["labels"]["test"],
+    ])))
+    assert train_labels == all_labels
+    assert len(train_labels) == 3
+    assert 0 in trainer.data["inputs"]["train"].index
+    assert set(trainer.data["inputs"]["valid"].index).isdisjoint(
+        set(trainer.data["inputs"]["test"].index)
+    )
+
+
+@pytest.mark.unit
 def test_prepare_data_rejects_holdout_class_absent_from_training(tmp_path):
     config = TrainingConfig(
         device="cpu",
