@@ -209,6 +209,7 @@ def fit_openproblems_grouped_once(
     thres: float = 0.0,
     n_epochs: int = 200,
     warmup: int = 20,
+    early_stop: int = 50,
     batch_size: int = 256,
     n_layers: int = 2,
     layer1: int = 256,
@@ -258,7 +259,7 @@ def fit_openproblems_grouped_once(
         bs=int(batch_size), num_workers=int(num_workers), groupkfold=True,
         device=device, dataset=str(getattr(adata, "uns", {}).get("dataset_id", "openproblems")),
         exp_id="bernn_openproblems_grouped",
-        early_stop=50,
+        early_stop=int(early_stop),
     )
     config.lr=float(learning_rate); config.wd=float(weight_decay)
     config.dropout=float(dropout); config.margin=float(margin)

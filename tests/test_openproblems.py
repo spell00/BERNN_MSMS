@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -120,3 +121,8 @@ def test_grouped_openproblems_captures_and_restores_post_warmup_state(monkeypatc
         trainer.ae.weight.fill_(9.0)
     trainer.restore_openproblems_warmup_state()
     assert float(trainer.ae.weight.item()) == pytest.approx(2.5)
+
+
+def test_grouped_openproblems_exposes_early_stop_parameter():
+    sig = inspect.signature(op.fit_openproblems_grouped_once)
+    assert sig.parameters["early_stop"].default == 50
