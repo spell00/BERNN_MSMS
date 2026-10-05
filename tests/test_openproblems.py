@@ -126,3 +126,9 @@ def test_grouped_openproblems_captures_and_restores_post_warmup_state(monkeypatc
 def test_grouped_openproblems_exposes_early_stop_parameter():
     sig = inspect.signature(op.fit_openproblems_grouped_once)
     assert sig.parameters["early_stop"].default == 50
+
+
+def test_grouped_openproblems_exposes_epoch_callback_parameter():
+    sig = inspect.signature(op.fit_openproblems_grouped_once)
+    assert "epoch_callback" in sig.parameters
+    assert sig.parameters["epoch_callback"].default is None

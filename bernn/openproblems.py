@@ -224,6 +224,7 @@ def fit_openproblems_grouped_once(
     num_workers: int = 0,
     device: Optional[str] = None,
     n_splits: int = 5,
+    epoch_callback: Any = None,
     return_trainer: bool = False,
 ):
     """Fit BERNN with true grouped train/valid/test splits for OpenProblems.
@@ -269,7 +270,7 @@ def fit_openproblems_grouped_once(
     trainer = _OpenProblemsGroupedWarmupTrainer(
         config=config, groupkfold=True, pools=False, keep_models=False,
         log_inputs=False, log_plots=False, log_tb=False, log_mlflow=False,
-        log_dvclive=False,
+        log_dvclive=False, epoch_callback=epoch_callback,
     )
     trainer.seed = int(random_state)
     params = {
